@@ -22,15 +22,15 @@ npm run migrate:local
 The local migration command persists D1 state under `apps/api/.wrangler`. To prove the migration chain on an isolated database, use a new path:
 
 ```powershell
-npm exec --workspace @washpro/api -- wrangler d1 migrations apply DB --local --persist-to apps/api/.tmp/clean-d1
+npx wrangler d1 migrations apply DB --local --env="" --persist-to .tmp/clean-d1 --cwd apps/api
 ```
 
-## Start the application
+## Start the application with fully local bindings
 
 Terminal 1:
 
 ```powershell
-npm run dev:api
+npm run dev:api:local
 ```
 
 Terminal 2:
@@ -40,6 +40,40 @@ npm run dev
 ```
 
 The web application runs at `http://127.0.0.1:5173` and proxies `/api` to the Worker at `http://localhost:8787`.
+
+This mode keeps D1, KV, and both R2 bindings in the local Wrangler simulation. `npm run dev:api` remains an alias for the default Wrangler local-development behavior, but `dev:api:local` is preferred because its intent is explicit.
+
+## Start local Worker code with remote development bindings
+
+Authenticate Wrangler to the Cloudflare account first:
+
+```powershell
+npx wrangler whoami --cwd apps/api
+```
+
+Then run the API and web application in separate terminals:
+
+```powershell
+npm run dev:api:remote
+npm run dev
+```
+
+`dev:api:remote` runs the Worker source on the local machine while Cloudflare proxies only these bindings to isolated development resources:
+
+| Binding | Remote development resource |
+| --- | --- |
+| `DB` | D1 `washpro-dev` (`4d0c969f-b8f1-4cc8-b15a-3d38687a1cc2`) |
+| `CACHE` | KV `washpro-cache-dev` (`b2625dab32d14d1cb2c46a7cd35a97ca`) |
+| `UPLOADS` | private R2 `washpro-uploads-dev` |
+| `INVOICES` | private R2 `washpro-invoices-dev` |
+
+The named Wrangler environment is `remote-dev`, and its Worker name is `car-wash-remote-dev`. It does not reference a production resource. Apply its D1 migrations with:
+
+```powershell
+npm run db:migrate:remote-dev
+```
+
+Remote binding writes affect real Cloudflare development resources. Use only development data and narrowly scoped `integration-test/` keys for diagnostics; remove diagnostic records and objects afterward.
 
 ## Bootstrap the first Administrator
 
@@ -97,7 +131,7 @@ The password policy requires at least 12 characters with uppercase, lowercase, n
 | `INVOICES` | private R2 binding | yes | Generated immutable invoice PDFs. |
 | `CACHE` | KV binding | yes | Non-authoritative temporary/cache state only. |
 
-Do not place secrets in `wrangler.jsonc`. Local secrets belong only in ignored `apps/api/.dev.vars`; deployed values must be Worker secrets.
+Do not place secrets in `wrangler.jsonc`. Local Worker execution, including `dev:api:remote`, reads secrets from ignored `apps/api/.dev.vars`. A deployed `car-wash-remote-dev` Worker would require independent remote values for `BOOTSTRAP_TOKEN`, `SESSION_PEPPER`, `CSRF_SECRET`, and `INVOICE_TOKEN_PEPPER` through `wrangler secret put --env remote-dev --cwd apps/api`; that deployment is optional and was not performed during local remote-binding setup.
 
 ## Local data reset
 

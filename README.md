@@ -23,7 +23,7 @@ npm run setup:local
 npm run migrate:local
 ```
 
-Run `npm run dev:api` and `npm run dev` in separate terminals, then bootstrap the first Administrator using the procedure in [docs/setup.md](docs/setup.md).
+For fully local storage, run `npm run dev:api:local` and `npm run dev` in separate terminals. To keep Worker code local while using the isolated Cloudflare development D1, KV, and R2 resources, use `npm run dev:api:remote` instead. Then bootstrap the first Administrator using the procedure in [docs/setup.md](docs/setup.md).
 
 ## Quality commands
 
@@ -36,7 +36,7 @@ npm run test:e2e
 npm run build
 ```
 
-The connected Cloudflare Worker deploy command is `npm run deploy:api` from the repository root. It targets `car-wash` and runs a production-binding preflight before Wrangler. See the deployment guide before enabling a production build.
+The API dry-run build command is `npm run build --workspace=@washpro/api`. The connected Cloudflare Worker deploy command is `npm run deploy:api` from the repository root. It targets `car-wash` and runs a production-binding preflight before Wrangler. See the deployment guide before enabling a production build.
 
 ## Operations and evidence
 

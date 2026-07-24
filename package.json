@@ -9,9 +9,12 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "db:migrate:remote-dev": "npm run db:migrate:remote-dev --workspace=@washpro/api",
     "deploy:api": "npm run deploy --workspace=@washpro/api",
     "dev": "npm run dev --workspace @washpro/web",
     "dev:api": "npm run dev --workspace @washpro/api",
+    "dev:api:local": "npm run dev:local --workspace=@washpro/api",
+    "dev:api:remote": "npm run dev:remote --workspace=@washpro/api",
     "format": "prettier --write \"apps/**/*.{ts,tsx,css,json,jsonc,html}\" \"packages/**/*.ts\" \"scripts/**/*.{ts,mjs}\" \"e2e/**/*.ts\" \"*.{json,js,ts,mjs}\"",
     "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json,jsonc,html}\" \"packages/**/*.ts\" \"scripts/**/*.{ts,mjs}\" \"e2e/**/*.ts\" \"*.{json,js,ts,mjs}\"",
     "lint": "eslint .",

@@ -19,6 +19,20 @@ Worker integration tests run against an isolated Miniflare D1/R2/KV environment 
 
 Playwright exercises login and responsive navigation on Chromium desktop, Pixel 7 emulation, Galaxy Tab emulation, Firefox desktop, and iPhone 15 WebKit emulation. The full New Wash camera/GPS retry workflow runs once in Chromium; the other projects intentionally skip that duplicate media test while still running their shared flows.
 
+## Cloudflare remote-development verification
+
+Validate configuration without deploying:
+
+```powershell
+npm run build:remote-dev --workspace=@washpro/api
+npx wrangler deploy --dry-run --env remote-dev --outdir dist --cwd apps/api
+npx wrangler d1 migrations list DB --remote --env remote-dev --cwd apps/api
+```
+
+For a binding smoke test, run local Worker code with `npm run dev:api:remote`. Use unique `integration-test/` records to write/read D1, KV, `UPLOADS`, and `INVOICES`; independently confirm the values through Wrangler, then delete exactly those test values. Never clear a namespace, bucket, or table. The 2026-07-24 integration run completed this sequence for all four bindings and confirmed zero remaining test rows/keys and absent R2 test objects.
+
+The same live run started the real Hono application with `npm run dev:api:remote`: `/health` returned `200` with `washpro-api` status `ok`, an anonymous session request returned `401`, the Vite root returned `200`, and the same anonymous session request through Vite's `/api` proxy returned `401`. A safe invalid-login request through the frontend proxy returned `401 AUTH_INVALID_CREDENTIALS`; its narrowly scoped rate-limit key was removed afterward.
+
 ## Manual launch checklist
 
 Automated emulation does not replace real hardware validation. Before production launch, record evidence for:
@@ -35,4 +49,3 @@ Automated emulation does not replace real hardware validation. Before production
 ## Production smoke test
 
 Use a dedicated staging organization and non-production customer data. Verify Admin and Staff login, account disable/session revocation, a complete live-camera and GPS wash, timer refresh persistence, coupon/referral/reward rules, partial/full payment, refund, invoice revision and protected link expiry, WhatsApp/copy/download fallbacks, expense cancellation, dashboard/report reconciliation, audit entries, and scheduled retention/reconciliation. Never use fabricated successful payment or refund records in production.
-

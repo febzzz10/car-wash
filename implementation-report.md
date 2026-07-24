@@ -8,7 +8,17 @@ Completed modules include secure Admin/Staff authentication and permissions, Sta
 
 Requirement-by-requirement evidence is in `requirements-traceability.md`. The initial empty-repository status and documentation decisions are in `docs/requirements-audit.md`.
 
-The repository-connected Worker deployment now runs from the root through `npm run deploy:api`, dispatches to `@washpro/api`, and targets the existing `car-wash` Worker. A tested predeploy gate prevents Wrangler from running while development variables or local D1/KV/R2 placeholders remain; no live deployment was performed.
+The repository-connected Worker deployment runs from the root through `npm run deploy:api`, dispatches to `@washpro/api`, and targets the connected-build name `car-wash`. A tested predeploy gate prevents Wrangler from running while development variables or local D1/KV/R2 placeholders remain. A separate `remote-dev` environment now keeps Worker code local while using provisioned development-only Cloudflare D1, KV, and two private R2 resources; no Worker code was deployed and no production resource was created or changed. Read-only deployment queries confirmed that neither `car-wash` nor the former `washpro-api` name currently exists as a deployed Worker script in the authenticated account.
+
+### Cloudflare remote-development integration
+
+- Wrangler authentication and write permissions were verified; account identity is reported only in the operator handoff rather than committed documentation.
+- D1: `washpro-dev` (`4d0c969f-b8f1-4cc8-b15a-3d38687a1cc2`).
+- KV: `washpro-cache-dev` (`b2625dab32d14d1cb2c46a7cd35a97ca`).
+- Private R2: `washpro-uploads-dev` and `washpro-invoices-dev`.
+- Local Worker name: top-level `car-wash`; named remote-development Worker name: `car-wash-remote-dev`.
+- `DB`, `CACHE`, `UPLOADS`, and `INVOICES` are repeated under `env.remote-dev` with `remote: true`. The top-level configuration retains fully local simulated bindings.
+- A local Worker wrote a known `integration-test/` value through each binding. Independent Wrangler CLI reads found all four values in the remote development resources. The Worker then deleted them, and independent checks confirmed zero D1 rows, an empty KV prefix, and missing exact R2 objects.
 
 ## Architecture Used
 
@@ -19,6 +29,8 @@ The repository-connected Worker deployment now runs from the root through `npm r
 - Vitest with Cloudflare Workers pool for unit/integration/security tests; Playwright for multi-browser responsive E2E.
 
 ## Files Changed
+
+The Cloudflare integration pass modified these existing source files: `README.md`, `docs/setup.md`, `docs/deployment.md`, `docs/testing.md`, `implementation-report.md`, `requirements-traceability.md`, `package.json`, `apps/api/package.json`, `apps/api/wrangler.jsonc`, `apps/api/migrations/0009_integrity_guards.sql`, and `scripts/cloudflare-deployment.test.mjs`. No file was removed. A temporary binding-smoke Worker was created only for live verification and removed after cleanup.
 
 The starting repository contained only `plan.md`, `prd.md`, `appflow.md`, `techspec.md`, `database.md`, and `design.md`, with no Git metadata. Those six source documents were read completely and not modified. Every project file below was created. No project file was removed.
 
@@ -212,11 +224,15 @@ Generated/ignored local artifacts are not source files: `node_modules`, `apps/ap
 8. `0008_reporting_indexes_and_views.sql`: reporting/search indexes and three reconciliation/accounting views.
 9. `0009_integrity_guards.sql`: tenant/branch, timer, coupon, payment/refund, private-asset and audit-sensitive-data triggers.
 
-The schema adds 38 tables, 41 explicit indexes (including partial unique indexes), 3 views, and 29 integrity/immutability triggers. Primary/foreign/unique/check constraints, normalized search fields, optimistic `version` fields, snapshot columns, idempotency records, and immutable financial/history guards are included.
+The application schema adds 38 tables; remote SQLite metadata reports 40 tables including migration bookkeeping, 41 explicit indexes (including partial unique indexes), 3 views, and 29 integrity/immutability triggers. Primary/foreign/unique/check constraints, normalized search fields, optimistic `version` fields, snapshot columns, idempotency records, and immutable financial/history guards are included.
 
 ### Clean migration result
 
-`wrangler 4.113.0` applied all nine migrations to an empty isolated local D1 persistence path. Every migration reported `✅`; zero migration failures occurred. The ordinary persisted local D1 also reported “No migrations to apply.”
+`wrangler 4.114.0` applied all nine migrations to remote development D1 `washpro-dev`; the final migration listing reports “No migrations to apply.” Remote verification reports migrations `0001_foundation.sql` through `0009_integrity_guards.sql`, 40 tables including migration bookkeeping, 41 indexes, 29 triggers, and 3 views.
+
+The original `0009_integrity_guards.sql` used nested `SELECT CASE ... END` statements inside triggers. Local SQLite accepted them, but Cloudflare's remote D1 migration parser stopped at the nested `END` and returned `incomplete input`. The not-yet-applied migration was changed syntax-only to equivalent `SELECT RAISE(...) WHERE ...` trigger statements; trigger names, conditions, messages, and business behavior are preserved. A regression test forbids the incompatible trigger form, the migration test verifies the required trigger names, and the corrected migration applied remotely.
+
+The same nine migrations also passed on an empty isolated local D1 persistence path. Every migration succeeded with zero failures, and the ordinary persisted local D1 reported “No migrations to apply.”
 
 ### Seed/bootstrap data
 
@@ -240,10 +256,13 @@ Final verification date: 2026-07-24.
 | Contract unit | 1 file passed, 4 tests passed, 0 failed. |
 | Domain unit | 9 files passed, 30 tests passed, 0 failed. |
 | Vitest total | 25 files passed, 60 tests passed, 0 failed. |
-| Deployment contract | 1 Node test file passed, 3 tests passed, 0 failed. |
-| Automated test total | 26 files passed, 63 tests passed, 0 failed. |
-| Playwright | 16 passed, 4 intentionally skipped duplicate media runs, 0 failed, 26.8 seconds. |
-| Clean D1 migration | 9/9 migrations passed from empty state. |
+| Deployment contract | 1 Node test file passed, 5 tests passed, 0 failed. |
+| Automated test total | 26 files passed, 65 tests passed, 0 failed. |
+| Playwright | 16 passed, 4 intentionally skipped duplicate media runs, 0 failed, 44.9 seconds. |
+| Clean D1 migration | 9/9 migrations passed from empty local state; 9/9 applied to `washpro-dev`; both report no pending migrations. |
+| Remote binding smoke | Local Worker write/read plus independent CLI read and cleanup passed for D1, KV, `UPLOADS`, and `INVOICES`; no test values remain. |
+| Live API/frontend connectivity | Remote-development Hono health `200`; anonymous session `401`; Vite root `200`; proxied session `401`; invalid login `401 AUTH_INVALID_CREDENTIALS`. |
+| Clean dependency install | `npm ci`: 312 packages added, 317 audited, 0 vulnerabilities. |
 | Production dependency audit | 0 vulnerabilities across production dependencies. |
 | Full dependency audit | 0 vulnerabilities after a non-forced in-range Cloudflare toolchain update. |
 
@@ -264,6 +283,7 @@ Implemented controls:
 - Login throttling/lock handling and login-attempt records.
 - Zod input contracts, size/type/signature file validation, safe error envelopes and sensitive audit redaction.
 - Private R2 object access; photos have database public-access guards, invoice PDFs use expiring HMAC-bound links.
+- Wrangler verification confirms public `r2.dev` access is disabled and no custom domain is connected on either development R2 bucket.
 - Append-only payments, refunds, timer events, reward ledger and audits; issued invoice/update/delete database guards.
 - Idempotency keys and unique constraints for duplicate job/payment/invoice/reward/expense requests.
 - CSP, HSTS, anti-framing, no-sniff, referrer and scoped camera/geolocation Permissions Policy headers.
@@ -274,7 +294,8 @@ The initial full audit found four high-severity entries for one transitive `shar
 ## Build
 
 - Worker dry run passed with Wrangler 4.114.0: 1745.75 KiB upload, 368.75 KiB gzip.
-- Web production build passed with Vite 6.4.3: 1704 modules transformed in 4.58 seconds.
+- Remote-development Worker dry run passed with the same bundle size and listed only `washpro-dev`, `washpro-cache-dev`, `washpro-uploads-dev`, and `washpro-invoices-dev` for the four bindings.
+- Web production build passed with Vite 6.4.3: 1704 modules transformed in 5.03 seconds.
 - Main web entry: 317.04 kB, 100.83 kB gzip; CSS: 37.09 kB, 7.86 kB gzip. Route pages are lazy chunks.
 - No source map, type, lint, formatting or build error remains.
 
@@ -291,16 +312,17 @@ The initial full audit found four high-severity entries for one transitive `shar
 | Plan language could imply revenue from paid jobs; PRD/database use transactions. | Revenue is successful payments minus successful refunds. | Avoids recognizing unpaid job totals as revenue. |
 | Referral documents differed on reward timing. | Reward becomes available only after the referred wash is completed and fully paid. | Satisfies the stricter PRD business rule and prevents premature rewards. |
 | Database seed suggested a temporary initial password; the direct request forbids committed placeholder credentials. | One-time token-protected interactive bootstrap accepts an operator-chosen strong password. | No default/reusable credential is committed or logged. |
+| The integration request forbids rewriting migrations, but existing `0009_integrity_guards.sql` was rejected by remote D1 before any later corrective migration could run. | Preserve every trigger name, condition, error, and behavior while replacing only unsupported nested `SELECT CASE ... END` trigger syntax with D1-compatible `SELECT RAISE(...) WHERE ...` syntax. | `0009` had not applied remotely; leaving it untouched makes clean remote migration impossible, and a new `0010` cannot be reached. The exception is regression-tested and disclosed rather than silently ignored. |
 
 ## Remaining Work and Risks
 
 No approved product module is intentionally left as a mock or placeholder. The remaining items require external infrastructure or real hardware:
 
-1. A Cloudflare account owner must provision production D1/R2/KV/Pages resources, supply real IDs/domains/secrets, configure Worker routes, keep R2 public access disabled, migrate, and deploy. No production deployment was authorized or performed.
+1. A Cloudflare account owner must still provision production D1/R2/KV/Pages resources, supply real IDs/domains/secrets, configure Worker routes, keep R2 public access disabled, migrate, and deploy. Only isolated development resources were provisioned; no production deployment was authorized or performed.
 2. Physical-device camera/GPS, Safari/iOS/iPadOS, Windows 10/11 and macOS validation must be completed and signed off. Automated browser/device emulation passed but is not equivalent to hardware.
 3. A staging D1/R2 backup-restore rehearsal and production scheduled-trigger observation require provisioned Cloudflare resources.
 4. Standard `wa.me` opens a prefilled message and cannot attach a PDF automatically; the application correctly offers copy message, copy link and PDF download instead.
 
 ## Deployment Readiness
 
-The source, schema, tests and dry-run bundles are ready for a controlled staging deployment. Production is **not yet launch-ready**. The committed Wrangler configuration intentionally remains blocked because `APP_ENV` is `development`, `ALLOWED_ORIGINS` is absent, `DB`/`CACHE` use local IDs, and `UPLOADS`/`INVOICES` use local bucket names. The four required secret names are declared, but their remote values and Worker routes/domains cannot be verified until the account owner configures the `car-wash` Worker. Staging migration/restore/smoke tests and physical-device verification also remain. Follow `docs/deployment.md`, `docs/backup-restore.md`, and `docs/testing.md` in that order.
+The source, schema, tests and dry-run bundles are ready for controlled development/staging use. Local Worker code has been proven against isolated remote development bindings. Production is **not yet launch-ready**: the top-level configuration deliberately retains `APP_ENV=development`, a localhost origin, and local D1/KV/R2 placeholders, so the production predeploy guard remains effective. The four required secret names are declared, but deployed `remote-dev` and production values, Worker routes, and production domains are not configured. Production provisioning, a staging restore rehearsal, and physical-device verification remain. Follow `docs/deployment.md`, `docs/backup-restore.md`, and `docs/testing.md` in that order.

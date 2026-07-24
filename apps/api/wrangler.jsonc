@@ -1,4 +1,5 @@
 {
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "car-wash",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-23",
@@ -8,6 +9,7 @@
     "crons": ["17 2 * * *"],
   },
   "vars": {
+    "ALLOWED_ORIGINS": "http://localhost:5173",
     "APP_ENV": "development",
     "SESSION_TTL_SECONDS": "28800",
     "INVOICE_LINK_TTL_SECONDS": "604800",
@@ -44,4 +46,51 @@
       "id": "local-cache",
     },
   ],
+  "env": {
+    "remote-dev": {
+      "name": "car-wash-remote-dev",
+      "vars": {
+        "ALLOWED_ORIGINS": "http://localhost:5173",
+        "APP_ENV": "development",
+        "SESSION_TTL_SECONDS": "28800",
+        "INVOICE_LINK_TTL_SECONDS": "604800",
+      },
+      "secrets": {
+        "required": [
+          "BOOTSTRAP_TOKEN",
+          "CSRF_SECRET",
+          "INVOICE_TOKEN_PEPPER",
+          "SESSION_PEPPER",
+        ],
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "washpro-dev",
+          "database_id": "4d0c969f-b8f1-4cc8-b15a-3d38687a1cc2",
+          "migrations_dir": "migrations",
+          "remote": true,
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "UPLOADS",
+          "bucket_name": "washpro-uploads-dev",
+          "remote": true,
+        },
+        {
+          "binding": "INVOICES",
+          "bucket_name": "washpro-invoices-dev",
+          "remote": true,
+        },
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "CACHE",
+          "id": "b2625dab32d14d1cb2c46a7cd35a97ca",
+          "remote": true,
+        },
+      ],
+    },
+  },
 }

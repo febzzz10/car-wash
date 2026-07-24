@@ -1,0 +1,42 @@
+{
+  "name": "washpro",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspace @washpro/web",
+    "dev:api": "npm run dev --workspace @washpro/api",
+    "format": "prettier --write \"apps/**/*.{ts,tsx,css,json,jsonc,html}\" \"packages/**/*.ts\" \"scripts/**/*.{ts,mjs}\" \"e2e/**/*.ts\" \"*.{json,js,ts,mjs}\"",
+    "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json,jsonc,html}\" \"packages/**/*.ts\" \"scripts/**/*.{ts,mjs}\" \"e2e/**/*.ts\" \"*.{json,js,ts,mjs}\"",
+    "lint": "eslint .",
+    "migrate:local": "npm run migrate:local --workspace @washpro/api",
+    "setup:local": "node scripts/setup-local-env.mjs",
+    "test": "npm run test --workspaces --if-present",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.18.7",
+    "@cloudflare/workers-types": "^5.20260723.1",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
+    "eslint": "^10.7.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.113.0"
+  }
+}

@@ -1,0 +1,56 @@
+import { z } from "zod";
+
+export const WASH_DRAFT_STORAGE_KEY = "washpro:new-wash:v1";
+
+const persistedDraftSchema = z.object({
+  version: z.literal(1),
+  step: z.number().int().min(0).max(7),
+  customerId: z.string().optional(),
+  vehicleId: z.string().optional(),
+  servicePriceId: z.string().optional(),
+  addOnPriceIds: z.array(z.string()).default([]),
+  couponCode: z.string().max(64).optional(),
+  referralCode: z.string().max(64).optional(),
+  rewardId: z.string().optional(),
+  rewardUnits: z.number().int().nonnegative().default(0),
+  manualDiscountMinor: z.number().int().nonnegative().default(0),
+  manualDiscountReason: z.string().max(500).optional(),
+  locationOverrideReason: z.string().max(500).optional(),
+  assignedUserId: z.string().optional(),
+  startImmediately: z.boolean().default(false),
+});
+
+export type PersistedWashDraft = z.infer<typeof persistedDraftSchema>;
+
+export interface WashDraftEvidence {
+  readonly photoUploadId?: string;
+  readonly latitude?: number;
+  readonly longitude?: number;
+  readonly gpsAccuracyM?: number;
+}
+
+export type WashDraftInput = Omit<PersistedWashDraft, "version"> &
+  WashDraftEvidence;
+
+export function serializeWizardDraft(draft: WashDraftInput): string {
+  const {
+    photoUploadId: _photoUploadId,
+    latitude: _latitude,
+    longitude: _longitude,
+    gpsAccuracyM: _gpsAccuracyM,
+    ...safeDraft
+  } = draft;
+  return JSON.stringify({ ...safeDraft, version: 1 });
+}
+
+export function parseWizardDraft(
+  value: string | null,
+): PersistedWashDraft | null {
+  if (value === null) return null;
+  try {
+    const result = persistedDraftSchema.safeParse(JSON.parse(value) as unknown);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}

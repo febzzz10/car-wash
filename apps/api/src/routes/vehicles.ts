@@ -1,0 +1,352 @@
+import { vehicleInputSchema } from "@washpro/contracts";
+import { normalizeRegistration } from "@washpro/domain";
+import { Hono } from "hono";
+import { z } from "zod";
+
+import { ApiError } from "../http/errors";
+import { requirePermission } from "../middleware/auth";
+import { auditStatement } from "../services/audit";
+import type { AppBindings } from "../types";
+
+const vehiclePatchSchema = vehicleInputSchema.partial().extend({
+  colour: z.string().trim().max(40).nullable().optional(),
+  fuelType: z.string().trim().max(40).nullable().optional(),
+  make: z.string().trim().max(80).nullable().optional(),
+  manufacturingYear: z.number().int().min(1900).max(2200).nullable().optional(),
+  model: z.string().trim().max(80).nullable().optional(),
+  notes: z.string().trim().max(2_000).nullable().optional(),
+  version: z.number().int().positive(),
+});
+const statusSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+  version: z.number().int().positive(),
+});
+
+function duplicate(error: unknown): boolean {
+  return (
+    error instanceof Error && error.message.includes("UNIQUE constraint failed")
+  );
+}
+
+export const vehicleRoutes = new Hono<AppBindings>();
+
+vehicleRoutes.get("/", requirePermission("vehicles.read"), async (c) => {
+  const auth = c.get("auth");
+  const query = c.req.query("search")?.trim() ?? "";
+  const search = `%${query.toUpperCase().replace(/[^A-Z0-9]/gu, "")}%`;
+  const result = await c.env.DB.prepare(
+    `SELECT v.*, vt.name AS vehicle_type_name, c.full_name AS customer_name,
+      c.phone AS customer_phone
+     FROM vehicles v
+     INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id
+     INNER JOIN customers c ON c.id = v.customer_id
+     WHERE v.organization_id = ? AND (? = '' OR v.registration_normalized LIKE ?)
+     ORDER BY COALESCE(v.last_wash_at, v.created_at) DESC LIMIT 100`,
+  )
+    .bind(auth.organizationId, query, search)
+    .all();
+  return c.json({ data: result.results, success: true });
+});
+
+vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
+  const parsed = vehicleInputSchema.safeParse(
+    await c.req.json().catch(() => null),
+  );
+  if (!parsed.success)
+    throw new ApiError(422, "VALIDATION_ERROR", "Check the vehicle details.");
+  const auth = c.get("auth");
+  const related = await c.env.DB.prepare(
+    `SELECT c.id AS customer_id, vt.id AS vehicle_type_id
+     FROM customers c CROSS JOIN vehicle_types vt
+     WHERE c.id = ? AND c.organization_id = ? AND c.status = 'ACTIVE'
+       AND vt.id = ? AND vt.organization_id = ? AND vt.is_active = 1`,
+  )
+    .bind(
+      parsed.data.customerId,
+      auth.organizationId,
+      parsed.data.vehicleTypeId,
+      auth.organizationId,
+    )
+    .first();
+  if (related === null) {
+    throw new ApiError(
+      422,
+      "VALIDATION_ERROR",
+      "Select an active customer and vehicle type.",
+    );
+  }
+  let registration: ReturnType<typeof normalizeRegistration>;
+  try {
+    registration = normalizeRegistration(parsed.data.registrationNumber);
+  } catch {
+    throw new ApiError(
+      422,
+      "VALIDATION_ERROR",
+      "Enter a valid registration number.",
+    );
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const record = {
+    customerId: parsed.data.customerId,
+    id,
+    registrationNumber: registration.display,
+    registrationNormalized: registration.search,
+    vehicleTypeId: parsed.data.vehicleTypeId,
+  };
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        `INSERT INTO vehicles (
+          id, organization_id, customer_id, vehicle_type_id, registration_number,
+          registration_normalized, make, model, manufacturing_year, colour,
+          fuel_type, notes, created_by_user_id, updated_by_user_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        id,
+        auth.organizationId,
+        parsed.data.customerId,
+        parsed.data.vehicleTypeId,
+        registration.display,
+        registration.search,
+        parsed.data.make ?? null,
+        parsed.data.model ?? null,
+        parsed.data.manufacturingYear ?? null,
+        parsed.data.colour ?? null,
+        parsed.data.fuelType ?? null,
+        parsed.data.notes ?? null,
+        auth.userId,
+        auth.userId,
+        now,
+        now,
+      ),
+      auditStatement(c.env, {
+        action: "VEHICLE_CREATED",
+        auth,
+        next: record,
+        recordId: id,
+        recordType: "VEHICLE",
+        requestId: c.get("requestId"),
+      }),
+    ]);
+  } catch (error) {
+    if (duplicate(error)) {
+      throw new ApiError(
+        409,
+        "DUPLICATE_VEHICLE",
+        "A vehicle with this registration already exists.",
+      );
+    }
+    throw error;
+  }
+  const created = await c.env.DB.prepare(
+    "SELECT * FROM vehicles WHERE id = ? AND organization_id = ?",
+  )
+    .bind(id, auth.organizationId)
+    .first();
+  return c.json({ data: created, success: true }, 201);
+});
+
+vehicleRoutes.get("/:id", requirePermission("vehicles.read"), async (c) => {
+  const auth = c.get("auth");
+  const vehicle = await c.env.DB.prepare(
+    `SELECT v.*, vt.name AS vehicle_type_name, c.full_name AS customer_name,
+      c.phone AS customer_phone
+     FROM vehicles v INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id
+     INNER JOIN customers c ON c.id = v.customer_id
+     WHERE v.id = ? AND v.organization_id = ?`,
+  )
+    .bind(c.req.param("id"), auth.organizationId)
+    .first();
+  if (vehicle === null)
+    throw new ApiError(404, "RESOURCE_NOT_FOUND", "Vehicle not found.");
+  return c.json({ data: vehicle, success: true });
+});
+
+vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
+  const parsed = vehiclePatchSchema.safeParse(
+    await c.req.json().catch(() => null),
+  );
+  if (!parsed.success)
+    throw new ApiError(422, "VALIDATION_ERROR", "Check the vehicle details.");
+  const auth = c.get("auth");
+  const previous = await c.env.DB.prepare(
+    "SELECT * FROM vehicles WHERE id = ? AND organization_id = ?",
+  )
+    .bind(c.req.param("id"), auth.organizationId)
+    .first<Record<string, unknown>>();
+  if (previous === null)
+    throw new ApiError(404, "RESOURCE_NOT_FOUND", "Vehicle not found.");
+  const registration =
+    parsed.data.registrationNumber === undefined
+      ? undefined
+      : normalizeRegistration(parsed.data.registrationNumber);
+  const now = new Date().toISOString();
+  try {
+    const result = await c.env.DB.prepare(
+      `UPDATE vehicles SET
+        customer_id = COALESCE(?, customer_id), vehicle_type_id = COALESCE(?, vehicle_type_id),
+        registration_number = COALESCE(?, registration_number),
+        registration_normalized = COALESCE(?, registration_normalized),
+        make = CASE WHEN ? = 1 THEN ? ELSE make END,
+        model = CASE WHEN ? = 1 THEN ? ELSE model END,
+        manufacturing_year = CASE WHEN ? = 1 THEN ? ELSE manufacturing_year END,
+        colour = CASE WHEN ? = 1 THEN ? ELSE colour END,
+        fuel_type = CASE WHEN ? = 1 THEN ? ELSE fuel_type END,
+        notes = CASE WHEN ? = 1 THEN ? ELSE notes END,
+        updated_by_user_id = ?, updated_at = ?, version = version + 1
+       WHERE id = ? AND organization_id = ? AND version = ?`,
+    )
+      .bind(
+        parsed.data.customerId ?? null,
+        parsed.data.vehicleTypeId ?? null,
+        registration?.display ?? null,
+        registration?.search ?? null,
+        parsed.data.make === undefined ? 0 : 1,
+        parsed.data.make ?? null,
+        parsed.data.model === undefined ? 0 : 1,
+        parsed.data.model ?? null,
+        parsed.data.manufacturingYear === undefined ? 0 : 1,
+        parsed.data.manufacturingYear ?? null,
+        parsed.data.colour === undefined ? 0 : 1,
+        parsed.data.colour ?? null,
+        parsed.data.fuelType === undefined ? 0 : 1,
+        parsed.data.fuelType ?? null,
+        parsed.data.notes === undefined ? 0 : 1,
+        parsed.data.notes ?? null,
+        auth.userId,
+        now,
+        c.req.param("id"),
+        auth.organizationId,
+        parsed.data.version,
+      )
+      .run();
+    if (result.meta.changes === 0) {
+      throw new ApiError(
+        409,
+        "RESOURCE_CONFLICT",
+        "This vehicle changed on another device.",
+      );
+    }
+  } catch (error) {
+    if (duplicate(error))
+      throw new ApiError(
+        409,
+        "DUPLICATE_VEHICLE",
+        "That registration is already in use.",
+      );
+    throw error;
+  }
+  const updated = await c.env.DB.prepare("SELECT * FROM vehicles WHERE id = ?")
+    .bind(c.req.param("id"))
+    .first();
+  await auditStatement(c.env, {
+    action:
+      previous.customer_id === parsed.data.customerId
+        ? "VEHICLE_UPDATED"
+        : "VEHICLE_OWNERSHIP_CHANGED",
+    auth,
+    next: updated,
+    previous,
+    recordId: c.req.param("id"),
+    recordType: "VEHICLE",
+    requestId: c.get("requestId"),
+  }).run();
+  return c.json({ data: updated, success: true });
+});
+
+for (const [path, status, action] of [
+  ["deactivate", "INACTIVE", "VEHICLE_DEACTIVATED"],
+  ["reactivate", "ACTIVE", "VEHICLE_REACTIVATED"],
+] as const) {
+  vehicleRoutes.post(
+    `/:id/${path}`,
+    requirePermission("vehicles.deactivate"),
+    async (c) => {
+      const parsed = statusSchema.safeParse(
+        await c.req.json().catch(() => null),
+      );
+      if (!parsed.success)
+        throw new ApiError(
+          422,
+          "VALIDATION_ERROR",
+          "A reason and current version are required.",
+        );
+      const auth = c.get("auth");
+      const now = new Date().toISOString();
+      const result = await c.env.DB.prepare(
+        `UPDATE vehicles SET status = ?, deactivated_at = ?, deactivated_by_user_id = ?,
+        deactivation_reason = ?, updated_by_user_id = ?, updated_at = ?, version = version + 1
+       WHERE id = ? AND organization_id = ? AND version = ?`,
+      )
+        .bind(
+          status,
+          status === "INACTIVE" ? now : null,
+          status === "INACTIVE" ? auth.userId : null,
+          status === "INACTIVE" ? parsed.data.reason : null,
+          auth.userId,
+          now,
+          c.req.param("id"),
+          auth.organizationId,
+          parsed.data.version,
+        )
+        .run();
+      if (result.meta.changes === 0)
+        throw new ApiError(
+          409,
+          "RESOURCE_CONFLICT",
+          "The vehicle could not be updated.",
+        );
+      await auditStatement(c.env, {
+        action,
+        auth,
+        reason: parsed.data.reason,
+        recordId: c.req.param("id"),
+        recordType: "VEHICLE",
+        requestId: c.get("requestId"),
+        severity: "WARNING",
+      }).run();
+      return c.json({ data: { status }, success: true });
+    },
+  );
+}
+
+vehicleRoutes.get(
+  "/:id/history",
+  requirePermission("vehicles.read"),
+  async (c) => {
+    const auth = c.get("auth");
+    const vehicleId = c.req.param("id");
+    const [washJobs, invoices, photos, locations] = await Promise.all([
+      c.env.DB.prepare(
+        "SELECT * FROM wash_jobs WHERE vehicle_id = ? AND organization_id = ? ORDER BY created_at DESC",
+      )
+        .bind(vehicleId, auth.organizationId)
+        .all(),
+      c.env.DB.prepare(
+        "SELECT i.* FROM invoices i INNER JOIN wash_jobs w ON w.id = i.wash_job_id WHERE w.vehicle_id = ? AND i.organization_id = ? ORDER BY i.created_at DESC",
+      )
+        .bind(vehicleId, auth.organizationId)
+        .all(),
+      c.env.DB.prepare(
+        "SELECT * FROM vehicle_photos WHERE vehicle_id = ? AND organization_id = ? ORDER BY created_at DESC",
+      )
+        .bind(vehicleId, auth.organizationId)
+        .all(),
+      c.env.DB.prepare(
+        "SELECT lc.* FROM location_captures lc INNER JOIN wash_jobs w ON w.id = lc.wash_job_id WHERE w.vehicle_id = ? AND lc.organization_id = ? ORDER BY lc.captured_at DESC",
+      )
+        .bind(vehicleId, auth.organizationId)
+        .all(),
+    ]);
+    return c.json({
+      data: {
+        invoices: invoices.results,
+        locations: locations.results,
+        photos: photos.results,
+        washJobs: washJobs.results,
+      },
+      success: true,
+    });
+  },
+);

@@ -9,7 +9,20 @@
 - KV is limited to temporary/cache use.
 - The Worker scheduled trigger runs retention and reconciliation at `17 2 * * *` UTC.
 
-Production resource identifiers and domains are account-owned values and are intentionally not committed. Deployment is blocked until a Cloudflare account owner provisions them and records the real bindings in an environment-specific Wrangler configuration.
+Production resource identifiers and domains are account-owned values and are intentionally not committed. Deployment is blocked until a Cloudflare account owner provisions them and replaces the local placeholders in `apps/api/wrangler.jsonc` with the real production bindings. The top-level Wrangler configuration targets the existing `car-wash` Worker; do not add `--env production`, because a named Wrangler environment would target a separate `car-wash-production` Worker.
+
+## Cloudflare Workers Builds settings
+
+Configure the connected repository from the repository root with these exact values:
+
+| Setting | Value |
+| --- | --- |
+| Root directory | `/` |
+| Build command | `npm run build` |
+| Deploy command | `npm run deploy:api` |
+| Worker name | `car-wash` |
+
+`npm run deploy:api` dispatches to the existing `@washpro/api` workspace, where Wrangler automatically discovers `apps/api/wrangler.jsonc` and `src/index.ts`. Do not use a root-level `npx wrangler deploy`; there is intentionally no root Wrangler configuration.
 
 ## Provision production resources
 
@@ -22,19 +35,19 @@ npx wrangler r2 bucket create washpro-invoices-production
 npx wrangler kv namespace create CACHE
 ```
 
-Copy the returned D1 database ID and KV namespace ID into the production Wrangler environment. Bind the two exact R2 bucket names. Do not reuse the `local` identifiers in `apps/api/wrangler.jsonc`.
+Copy the returned D1 database ID and KV namespace ID into the top-level bindings in `apps/api/wrangler.jsonc`. Bind the two exact R2 bucket names. Do not reuse `local`, `local-cache`, or any `*-local` resource name.
 
 Keep both R2 buckets private: do not enable an `r2.dev` URL and do not attach a public custom domain. All file reads must continue through the authenticated API or a validated expiring invoice token.
 
 ## Configure production variables and secrets
 
-Set `APP_ENV` to `production`, configure exact HTTPS origins in `ALLOWED_ORIGINS`, and choose the session/invoice TTLs. Store each sensitive value through Wrangler or the Cloudflare dashboard:
+Set `APP_ENV` to `production`, add the exact HTTPS web origin or origins in `ALLOWED_ORIGINS`, and verify the session/invoice TTLs in `apps/api/wrangler.jsonc`. Store each sensitive value through Wrangler or the Cloudflare dashboard for the `car-wash` Worker:
 
 ```powershell
-npx wrangler secret put BOOTSTRAP_TOKEN
-npx wrangler secret put SESSION_PEPPER
-npx wrangler secret put CSRF_SECRET
-npx wrangler secret put INVOICE_TOKEN_PEPPER
+npm exec --workspace=@washpro/api -- wrangler secret put BOOTSTRAP_TOKEN
+npm exec --workspace=@washpro/api -- wrangler secret put SESSION_PEPPER
+npm exec --workspace=@washpro/api -- wrangler secret put CSRF_SECRET
+npm exec --workspace=@washpro/api -- wrangler secret put INVOICE_TOKEN_PEPPER
 ```
 
 Generate independent high-entropy values; do not copy `.dev.vars`. After the one-time bootstrap, retain the bootstrap secret in a controlled secret manager or rotate it. The endpoint also refuses bootstrap once a user exists.
@@ -51,9 +64,11 @@ npm run typecheck
 npm test
 npm run build
 npm run migrate:remote --workspace @washpro/api
-npm run deploy --workspace @washpro/api
+npm run deploy:api
 npx wrangler pages deploy apps/web/dist --project-name washpro-web
 ```
+
+The API workspace runs `scripts/validate-production-deploy.mjs` before every deployment. It prevents Wrangler from running until the Worker name, entry point, production origins, D1/KV/R2 bindings, TTLs, and required secret declarations are production-safe. Secret declarations do not create secret values; confirm all four values exist in Cloudflare before deploying.
 
 Configure the Worker routes for the chosen same-site hostname before the Pages fallback. `apps/web/public/_headers` supplies CSP, HSTS, anti-framing, MIME-sniffing, referrer, and camera/geolocation permissions policy; `_redirects` provides SPA fallback. TLS must remain enforced by Cloudflare.
 
@@ -70,4 +85,3 @@ Configure the Worker routes for the chosen same-site hostname before the Pages f
 ## Rollback
 
 Code rollback uses the prior Worker/Pages deployment. Database rollback is separate and potentially destructive; follow `docs/backup-restore.md`, preserve the pre-restore bookmark, and obtain explicit operational approval before restoring D1.
-

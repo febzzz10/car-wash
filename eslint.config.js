@@ -16,11 +16,14 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.strict,
   {
-    files: ["scripts/**/*.mjs"],
+    files: ["scripts/**/*.mjs", "apps/*/scripts/**/*.mjs"],
     languageOptions: {
       globals: {
         console: "readonly",
+        crypto: "readonly",
         process: "readonly",
+        structuredClone: "readonly",
+        URL: "readonly",
       },
     },
   },

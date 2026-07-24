@@ -36,6 +36,8 @@ npm run test:e2e
 npm run build
 ```
 
+The connected Cloudflare Worker deploy command is `npm run deploy:api` from the repository root. It targets `car-wash` and runs a production-binding preflight before Wrangler. See the deployment guide before enabling a production build.
+
 ## Operations and evidence
 
 - [Local setup and environment](docs/setup.md)
@@ -44,4 +46,3 @@ npm run build
 - [Backup and restore](docs/backup-restore.md)
 - [Requirement traceability](requirements-traceability.md)
 - [Implementation report](implementation-report.md)
-

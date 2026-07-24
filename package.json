@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "deploy:api": "npm run deploy --workspace=@washpro/api",
     "dev": "npm run dev --workspace @washpro/web",
     "dev:api": "npm run dev --workspace @washpro/api",
     "format": "prettier --write \"apps/**/*.{ts,tsx,css,json,jsonc,html}\" \"packages/**/*.ts\" \"scripts/**/*.{ts,mjs}\" \"e2e/**/*.ts\" \"*.{json,js,ts,mjs}\"",
@@ -16,7 +17,9 @@
     "lint": "eslint .",
     "migrate:local": "npm run migrate:local --workspace @washpro/api",
     "setup:local": "node scripts/setup-local-env.mjs",
+    "pretest": "npm run test:deployment",
     "test": "npm run test --workspaces --if-present",
+    "test:deployment": "node --test scripts/cloudflare-deployment.test.mjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "typecheck": "npm run typecheck --workspaces --if-present"

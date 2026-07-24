@@ -8,6 +8,8 @@ Completed modules include secure Admin/Staff authentication and permissions, Sta
 
 Requirement-by-requirement evidence is in `requirements-traceability.md`. The initial empty-repository status and documentation decisions are in `docs/requirements-audit.md`.
 
+The repository-connected Worker deployment now runs from the root through `npm run deploy:api`, dispatches to `@washpro/api`, and targets the existing `car-wash` Worker. A tested predeploy gate prevents Wrangler from running while development variables or local D1/KV/R2 placeholders remain; no live deployment was performed.
+
 ## Architecture Used
 
 - `apps/web`: React 19, React Router, Vite, custom responsive design system and lazy page bundles.
@@ -41,6 +43,7 @@ Generated/ignored local artifacts are not source files: `node_modules`, `apps/ap
 - `docs/backup-restore.md`
 - `scripts/setup-local-env.mjs`
 - `scripts/generate-invoice-preview.ts`
+- `scripts/cloudflare-deployment.test.mjs`
 - `e2e/washpro.spec.ts`
 
 ### Shared contracts
@@ -82,6 +85,7 @@ Generated/ignored local artifacts are not source files: `node_modules`, `apps/ap
 - `apps/api/tsconfig.json`
 - `apps/api/vitest.config.ts`
 - `apps/api/wrangler.jsonc`
+- `apps/api/scripts/validate-production-deploy.mjs`
 - `apps/api/migrations/0001_foundation.sql`
 - `apps/api/migrations/0002_customers_and_vehicles.sql`
 - `apps/api/migrations/0003_services_and_wash_jobs.sql`
@@ -236,10 +240,12 @@ Final verification date: 2026-07-24.
 | Contract unit | 1 file passed, 4 tests passed, 0 failed. |
 | Domain unit | 9 files passed, 30 tests passed, 0 failed. |
 | Vitest total | 25 files passed, 60 tests passed, 0 failed. |
+| Deployment contract | 1 Node test file passed, 3 tests passed, 0 failed. |
+| Automated test total | 26 files passed, 63 tests passed, 0 failed. |
 | Playwright | 16 passed, 4 intentionally skipped duplicate media runs, 0 failed, 26.8 seconds. |
 | Clean D1 migration | 9/9 migrations passed from empty state. |
 | Production dependency audit | 0 vulnerabilities across production dependencies. |
-| Full dependency audit | 4 high, 0 critical: development-only Wrangler/Miniflare chain through `sharp@0.34.5`. |
+| Full dependency audit | 0 vulnerabilities after a non-forced in-range Cloudflare toolchain update. |
 
 Playwright projects were Chromium desktop (1440×900), Pixel 7 emulation, Galaxy Tab S4 emulation, Firefox desktop (1440×900), and iPhone 15 WebKit emulation. Shared login, role routing and no-horizontal-overflow flows ran across all projects. The complete camera/GPS New Wash flow ran in Chromium desktop and was deliberately skipped in the other four projects to avoid duplicating one media workflow.
 
@@ -263,12 +269,12 @@ Implemented controls:
 - CSP, HSTS, anti-framing, no-sniff, referrer and scoped camera/geolocation Permissions Policy headers.
 - No plain passwords, raw session tokens, UPI PINs or full card data in production storage or logs.
 
-`npm audit --omit=dev` reports zero production vulnerabilities. The full audit reports four high-severity entries in the current latest Cloudflare development tooling: `@cloudflare/vitest-pool-workers@0.18.7`, `wrangler@4.113.0`, `miniflare@4.20260721.0`, and their pinned `sharp@0.34.5`. The registry reports `sharp@0.35.3`, but current Miniflare pins `0.34.5`; forcing an untested override was not done. This tool chain is not in the deployed Worker or web runtime bundle. Monitor Cloudflare releases and upgrade when it adopts a fixed compatible `sharp`.
+The initial full audit found four high-severity entries for one transitive `sharp <0.35.0` advisory through `@cloudflare/vitest-pool-workers@0.18.7`, `wrangler@4.113.0`, and `miniflare@4.20260721.0`. A non-forced `npm audit fix` updated the compatible development toolchain to Vitest pool 0.18.8, Wrangler 4.114.0, Miniflare 4.20260722.0, and `sharp` 0.35.2. The final full audit and `npm audit --omit=dev` both report zero vulnerabilities; all tests and builds passed again after the lockfile update.
 
 ## Build
 
-- Worker dry run passed with Wrangler 4.113.0: 1745.75 KiB upload, 368.75 KiB gzip.
-- Web production build passed with Vite 6.4.3: 1704 modules transformed in 4.93 seconds.
+- Worker dry run passed with Wrangler 4.114.0: 1745.75 KiB upload, 368.75 KiB gzip.
+- Web production build passed with Vite 6.4.3: 1704 modules transformed in 4.58 seconds.
 - Main web entry: 317.04 kB, 100.83 kB gzip; CSS: 37.09 kB, 7.86 kB gzip. Route pages are lazy chunks.
 - No source map, type, lint, formatting or build error remains.
 
@@ -293,9 +299,8 @@ No approved product module is intentionally left as a mock or placeholder. The r
 1. A Cloudflare account owner must provision production D1/R2/KV/Pages resources, supply real IDs/domains/secrets, configure Worker routes, keep R2 public access disabled, migrate, and deploy. No production deployment was authorized or performed.
 2. Physical-device camera/GPS, Safari/iOS/iPadOS, Windows 10/11 and macOS validation must be completed and signed off. Automated browser/device emulation passed but is not equivalent to hardware.
 3. A staging D1/R2 backup-restore rehearsal and production scheduled-trigger observation require provisioned Cloudflare resources.
-4. Monitor the current development-only Cloudflare `sharp` advisory and upgrade the toolchain when a compatible release is available.
-5. Standard `wa.me` opens a prefilled message and cannot attach a PDF automatically; the application correctly offers copy message, copy link and PDF download instead.
+4. Standard `wa.me` opens a prefilled message and cannot attach a PDF automatically; the application correctly offers copy message, copy link and PDF download instead.
 
 ## Deployment Readiness
 
-The source, schema, tests and dry-run bundles are ready for a controlled staging deployment. Production is **not yet launch-ready** until the account-owned bindings/secrets/routes are configured, the staging migration/restore/smoke tests pass, and physical-device verification is signed off. Follow `docs/deployment.md`, `docs/backup-restore.md`, and `docs/testing.md` in that order.
+The source, schema, tests and dry-run bundles are ready for a controlled staging deployment. Production is **not yet launch-ready**. The committed Wrangler configuration intentionally remains blocked because `APP_ENV` is `development`, `ALLOWED_ORIGINS` is absent, `DB`/`CACHE` use local IDs, and `UPLOADS`/`INVOICES` use local bucket names. The four required secret names are declared, but their remote values and Worker routes/domains cannot be verified until the account owner configures the `car-wash` Worker. Staging migration/restore/smoke tests and physical-device verification also remain. Follow `docs/deployment.md`, `docs/backup-restore.md`, and `docs/testing.md` in that order.

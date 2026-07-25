@@ -4,15 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "wrangler deploy --dry-run --env production --outdir dist",
-    "deploy": "wrangler deploy --env production",
-    "deploy:production": "wrangler deploy --env production",
+    "build": "wrangler deploy --dry-run --env=\"\" --outdir dist",
+    "deploy": "wrangler deploy --env=\"\"",
     "dev": "wrangler dev --env=\"\"",
-    "dev:remote": "wrangler dev --env remote-dev",
     "predeploy": "node scripts/validate-production-deploy.mjs",
     "db:migrate": "wrangler d1 migrations apply washpro-dev --remote",
-    "db:migrate:production": "wrangler d1 migrations apply washpro-dev --remote --env production",
-    "db:migrate:remote-dev": "wrangler d1 migrations apply washpro-dev --remote --env remote-dev",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },

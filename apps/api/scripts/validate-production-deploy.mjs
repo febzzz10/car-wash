@@ -136,29 +136,14 @@ function run() {
   const apiRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
   const configPath = resolve(apiRoot, "wrangler.jsonc");
   const repositoryRoot = resolve(apiRoot, "../..");
-  const fullConfig = readWranglerConfig(configPath);
-  const targetEnv = "production";
-  const envConfig = fullConfig.env?.[targetEnv];
+  const config = readWranglerConfig(configPath);
 
-  if (!envConfig) {
-    console.error(`WashPro deployment validation failed: environment "${targetEnv}" not found in wrangler.jsonc.`);
-    process.exitCode = 1;
-    return;
-  }
-
-  const merged = { ...fullConfig, ...envConfig };
-  merged.vars = { ...fullConfig.vars, ...envConfig.vars };
-  merged.secrets = envConfig.secrets ?? fullConfig.secrets;
-  merged.d1_databases = envConfig.d1_databases ?? fullConfig.d1_databases;
-  merged.r2_buckets = envConfig.r2_buckets ?? fullConfig.r2_buckets;
-  merged.kv_namespaces = envConfig.kv_namespaces ?? fullConfig.kv_namespaces;
-
-  const errors = validateProductionConfig(merged, {
+  const errors = validateProductionConfig(config, {
     repositoryRoot,
   });
 
   if (errors.length > 0) {
-    console.error(`WashPro production deployment was blocked (env: ${targetEnv}):`);
+    console.error("WashPro production deployment was blocked:");
     for (const error of errors) {
       console.error(`- ${error}`);
     }
@@ -169,7 +154,7 @@ function run() {
     return;
   }
 
-  console.log(`WashPro production deployment preflight passed (env: ${targetEnv}).`);
+  console.log("WashPro production deployment preflight passed.");
 }
 
 if (

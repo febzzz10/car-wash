@@ -24,14 +24,10 @@ test("root deployment dispatches through the API npm workspace", () => {
     rootPackage.scripts["deploy:api"],
     "npm run deploy --workspace=@washpro/api",
   );
-  assert.equal(apiPackage.scripts.deploy, "wrangler deploy --env production");
-  assert.equal(
-    apiPackage.scripts["deploy:production"],
-    "wrangler deploy --env production",
-  );
+  assert.equal(apiPackage.scripts.deploy, 'wrangler deploy --env=""');
   assert.equal(
     apiPackage.scripts.build,
-    "wrangler deploy --dry-run --env production --outdir dist",
+    'wrangler deploy --dry-run --env="" --outdir dist',
   );
   assert.equal(
     apiPackage.scripts.predeploy,
@@ -48,14 +44,14 @@ test("Wrangler identifies the repository-connected Worker", () => {
   assert.equal(parsedWrangler.config.main, "src/index.ts");
 });
 
-test("top-level config uses dev-safe Cloudflare resources", () => {
+test("top-level config uses production Cloudflare resources", () => {
   assert.equal(
     parsedWrangler.config.$schema,
     "../../node_modules/wrangler/config-schema.json",
   );
 
-  assert.equal(parsedWrangler.config.vars.APP_ENV, "development");
-  assert.equal(parsedWrangler.config.vars.ALLOWED_ORIGINS, "http://localhost:5173");
+  assert.equal(parsedWrangler.config.vars.APP_ENV, "production");
+  assert.equal(parsedWrangler.config.vars.ALLOWED_ORIGINS, "https://bab9bd69.washpro-web.pages.dev");
 
   assert.deepEqual(
     parsedWrangler.config.d1_databases?.map(({ binding, database_name, database_id }) => ({
@@ -90,50 +86,14 @@ test("top-level config uses dev-safe Cloudflare resources", () => {
   );
 });
 
-test("production environment uses production-safe config", () => {
-  const production = parsedWrangler.config.env?.production;
-  assert.equal(production?.name, "car-wash");
-  assert.equal(production?.vars?.APP_ENV, "production");
-  assert.equal(production?.vars?.ALLOWED_ORIGINS, "https://washpro-web.pages.dev,https://31b5ad05.washpro-web.pages.dev");
-  assert.deepEqual(production?.secrets?.required, [
-    "BOOTSTRAP_TOKEN",
-    "CSRF_SECRET",
-    "INVOICE_TOKEN_PEPPER",
-    "SESSION_PEPPER",
-  ]);
-  assert.equal(production?.d1_databases?.[0]?.database_name, "washpro-dev");
-  assert.equal(
-    production?.d1_databases?.[0]?.database_id,
-    "f12e4f56-470a-488f-8e34-da502fe974d7",
-  );
-  assert.equal(production?.kv_namespaces?.[0]?.id, "72cd173f952343269324e671d68147e6");
-  assert.equal(production?.r2_buckets?.[0]?.bucket_name, "washpro-uploads-dev");
-  assert.equal(production?.r2_buckets?.[1]?.bucket_name, "washpro-invoices-dev");
-});
 
-test("remote-dev environment mirrors dev-safe config", () => {
-  const remoteDev = parsedWrangler.config.env?.["remote-dev"];
-  assert.equal(remoteDev?.vars?.APP_ENV, "development");
-  assert.equal(remoteDev?.vars?.ALLOWED_ORIGINS, "http://localhost:5173");
-  assert.equal(remoteDev?.d1_databases?.[0]?.database_name, "washpro-dev");
-  assert.equal(remoteDev?.kv_namespaces?.[0]?.id, "72cd173f952343269324e671d68147e6");
-  assert.equal(remoteDev?.r2_buckets?.[0]?.bucket_name, "washpro-uploads-dev");
-  assert.equal(remoteDev?.r2_buckets?.[1]?.bucket_name, "washpro-invoices-dev");
-});
 
-test("remote development scripts use explicit env flags", () => {
+test("deployment and dev scripts use explicit empty env flags", () => {
   assert.equal(apiPackage.scripts.dev, 'wrangler dev --env=""');
+  assert.equal(apiPackage.scripts.deploy, 'wrangler deploy --env=""');
   assert.equal(
-    apiPackage.scripts["dev:remote"],
-    "wrangler dev --env remote-dev",
-  );
-  assert.equal(
-    apiPackage.scripts["db:migrate:production"],
-    "wrangler d1 migrations apply washpro-dev --remote --env production",
-  );
-  assert.equal(
-    apiPackage.scripts["db:migrate:remote-dev"],
-    "wrangler d1 migrations apply washpro-dev --remote --env remote-dev",
+    apiPackage.scripts["db:migrate"],
+    "wrangler d1 migrations apply washpro-dev --remote",
   );
 });
 
@@ -157,7 +117,7 @@ test("D1 integrity migrations use remote-parser-safe trigger bodies", () => {
   );
 });
 
-test("production preflight rejects dev-level config and accepts complete production config", async () => {
+test("production preflight validates top-level config directly", async () => {
   const validatorUrl = new URL(
     "../apps/api/scripts/validate-production-deploy.mjs",
     import.meta.url,
@@ -165,15 +125,7 @@ test("production preflight rejects dev-level config and accepts complete product
   assert.equal(existsSync(validatorUrl), true);
   const { validateProductionConfig } = await import(validatorUrl.href);
 
-  const production = parsedWrangler.config.env?.production;
-  const merged = { ...parsedWrangler.config, ...production };
-  merged.vars = { ...parsedWrangler.config.vars, ...production.vars };
-  merged.secrets = production.secrets ?? parsedWrangler.config.secrets;
-  merged.d1_databases = production.d1_databases ?? parsedWrangler.config.d1_databases;
-  merged.r2_buckets = production.r2_buckets ?? parsedWrangler.config.r2_buckets;
-  merged.kv_namespaces = production.kv_namespaces ?? parsedWrangler.config.kv_namespaces;
-
-  const prodErrors = validateProductionConfig(merged, {
+  const prodErrors = validateProductionConfig(parsedWrangler.config, {
     repositoryRoot,
   });
   assert.deepEqual(prodErrors, []);

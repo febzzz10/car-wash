@@ -12,8 +12,8 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@washpro/contracts": "*",
-    "@washpro/domain": "*",
+    "@washpro/contracts": "workspace:*",
+    "@washpro/domain": "workspace:*",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

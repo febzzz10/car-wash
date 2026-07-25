@@ -11,6 +11,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@washpro/contracts": "1.0.0"
+    "@washpro/contracts": "workspace:*"
   }
 }

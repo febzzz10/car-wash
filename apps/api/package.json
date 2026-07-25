@@ -13,8 +13,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@washpro/contracts": "1.0.0",
-    "@washpro/domain": "1.0.0",
+    "@washpro/contracts": "workspace:*",
+    "@washpro/domain": "workspace:*",
     "hono": "^4.12.31",
     "pdf-lib": "^1.17.1"
   }

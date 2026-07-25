@@ -19,7 +19,7 @@ import {
 } from "../components/ui";
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
-import { api } from "../lib/api";
+import { API_BASE, api } from "../lib/api";
 import { dateTime, money } from "../lib/format";
 
 interface InvoiceItem {
@@ -65,7 +65,7 @@ export default function InvoiceDetailPage() {
   const { user } = useAuth();
   async function download(print = false) {
     try {
-      const response = await fetch(`/api/v1/invoices/${id}/pdf`, {
+      const response = await fetch(`${API_BASE}/api/v1/invoices/${id}/pdf`, {
         credentials: "include",
       });
       if (!response.ok) throw new Error("Invoice PDF is unavailable.");

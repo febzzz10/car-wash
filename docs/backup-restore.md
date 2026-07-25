@@ -2,6 +2,8 @@
 
 WashPro data spans D1 plus two private R2 buckets. A database export alone is not a complete backup because D1 stores only object keys and metadata for photos, receipts, logos, and invoice PDFs.
 
+For the guarded local-Wrangler-to-`remote-dev` migration workflow, use `docs/cloudflare-migration.md`. Its timestamped `migration-backups/` artifacts contain the complete local Wrangler state, full and selected D1 exports, separate R2 manifests, dry-run and verification reports, and a phase log. That directory is intentionally git-ignored because it may contain customer data and private files.
+
 ## Backup
 
 1. Retrieve and record the current D1 Time Travel bookmark:
@@ -46,4 +48,3 @@ npx wrangler d1 time-travel restore washpro-production --bookmark <approved-book
 The angle-bracket values are operator-supplied recovery decisions, never committed configuration. Preserve the pre-restore bookmark returned by Wrangler so the restore can be undone. Restore or roll back R2 independently only when the incident affected objects; a D1 restore does not rewind either bucket.
 
 After any production restore, deploy the matching application version, apply only reviewed migrations, run reconciliation, inspect audit and payment/refund totals, verify protected invoices, and document the incident and evidence.
-

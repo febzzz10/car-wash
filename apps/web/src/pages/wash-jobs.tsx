@@ -18,6 +18,7 @@ import type { WashJobRecord } from "../types";
 
 const statuses = [
   "ALL",
+  "DRAFT",
   "WAITING",
   "IN_PROGRESS",
   "PAUSED",

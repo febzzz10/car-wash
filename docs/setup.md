@@ -62,8 +62,8 @@ npm run dev
 
 | Binding | Remote development resource |
 | --- | --- |
-| `DB` | D1 `washpro-dev` (`4d0c969f-b8f1-4cc8-b15a-3d38687a1cc2`) |
-| `CACHE` | KV `washpro-cache-dev` (`b2625dab32d14d1cb2c46a7cd35a97ca`) |
+| `DB` | D1 `washpro-dev` (`f12e4f56-470a-488f-8e34-da502fe974d7`) |
+| `CACHE` | KV `washpro-cache-dev` (`72cd173f952343269324e671d68147e6`) |
 | `UPLOADS` | private R2 `washpro-uploads-dev` |
 | `INVOICES` | private R2 `washpro-invoices-dev` |
 
@@ -74,6 +74,8 @@ npm run db:migrate:remote-dev
 ```
 
 Remote binding writes affect real Cloudflare development resources. Use only development data and narrowly scoped `integration-test/` keys for diagnostics; remove diagnostic records and objects afterward.
+
+To back up and migrate an existing local Wrangler state into these resources, follow `docs/cloudflare-migration.md`. Migration backups are private ignored artifacts under `migration-backups/` and must never be committed.
 
 ## Bootstrap the first Administrator
 

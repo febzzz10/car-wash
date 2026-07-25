@@ -15,3 +15,9 @@ tmp/
 *.sqlite
 *.sqlite3
 backups/
+migration-backups/
+*.tsbuildinfo
+apps/api/src/**/*.js
+apps/api/test/**/*.js
+apps/api/scripts/**/*.js
+apps/api/vitest.config.js

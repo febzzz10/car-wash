@@ -16,12 +16,32 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.strict,
   {
-    files: ["scripts/**/*.mjs", "apps/*/scripts/**/*.mjs"],
+    files: ["scripts/**/*.mjs", "tools/**/*.mjs", "apps/api/scripts/validate-production-deploy.mjs"],
+    languageOptions: {
+      globals: {
+        Buffer: "readonly",
+        console: "readonly",
+        crypto: "readonly",
+        fetch: "readonly",
+        Headers: "readonly",
+        process: "readonly",
+        Request: "readonly",
+        Response: "readonly",
+        structuredClone: "readonly",
+        URL: "readonly",
+      },
+    },
+  },
+  {
+    files: ["apps/api/scripts/r2-migration-bridge.mjs"],
     languageOptions: {
       globals: {
         console: "readonly",
         crypto: "readonly",
-        process: "readonly",
+        fetch: "readonly",
+        Headers: "readonly",
+        Request: "readonly",
+        Response: "readonly",
         structuredClone: "readonly",
         URL: "readonly",
       },

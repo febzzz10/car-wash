@@ -33,6 +33,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return ((await response.json()) as ApiEnvelope<T>).data;
 }
 
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+
 async function apiFetch(path: string, init: RequestInit): Promise<Response> {
   const headers = new Headers(init.headers);
   const method = (init.method ?? "GET").toUpperCase();
@@ -42,7 +44,7 @@ async function apiFetch(path: string, init: RequestInit): Promise<Response> {
   if (!["GET", "HEAD", "OPTIONS"].includes(method) && csrfToken !== "") {
     headers.set("x-csrf-token", csrfToken);
   }
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await fetch(`${API_BASE}/api/v1${path}`, {
     ...init,
     credentials: "include",
     headers,

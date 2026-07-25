@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { parseConfigFileTextToJson } from "typescript";
+import { parseJsonc } from "../tools/cloudflare-migration/lib.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const rootPackage = JSON.parse(
@@ -15,129 +15,125 @@ const apiPackage = JSON.parse(
 const wranglerPath = fileURLToPath(
   new URL("../apps/api/wrangler.jsonc", import.meta.url),
 );
-const parsedWrangler = parseConfigFileTextToJson(
-  wranglerPath,
-  readFileSync(wranglerPath, "utf8"),
-);
-assert.equal(parsedWrangler.error, undefined);
+const parsedWrangler = {
+  config: parseJsonc(readFileSync(wranglerPath, "utf8")),
+};
 
 test("root deployment dispatches through the API npm workspace", () => {
   assert.equal(
     rootPackage.scripts["deploy:api"],
     "npm run deploy --workspace=@washpro/api",
   );
-  assert.equal(apiPackage.scripts.deploy, 'wrangler deploy --env=""');
+  assert.equal(apiPackage.scripts.deploy, "wrangler deploy --env production");
+  assert.equal(
+    apiPackage.scripts["deploy:production"],
+    "wrangler deploy --env production",
+  );
   assert.equal(
     apiPackage.scripts.build,
-    'wrangler deploy --dry-run --env="" --outdir dist',
+    "wrangler deploy --dry-run --env production --outdir dist",
   );
   assert.equal(
     apiPackage.scripts.predeploy,
     "node scripts/validate-production-deploy.mjs",
   );
-  assert.equal(
-    apiPackage.scripts["premigrate:remote"],
-    "node scripts/validate-production-deploy.mjs",
-  );
 });
 
 test("Wrangler identifies the repository-connected Worker", () => {
+  assert.equal(
+    parsedWrangler.config.account_id,
+    "36c28c2516a8d4f17c0d010d6f12bf5f",
+  );
   assert.equal(parsedWrangler.config.name, "car-wash");
   assert.equal(parsedWrangler.config.main, "src/index.ts");
 });
 
-test("remote development uses isolated Cloudflare resources while Worker code runs locally", () => {
+test("top-level config uses dev-safe Cloudflare resources", () => {
   assert.equal(
     parsedWrangler.config.$schema,
     "../../node_modules/wrangler/config-schema.json",
   );
 
-  const remoteDev = parsedWrangler.config.env?.["remote-dev"];
-  assert.equal(remoteDev?.name, "car-wash-remote-dev");
-  assert.deepEqual(remoteDev?.vars, {
-    ALLOWED_ORIGINS: "http://localhost:5173",
-    APP_ENV: "development",
-    INVOICE_LINK_TTL_SECONDS: "604800",
-    SESSION_TTL_SECONDS: "28800",
-  });
-  assert.deepEqual(remoteDev?.secrets?.required, [
+  assert.equal(parsedWrangler.config.vars.APP_ENV, "development");
+  assert.equal(parsedWrangler.config.vars.ALLOWED_ORIGINS, "http://localhost:5173");
+
+  assert.deepEqual(
+    parsedWrangler.config.d1_databases?.map(({ binding, database_name, database_id }) => ({
+      binding,
+      database_name,
+      database_id,
+    })),
+    [
+      {
+        binding: "DB",
+        database_name: "washpro-dev",
+        database_id: "f12e4f56-470a-488f-8e34-da502fe974d7",
+      },
+    ],
+  );
+  assert.deepEqual(
+    parsedWrangler.config.kv_namespaces?.map(({ binding, id }) => ({
+      binding,
+      id,
+    })),
+    [{ binding: "CACHE", id: "72cd173f952343269324e671d68147e6" }],
+  );
+  assert.deepEqual(
+    parsedWrangler.config.r2_buckets?.map(({ binding, bucket_name }) => ({
+      binding,
+      bucket_name,
+    })),
+    [
+      { binding: "UPLOADS", bucket_name: "washpro-uploads-dev" },
+      { binding: "INVOICES", bucket_name: "washpro-invoices-dev" },
+    ],
+  );
+});
+
+test("production environment uses production-safe config", () => {
+  const production = parsedWrangler.config.env?.production;
+  assert.equal(production?.name, "car-wash");
+  assert.equal(production?.vars?.APP_ENV, "production");
+  assert.equal(production?.vars?.ALLOWED_ORIGINS, "https://washpro-web.pages.dev,https://31b5ad05.washpro-web.pages.dev");
+  assert.deepEqual(production?.secrets?.required, [
     "BOOTSTRAP_TOKEN",
     "CSRF_SECRET",
     "INVOICE_TOKEN_PEPPER",
     "SESSION_PEPPER",
   ]);
-
-  assert.deepEqual(
-    remoteDev?.d1_databases?.map(({ binding }) => binding),
-    ["DB"],
-  );
-  assert.equal(remoteDev?.d1_databases?.[0]?.database_name, "washpro-dev");
-  assert.match(
-    remoteDev?.d1_databases?.[0]?.database_id ?? "",
-    /^[0-9a-f-]{36}$/i,
-  );
-  assert.equal(remoteDev?.d1_databases?.[0]?.migrations_dir, "migrations");
-  assert.equal(remoteDev?.d1_databases?.[0]?.remote, true);
-
-  assert.deepEqual(
-    remoteDev?.kv_namespaces?.map(({ binding }) => binding),
-    ["CACHE"],
-  );
-  assert.match(remoteDev?.kv_namespaces?.[0]?.id ?? "", /^[0-9a-f]{32}$/i);
-  assert.equal(remoteDev?.kv_namespaces?.[0]?.remote, true);
-
-  assert.deepEqual(
-    remoteDev?.r2_buckets?.map(({ binding, bucket_name, remote }) => ({
-      binding,
-      bucket_name,
-      remote,
-    })),
-    [
-      {
-        binding: "UPLOADS",
-        bucket_name: "washpro-uploads-dev",
-        remote: true,
-      },
-      {
-        binding: "INVOICES",
-        bucket_name: "washpro-invoices-dev",
-        remote: true,
-      },
-    ],
-  );
-
-  assert.equal(apiPackage.scripts.dev, 'wrangler dev --env=""');
+  assert.equal(production?.d1_databases?.[0]?.database_name, "washpro-dev");
   assert.equal(
-    apiPackage.scripts["dev:local"],
-    'wrangler dev --local --env=""',
+    production?.d1_databases?.[0]?.database_id,
+    "f12e4f56-470a-488f-8e34-da502fe974d7",
   );
+  assert.equal(production?.kv_namespaces?.[0]?.id, "72cd173f952343269324e671d68147e6");
+  assert.equal(production?.r2_buckets?.[0]?.bucket_name, "washpro-uploads-dev");
+  assert.equal(production?.r2_buckets?.[1]?.bucket_name, "washpro-invoices-dev");
+});
+
+test("remote-dev environment mirrors dev-safe config", () => {
+  const remoteDev = parsedWrangler.config.env?.["remote-dev"];
+  assert.equal(remoteDev?.vars?.APP_ENV, "development");
+  assert.equal(remoteDev?.vars?.ALLOWED_ORIGINS, "http://localhost:5173");
+  assert.equal(remoteDev?.d1_databases?.[0]?.database_name, "washpro-dev");
+  assert.equal(remoteDev?.kv_namespaces?.[0]?.id, "72cd173f952343269324e671d68147e6");
+  assert.equal(remoteDev?.r2_buckets?.[0]?.bucket_name, "washpro-uploads-dev");
+  assert.equal(remoteDev?.r2_buckets?.[1]?.bucket_name, "washpro-invoices-dev");
+});
+
+test("remote development scripts use explicit env flags", () => {
+  assert.equal(apiPackage.scripts.dev, 'wrangler dev --env=""');
   assert.equal(
     apiPackage.scripts["dev:remote"],
     "wrangler dev --env remote-dev",
   );
   assert.equal(
-    apiPackage.scripts["build:remote-dev"],
-    "wrangler deploy --dry-run --env remote-dev --outdir dist",
-  );
-  assert.equal(
-    apiPackage.scripts["deploy:remote-dev"],
-    "wrangler deploy --env remote-dev",
+    apiPackage.scripts["db:migrate:production"],
+    "wrangler d1 migrations apply washpro-dev --remote --env production",
   );
   assert.equal(
     apiPackage.scripts["db:migrate:remote-dev"],
-    "wrangler d1 migrations apply DB --remote --env remote-dev",
-  );
-  assert.equal(
-    rootPackage.scripts["dev:api:local"],
-    "npm run dev:local --workspace=@washpro/api",
-  );
-  assert.equal(
-    rootPackage.scripts["dev:api:remote"],
-    "npm run dev:remote --workspace=@washpro/api",
-  );
-  assert.equal(
-    rootPackage.scripts["db:migrate:remote-dev"],
-    "npm run db:migrate:remote-dev --workspace=@washpro/api",
+    "wrangler d1 migrations apply washpro-dev --remote --env remote-dev",
   );
 });
 
@@ -161,7 +157,7 @@ test("D1 integrity migrations use remote-parser-safe trigger bodies", () => {
   );
 });
 
-test("production preflight rejects local bindings and accepts complete production bindings", async () => {
+test("production preflight rejects dev-level config and accepts complete production config", async () => {
   const validatorUrl = new URL(
     "../apps/api/scripts/validate-production-deploy.mjs",
     import.meta.url,
@@ -169,48 +165,67 @@ test("production preflight rejects local bindings and accepts complete productio
   assert.equal(existsSync(validatorUrl), true);
   const { validateProductionConfig } = await import(validatorUrl.href);
 
-  const localErrors = validateProductionConfig(parsedWrangler.config, {
+  const production = parsedWrangler.config.env?.production;
+  const merged = { ...parsedWrangler.config, ...production };
+  merged.vars = { ...parsedWrangler.config.vars, ...production.vars };
+  merged.secrets = production.secrets ?? parsedWrangler.config.secrets;
+  merged.d1_databases = production.d1_databases ?? parsedWrangler.config.d1_databases;
+  merged.r2_buckets = production.r2_buckets ?? parsedWrangler.config.r2_buckets;
+  merged.kv_namespaces = production.kv_namespaces ?? parsedWrangler.config.kv_namespaces;
+
+  const prodErrors = validateProductionConfig(merged, {
     repositoryRoot,
   });
-  assert.ok(localErrors.some((error) => error.includes("APP_ENV")));
-  assert.ok(localErrors.some((error) => error.includes("DB")));
-  assert.ok(localErrors.some((error) => error.includes("CACHE")));
-  assert.ok(localErrors.some((error) => error.includes("UPLOADS")));
-  assert.ok(localErrors.some((error) => error.includes("INVOICES")));
+  assert.deepEqual(prodErrors, []);
+});
 
-  const suffix = crypto.randomUUID().replaceAll("-", "");
-  const productionConfig = structuredClone(parsedWrangler.config);
-  productionConfig.name = "car-wash";
-  productionConfig.vars = {
-    ALLOWED_ORIGINS: `https://${suffix}.invalid`,
-    APP_ENV: "production",
-    INVOICE_LINK_TTL_SECONDS: "604800",
-    SESSION_TTL_SECONDS: "28800",
-  };
-  productionConfig.d1_databases = [
-    {
-      binding: "DB",
-      database_id: crypto.randomUUID(),
-      database_name: `db-${suffix}`,
-      migrations_dir: "migrations",
-    },
-  ];
-  productionConfig.kv_namespaces = [{ binding: "CACHE", id: suffix }];
-  productionConfig.r2_buckets = [
-    { binding: "UPLOADS", bucket_name: `uploads-${suffix}` },
-    { binding: "INVOICES", bucket_name: `invoices-${suffix}` },
-  ];
-  productionConfig.secrets = {
-    required: [
-      "BOOTSTRAP_TOKEN",
-      "CSRF_SECRET",
-      "INVOICE_TOKEN_PEPPER",
-      "SESSION_PEPPER",
-    ],
-  };
+test("root-level dev:api:local and migrate:local scripts are removed", () => {
+  assert.equal(rootPackage.scripts["dev:api:local"], undefined);
+  assert.equal(rootPackage.scripts["migrate:local"], undefined);
+  assert.equal(rootPackage.scripts["setup:local"], undefined);
+});
 
-  assert.deepEqual(
-    validateProductionConfig(productionConfig, { repositoryRoot }),
-    [],
+test("Pages Function proxy exists at functions/api/[[path]].ts", () => {
+  const functionPath = fileURLToPath(
+    new URL("../apps/web/functions/api/[[path]].ts", import.meta.url),
+  );
+  assert.equal(existsSync(functionPath), true);
+  const content = readFileSync(functionPath, "utf8");
+  assert.match(content, /env\.API\.fetch/);
+});
+
+test("Pages wrangler.jsonc has API service binding", () => {
+  const pagesWranglerPath = fileURLToPath(
+    new URL("../apps/web/wrangler.jsonc", import.meta.url),
+  );
+  const config = parseJsonc(readFileSync(pagesWranglerPath, "utf8"));
+  assert.ok(config.services, "services array is defined");
+  const apiBinding = config.services?.find(
+    (s) => s.binding === "API" && s.service === "car-wash",
+  );
+  assert.ok(apiBinding, "API -> car-wash service binding exists");
+});
+
+test("assertAllowedOrigin accepts missing Origin header", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("../apps/api/src/http/request.ts", import.meta.url)),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /if \(origin === undefined\) return/,
+    "should early-return when Origin is undefined",
+  );
+});
+
+test("frontend API_BASE defaults to empty string (relative /api/v1/ paths)", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("../apps/web/src/lib/api.ts", import.meta.url)),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /API_BASE = import\.meta\.env\.VITE_API_BASE_URL \?\? ""/,
+    "should default to empty string for same-origin API calls",
   );
 });

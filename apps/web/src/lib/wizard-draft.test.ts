@@ -9,7 +9,7 @@ describe("New Wash draft persistence", () => {
       customerId: "customer-1",
       vehicleId: "vehicle-1",
       servicePriceId: "price-1",
-      addOnPriceIds: ["addon-1"],
+      addOnServiceIds: ["addon-1"],
       couponCode: "WELCOME",
       referralCode: "REFER123",
       rewardUnits: 250,
@@ -31,10 +31,22 @@ describe("New Wash draft persistence", () => {
     expect(parseWizardDraft(value)).toMatchObject({
       step: 5,
       customerId: "customer-1",
-      addOnPriceIds: ["addon-1"],
+      addOnServiceIds: ["addon-1"],
       rewardId: "reward-1",
       rewardUnits: 250,
       manualDiscountMinor: 100,
+    });
+  });
+
+  it("migrates addOnPriceIds from legacy session storage to addOnServiceIds", () => {
+    const legacy = JSON.stringify({
+      version: 1,
+      step: 3,
+      addOnPriceIds: ["legacy-addon"],
+    });
+    expect(parseWizardDraft(legacy)).toMatchObject({
+      step: 3,
+      addOnServiceIds: ["legacy-addon"],
     });
   });
 

@@ -8,7 +8,7 @@ const persistedDraftSchema = z.object({
   customerId: z.string().optional(),
   vehicleId: z.string().optional(),
   servicePriceId: z.string().optional(),
-  addOnPriceIds: z.array(z.string()).default([]),
+  addOnServiceIds: z.array(z.string()).default([]),
   couponCode: z.string().max(64).optional(),
   referralCode: z.string().max(64).optional(),
   rewardId: z.string().optional(),
@@ -48,7 +48,15 @@ export function parseWizardDraft(
 ): PersistedWashDraft | null {
   if (value === null) return null;
   try {
-    const result = persistedDraftSchema.safeParse(JSON.parse(value) as unknown);
+    const raw = JSON.parse(value) as Record<string, unknown>;
+    if (
+      raw.addOnServiceIds === undefined &&
+      Array.isArray(raw.addOnPriceIds)
+    ) {
+      raw.addOnServiceIds = raw.addOnPriceIds;
+    }
+    delete raw.addOnPriceIds;
+    const result = persistedDraftSchema.safeParse(raw);
     return result.success ? result.data : null;
   } catch {
     return null;

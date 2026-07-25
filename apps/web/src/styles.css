@@ -816,6 +816,10 @@ tbody tr:hover {
   background: #e8eaf9;
   color: #34418f;
 }
+.status-badge--draft {
+  background: var(--water-100);
+  color: var(--water-700);
+}
 .empty-state {
   align-items: center;
   color: var(--ink-500);

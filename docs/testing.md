@@ -8,6 +8,7 @@ Run from the repository root:
 npm run format:check
 npm run lint
 npm run typecheck
+npm run test:migration
 npm test
 npm run test:e2e
 npm run build
@@ -25,13 +26,15 @@ Validate configuration without deploying:
 
 ```powershell
 npm run build:remote-dev --workspace=@washpro/api
+npm run cloudflare:provision:verify
+npm run cloudflare:migration:verify
 npx wrangler deploy --dry-run --env remote-dev --outdir dist --cwd apps/api
 npx wrangler d1 migrations list DB --remote --env remote-dev --cwd apps/api
 ```
 
-For a binding smoke test, run local Worker code with `npm run dev:api:remote`. Use unique `integration-test/` records to write/read D1, KV, `UPLOADS`, and `INVOICES`; independently confirm the values through Wrangler, then delete exactly those test values. Never clear a namespace, bucket, or table. The 2026-07-24 integration run completed this sequence for all four bindings and confirmed zero remaining test rows/keys and absent R2 test objects.
+The 2026-07-24 migration verification compared local and remote row counts, per-table SHA-256 content fingerprints, minimum/maximum IDs, and foreign-key integrity. All matched. The local state had zero file assets and zero objects in either R2 bucket, so remote binding inventory verified both destination buckets at zero objects without adding or deleting test objects. Local and remote KV each had zero active keys; no session, CSRF, rate-limit, capture, cache, or expiring-link data was migrated.
 
-The same live run started the real Hono application with `npm run dev:api:remote`: `/health` returned `200` with `washpro-api` status `ok`, an anonymous session request returned `401`, the Vite root returned `200`, and the same anonymous session request through Vite's `/api` proxy returned `401`. A safe invalid-login request through the frontend proxy returned `401 AUTH_INVALID_CREDENTIALS`; its narrowly scoped rate-limit key was removed afterward.
+The same live run started the real Hono application with `npm run dev:api:remote`: `/health` returned `200` with `washpro-api` status `ok`, and an anonymous session request returned `401`. Authenticated browser verification still requires an operator-known password; no password was requested, recovered, logged, or replaced during migration.
 
 ## Manual launch checklist
 

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parseConfigFileTextToJson } from "typescript";
+import { parseJsonc } from "../../../tools/cloudflare-migration/lib.mjs";
 
 const REQUIRED_SECRETS = [
   "BOOTSTRAP_TOKEN",
@@ -56,7 +56,7 @@ export function validateProductionConfig(config, options = {}) {
   }
 
   if (config?.vars?.APP_ENV !== "production") {
-    errors.push('APP_ENV must be "production" before deployment.');
+    errors.push('APP_ENV must be "production".');
   }
 
   const allowedOrigins = config?.vars?.ALLOWED_ORIGINS;
@@ -100,7 +100,7 @@ export function validateProductionConfig(config, options = {}) {
     database.migrations_dir !== "migrations"
   ) {
     errors.push(
-      "DB must use the real production D1 UUID, a non-local database name, and migrations_dir \"migrations\".",
+      'DB must use the real production D1 UUID, a non-local database name, and migrations_dir "migrations".',
     );
   }
 
@@ -129,26 +129,36 @@ export function validateProductionConfig(config, options = {}) {
 }
 
 function readWranglerConfig(configPath) {
-  const parsed = parseConfigFileTextToJson(
-    configPath,
-    readFileSync(configPath, "utf8"),
-  );
-  if (parsed.error) {
-    throw new Error(`Unable to parse ${configPath}: ${parsed.error.messageText}`);
-  }
-  return parsed.config;
+  return parseJsonc(readFileSync(configPath, "utf8"));
 }
 
 function run() {
   const apiRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
   const configPath = resolve(apiRoot, "wrangler.jsonc");
   const repositoryRoot = resolve(apiRoot, "../..");
-  const errors = validateProductionConfig(readWranglerConfig(configPath), {
+  const fullConfig = readWranglerConfig(configPath);
+  const targetEnv = "production";
+  const envConfig = fullConfig.env?.[targetEnv];
+
+  if (!envConfig) {
+    console.error(`WashPro deployment validation failed: environment "${targetEnv}" not found in wrangler.jsonc.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const merged = { ...fullConfig, ...envConfig };
+  merged.vars = { ...fullConfig.vars, ...envConfig.vars };
+  merged.secrets = envConfig.secrets ?? fullConfig.secrets;
+  merged.d1_databases = envConfig.d1_databases ?? fullConfig.d1_databases;
+  merged.r2_buckets = envConfig.r2_buckets ?? fullConfig.r2_buckets;
+  merged.kv_namespaces = envConfig.kv_namespaces ?? fullConfig.kv_namespaces;
+
+  const errors = validateProductionConfig(merged, {
     repositoryRoot,
   });
 
   if (errors.length > 0) {
-    console.error("WashPro production deployment was blocked:");
+    console.error(`WashPro production deployment was blocked (env: ${targetEnv}):`);
     for (const error of errors) {
       console.error(`- ${error}`);
     }
@@ -159,7 +169,7 @@ function run() {
     return;
   }
 
-  console.log("WashPro production deployment preflight passed.");
+  console.log(`WashPro production deployment preflight passed (env: ${targetEnv}).`);
 }
 
 if (

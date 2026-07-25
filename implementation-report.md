@@ -12,13 +12,19 @@ The repository-connected Worker deployment runs from the root through `npm run d
 
 ### Cloudflare remote-development integration
 
-- Wrangler authentication and write permissions were verified; account identity is reported only in the operator handoff rather than committed documentation.
-- D1: `washpro-dev` (`4d0c969f-b8f1-4cc8-b15a-3d38687a1cc2`).
-- KV: `washpro-cache-dev` (`b2625dab32d14d1cb2c46a7cd35a97ca`).
+- Wrangler authentication and write permissions were verified for account `36c28c2516a8d4f17c0d010d6f12bf5f`.
+- D1: `washpro-dev` (`f12e4f56-470a-488f-8e34-da502fe974d7`).
+- KV: `washpro-cache-dev` (`72cd173f952343269324e671d68147e6`).
 - Private R2: `washpro-uploads-dev` and `washpro-invoices-dev`.
 - Local Worker name: top-level `car-wash`; named remote-development Worker name: `car-wash-remote-dev`.
 - `DB`, `CACHE`, `UPLOADS`, and `INVOICES` are repeated under `env.remote-dev` with `remote: true`. The top-level configuration retains fully local simulated bindings.
-- A local Worker wrote a known `integration-test/` value through each binding. Independent Wrangler CLI reads found all four values in the remote development resources. The Worker then deleted them, and independent checks confirmed zero D1 rows, an empty KV prefix, and missing exact R2 objects.
+- All nine D1 migrations were applied to the new database. A guarded data-only import migrated 58 local rows and excluded sessions, login attempts, password-reset tokens, idempotency records, and all KV data. Local/remote counts, content fingerprints, ID bounds, and foreign keys match. Both local and remote R2 buckets contained zero objects, so no object write or deletion was required.
+
+### 2026-07-24 account migration result
+
+The previously configured development IDs belonged to another Cloudflare account and were removed from active configuration. Wrangler 4.114.0 created all four resources in the confirmed account. No production resource or Worker deployment was created or modified.
+
+The initial data-only execution reported `imported`. A later execution against the same backup reported `already-migrated`, proving the resume gate did not duplicate rows. Verification found zero count mismatches, zero content-fingerprint mismatches, zero ID-bound mismatches, zero foreign-key violations, zero R2 conflicts, and zero missing D1-to-R2 references. The private ignored evidence directory is `migration-backups/2026-07-24T18-37-17-462Z`; it contains the full state, SQL exports, R2 manifests, dry-run/execution/verification reports, and a non-sensitive phase log.
 
 ## Architecture Used
 
@@ -30,11 +36,11 @@ The repository-connected Worker deployment runs from the root through `npm run d
 
 ## Files Changed
 
-The Cloudflare integration pass modified these existing source files: `README.md`, `docs/setup.md`, `docs/deployment.md`, `docs/testing.md`, `implementation-report.md`, `requirements-traceability.md`, `package.json`, `apps/api/package.json`, `apps/api/wrangler.jsonc`, `apps/api/migrations/0009_integrity_guards.sql`, and `scripts/cloudflare-deployment.test.mjs`. No file was removed. A temporary binding-smoke Worker was created only for live verification and removed after cleanup.
+The latest Cloudflare account/data-migration pass modified `.gitignore`, `apps/api/scripts/validate-production-deploy.mjs`, `apps/api/wrangler.jsonc`, `docs/backup-restore.md`, `docs/deployment.md`, `docs/setup.md`, `docs/testing.md`, `implementation-report.md`, `package.json`, `requirements-traceability.md`, and `scripts/cloudflare-deployment.test.mjs`. It created `apps/api/scripts/r2-migration-bridge.mjs`, `docs/cloudflare-migration.md`, `scripts/cloudflare-migration.test.mjs`, `tools/cloudflare-migration/cli.mjs`, `tools/cloudflare-migration/lib.mjs`, and `tools/cloudflare-migration/r2-bridge-client.mjs`. No tracked file was removed. The R2 verification bridge runs only on localhost and is never deployed.
 
 The starting repository contained only `plan.md`, `prd.md`, `appflow.md`, `techspec.md`, `database.md`, and `design.md`, with no Git metadata. Those six source documents were read completely and not modified. Every project file below was created. No project file was removed.
 
-Generated/ignored local artifacts are not source files: `node_modules`, `apps/api/.dev.vars` (random local secrets), `.wrangler`, `apps/api/.tmp`, `apps/*/dist`, `output`, `playwright-report`, and `test-results`.
+Generated/ignored local artifacts are not source files: `node_modules`, `apps/api/.dev.vars` (random local secrets), `.wrangler`, `migration-backups`, `apps/api/.tmp`, `apps/*/dist`, `output`, `playwright-report`, and `test-results`.
 
 ### Root and documentation
 
@@ -53,9 +59,14 @@ Generated/ignored local artifacts are not source files: `node_modules`, `apps/ap
 - `docs/testing.md`
 - `docs/deployment.md`
 - `docs/backup-restore.md`
+- `docs/cloudflare-migration.md`
 - `scripts/setup-local-env.mjs`
 - `scripts/generate-invoice-preview.ts`
 - `scripts/cloudflare-deployment.test.mjs`
+- `scripts/cloudflare-migration.test.mjs`
+- `tools/cloudflare-migration/cli.mjs`
+- `tools/cloudflare-migration/lib.mjs`
+- `tools/cloudflare-migration/r2-bridge-client.mjs`
 - `e2e/washpro.spec.ts`
 
 ### Shared contracts
@@ -98,6 +109,7 @@ Generated/ignored local artifacts are not source files: `node_modules`, `apps/ap
 - `apps/api/vitest.config.ts`
 - `apps/api/wrangler.jsonc`
 - `apps/api/scripts/validate-production-deploy.mjs`
+- `apps/api/scripts/r2-migration-bridge.mjs`
 - `apps/api/migrations/0001_foundation.sql`
 - `apps/api/migrations/0002_customers_and_vehicles.sql`
 - `apps/api/migrations/0003_services_and_wash_jobs.sql`
@@ -257,12 +269,16 @@ Final verification date: 2026-07-24.
 | Domain unit | 9 files passed, 30 tests passed, 0 failed. |
 | Vitest total | 25 files passed, 60 tests passed, 0 failed. |
 | Deployment contract | 1 Node test file passed, 5 tests passed, 0 failed. |
-| Automated test total | 26 files passed, 65 tests passed, 0 failed. |
+| Migration-tool contract, final dependency-free rerun | 1 Node test file passed, 16 tests passed, 0 failed. This includes local integrity/FK rejection, exact-fingerprint resumability, R2 create-only writes, metadata bridge behavior, account/environment gating and KV exclusions. |
+| Automated application baseline total | 26 files passed, 65 tests passed, 0 failed before this migration-tool pass. |
 | Playwright | 16 passed, 4 intentionally skipped duplicate media runs, 0 failed, 44.9 seconds. |
 | Clean D1 migration | 9/9 migrations passed from empty local state; 9/9 applied to `washpro-dev`; both report no pending migrations. |
-| Remote binding smoke | Local Worker write/read plus independent CLI read and cleanup passed for D1, KV, `UPLOADS`, and `INVOICES`; no test values remain. |
-| Live API/frontend connectivity | Remote-development Hono health `200`; anonymous session `401`; Vite root `200`; proxied session `401`; invalid login `401 AUTH_INVALID_CREDENTIALS`. |
-| Clean dependency install | `npm ci`: 312 packages added, 317 audited, 0 vulnerabilities. |
+| Development data migration | 58/58 selected D1 rows matched by count, content fingerprint and ID bounds; 0 foreign-key violations; resumable rerun reported `already-migrated`. |
+| R2/KV migration | 0 local and remote upload objects, 0 local and remote invoice objects, 0 KV keys copied, 0 conflicts, 0 missing D1-to-R2 references. |
+| Live API connectivity | Remote-development Hono health `200`; anonymous session `401`; no Worker deployment. |
+| Clean dependency install baseline | Earlier `npm ci`: 312 packages added, 317 audited, 0 vulnerabilities. The final post-migration rerun was blocked by sandbox `EPERM` on the user npm cache and the host approval quota; that failed attempt removed ignored `node_modules`, so dependencies must be restored before another full local gate. |
+| Final dependency-free Cloudflare contract rerun | `npm run test:deployment`: 5/5 passed; `npm run test:migration`: 16/16 passed; combined 21 passed, 0 failed. |
+| Final full repository gate | Attempted and blocked by missing dependencies: sandbox `EPERM` denied the user npm cache, the host approval quota blocked the required unrestricted `npm ci` retry, and only workspace links remain under `node_modules`. Exact missing commands were `prettier`, `eslint`, `tsc`, `vitest`, and `wrangler`. Formatting, lint, typecheck, Vitest, Playwright and builds therefore retain the earlier passing baseline above, not a new final-tree result. |
 | Production dependency audit | 0 vulnerabilities across production dependencies. |
 | Full dependency audit | 0 vulnerabilities after a non-forced in-range Cloudflare toolchain update. |
 
@@ -283,7 +299,7 @@ Implemented controls:
 - Login throttling/lock handling and login-attempt records.
 - Zod input contracts, size/type/signature file validation, safe error envelopes and sensitive audit redaction.
 - Private R2 object access; photos have database public-access guards, invoice PDFs use expiring HMAC-bound links.
-- Wrangler verification confirms public `r2.dev` access is disabled and no custom domain is connected on either development R2 bucket.
+- The new R2 buckets were created with Cloudflare's private default and no public access was enabled. The explicit post-creation `r2.dev`/custom-domain query was blocked by the host approval quota and remains a Dashboard verification item.
 - Append-only payments, refunds, timer events, reward ledger and audits; issued invoice/update/delete database guards.
 - Idempotency keys and unique constraints for duplicate job/payment/invoice/reward/expense requests.
 - CSP, HSTS, anti-framing, no-sniff, referrer and scoped camera/geolocation Permissions Policy headers.
@@ -297,7 +313,7 @@ The initial full audit found four high-severity entries for one transitive `shar
 - Remote-development Worker dry run passed with the same bundle size and listed only `washpro-dev`, `washpro-cache-dev`, `washpro-uploads-dev`, and `washpro-invoices-dev` for the four bindings.
 - Web production build passed with Vite 6.4.3: 1704 modules transformed in 5.03 seconds.
 - Main web entry: 317.04 kB, 100.83 kB gzip; CSS: 37.09 kB, 7.86 kB gzip. Route pages are lazy chunks.
-- No source map, type, lint, formatting or build error remains.
+- The application build and remote-development dry run passed before the final dependency-cleanup attempt. Restore `node_modules` and rerun the full local gate before commit/deployment; the final rerun could not execute after the sandbox-blocked `npm ci` removed dependencies.
 
 ## Documentation Conflicts
 
@@ -322,7 +338,8 @@ No approved product module is intentionally left as a mock or placeholder. The r
 2. Physical-device camera/GPS, Safari/iOS/iPadOS, Windows 10/11 and macOS validation must be completed and signed off. Automated browser/device emulation passed but is not equivalent to hardware.
 3. A staging D1/R2 backup-restore rehearsal and production scheduled-trigger observation require provisioned Cloudflare resources.
 4. Standard `wa.me` opens a prefilled message and cannot attach a PDF automatically; the application correctly offers copy message, copy link and PDF download instead.
+5. Restore ignored dependencies with `npm ci` outside the restricted host sandbox, then rerun formatting, lint, typecheck, all tests, E2E and both builds. Also confirm the two new R2 buckets have no `r2.dev` URL or custom domain and inspect Cloudflare Workers Builds for a stale `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Deployment Readiness
 
-The source, schema, tests and dry-run bundles are ready for controlled development/staging use. Local Worker code has been proven against isolated remote development bindings. Production is **not yet launch-ready**: the top-level configuration deliberately retains `APP_ENV=development`, a localhost origin, and local D1/KV/R2 placeholders, so the production predeploy guard remains effective. The four required secret names are declared, but deployed `remote-dev` and production values, Worker routes, and production domains are not configured. Production provisioning, a staging restore rehearsal, and physical-device verification remain. Follow `docs/deployment.md`, `docs/backup-restore.md`, and `docs/testing.md` in that order.
+The source, schema, migration evidence and remote-development bindings are ready for controlled development use. The current checkout is not ready to commit or deploy until ignored dependencies are restored and the full local gate is rerun. Production is **not yet launch-ready**: the top-level configuration deliberately retains `APP_ENV=development`, a localhost origin, and local D1/KV/R2 placeholders, so the production predeploy guard remains effective. The four required secret names are declared, but `car-wash-remote-dev` was not deployed and therefore has no remote secret values; production resources, secrets, routes and domains are also not configured. Production provisioning, a staging restore rehearsal, the new-bucket public-domain check, and physical-device verification remain. Follow `docs/deployment.md`, `docs/backup-restore.md`, and `docs/testing.md` in that order.

@@ -17,8 +17,8 @@ Production resource identifiers and domains are account-owned values and are int
 
 | Service | Resource | Binding behavior |
 | --- | --- | --- |
-| D1 | `washpro-dev` (`4d0c969f-b8f1-4cc8-b15a-3d38687a1cc2`) | `DB`, `remote: true` |
-| KV | `washpro-cache-dev` (`b2625dab32d14d1cb2c46a7cd35a97ca`) | `CACHE`, `remote: true` |
+| D1 | `washpro-dev` (`f12e4f56-470a-488f-8e34-da502fe974d7`) | `DB`, `remote: true` |
+| KV | `washpro-cache-dev` (`72cd173f952343269324e671d68147e6`) | `CACHE`, `remote: true` |
 | R2 | `washpro-uploads-dev` | `UPLOADS`, `remote: true` |
 | R2 | `washpro-invoices-dev` | `INVOICES`, `remote: true` |
 
@@ -30,11 +30,15 @@ npm run dev:api:remote
 npm run db:migrate:remote-dev
 npm run build --workspace=@washpro/api
 npm run build:remote-dev --workspace=@washpro/api
+npm run cloudflare:provision:verify
+npm run cloudflare:migration:verify
 ```
 
 The remote-development variables are `APP_ENV=development`, `ALLOWED_ORIGINS=http://localhost:5173`, `SESSION_TTL_SECONDS=28800`, and `INVOICE_LINK_TTL_SECONDS=604800`. Bindings and variables are repeated in the named environment because Wrangler environments do not inherit them. Local secrets remain in ignored `.dev.vars`; before any optional `npm run deploy:remote-dev --workspace=@washpro/api`, configure the four declared secret values specifically for `--env remote-dev`.
 
 The setup follows Cloudflare's current [Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/), [environments](https://developers.cloudflare.com/workers/wrangler/environments/), [local-development remote bindings](https://developers.cloudflare.com/workers/local-development/), [D1 migration](https://developers.cloudflare.com/d1/reference/migrations/), [KV](https://developers.cloudflare.com/kv/get-started/), [R2](https://developers.cloudflare.com/r2/get-started/cli/), and [Workers Builds monorepo](https://developers.cloudflare.com/workers/ci-cd/builds/advanced-setups/) documentation. `remote: true` is binding-specific and keeps Worker code local; the legacy mode that runs Worker code remotely is not used.
+
+The development resources belong to account `36c28c2516a8d4f17c0d010d6f12bf5f`. Local-to-development backup and migration commands, safety gates, exclusions, and rerun behavior are documented in `docs/cloudflare-migration.md`.
 
 ## Cloudflare Workers Builds settings
 

@@ -193,7 +193,6 @@ describe("customer and vehicle management", () => {
         payments: [],
         photos: [],
         referrals: [],
-        washJobs: [],
       },
     });
 

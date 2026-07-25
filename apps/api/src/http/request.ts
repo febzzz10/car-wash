@@ -15,12 +15,16 @@ export function isUnsafeMethod(method: string): boolean {
 
 export function assertAllowedOrigin(c: Context<AppBindings>): void {
   const origin = c.req.header("origin");
+
+  // Same-origin requests from browsers may omit the Origin header.
+  if (origin === undefined) return;
+
   const allowed = new Set(
     c.env.ALLOWED_ORIGINS.split(",")
       .map((value) => value.trim())
       .filter(Boolean),
   );
-  if (origin === undefined || !allowed.has(origin)) {
+  if (!allowed.has(origin)) {
     throw new ApiError(
       403,
       "CSRF_REJECTED",

@@ -89,7 +89,7 @@ export default function NewWashPage() {
     restored?.servicePriceId ?? "",
   );
   const [addOnServiceIds, setAddOnServiceIds] = useState<readonly string[]>(
-    restored?.addOnPriceIds ?? [],
+    restored?.addOnServiceIds ?? [],
   );
   const [couponCode, setCouponCode] = useState(restored?.couponCode ?? "");
   const [referralCode, setReferralCode] = useState(
@@ -142,7 +142,7 @@ export default function NewWashPage() {
     sessionStorage.setItem(
       WASH_DRAFT_STORAGE_KEY,
       serializeWizardDraft({
-        addOnPriceIds: [...addOnServiceIds],
+        addOnServiceIds: [...addOnServiceIds],
         assignedUserId: assignedUserId || undefined,
         couponCode: couponCode || undefined,
         customerId: customerId || undefined,

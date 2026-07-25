@@ -399,6 +399,62 @@ customerRoutes.get(
 );
 
 customerRoutes.get(
+  "/:id/wash-jobs",
+  requirePermission("customers.read"),
+  async (c) => {
+    const auth = c.get("auth");
+    const customerId = c.req.param("id");
+    const limit = Math.min(Math.max(1, Number(c.req.query("limit")) || 20), 100);
+    const cursor = c.req.query("cursor");
+    let cursorCreatedAt: string | undefined;
+    let cursorId: string | undefined;
+    if (cursor !== undefined) {
+      try {
+        const decoded = atob(cursor);
+        const sep = decoded.lastIndexOf("|");
+        if (sep !== -1) {
+          cursorCreatedAt = decoded.slice(0, sep);
+          cursorId = decoded.slice(sep + 1);
+        }
+      } catch {
+        throw new ApiError(400, "VALIDATION_ERROR", "Invalid cursor.");
+      }
+    }
+    const rows = await c.env.DB.prepare(
+      cursorCreatedAt !== undefined && cursorId !== undefined
+        ? `SELECT * FROM wash_jobs
+           WHERE organization_id = ? AND customer_id = ?
+             AND (created_at < ? OR (created_at = ? AND id < ?))
+           ORDER BY created_at DESC, id DESC
+           LIMIT ?`
+        : `SELECT * FROM wash_jobs
+           WHERE organization_id = ? AND customer_id = ?
+           ORDER BY created_at DESC, id DESC
+           LIMIT ?`,
+    )
+      .bind(
+        auth.organizationId,
+        customerId,
+        ...(cursorCreatedAt !== undefined && cursorId !== undefined
+          ? [cursorCreatedAt, cursorCreatedAt, cursorId, limit]
+          : [limit]),
+      )
+      .all();
+    const jobs = rows.results;
+    const nextCursor =
+      jobs.length === limit
+        ? btoa(
+            `${(jobs[jobs.length - 1] as Record<string, unknown>).created_at as string}|${(jobs[jobs.length - 1] as Record<string, unknown>).id as string}`,
+          )
+        : null;
+    return c.json({
+      data: { jobs, hasMore: nextCursor !== null, nextCursor },
+      success: true,
+    });
+  },
+);
+
+customerRoutes.get(
   "/:id/history",
   requirePermission("customers.read"),
   async (c) => {
@@ -412,7 +468,6 @@ customerRoutes.get(
     if (exists === null)
       throw new ApiError(404, "RESOURCE_NOT_FOUND", "Customer not found.");
     const [
-      washJobs,
       invoices,
       payments,
       coupons,
@@ -420,11 +475,6 @@ customerRoutes.get(
       photos,
       locations,
     ] = await Promise.all([
-      c.env.DB.prepare(
-        "SELECT * FROM wash_jobs WHERE customer_id = ? AND organization_id = ? ORDER BY created_at DESC",
-      )
-        .bind(customerId, auth.organizationId)
-        .all(),
       c.env.DB.prepare(
         "SELECT i.* FROM invoices i INNER JOIN wash_jobs w ON w.id = i.wash_job_id WHERE w.customer_id = ? AND i.organization_id = ? ORDER BY i.created_at DESC",
       )
@@ -464,7 +514,6 @@ customerRoutes.get(
         payments: payments.results,
         photos: photos.results,
         referrals: referrals.results,
-        washJobs: washJobs.results,
       },
       success: true,
     });

@@ -1,10 +1,12 @@
-import { ArrowLeft, Car, Edit3, History, Plus, UserRoundX } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { ArrowLeft, Car, ChevronDown, Edit3, History, Plus, UserRoundX } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import {
   Button,
   Card,
+  Dialog,
+  EmptyState,
   ErrorState,
   PageHeader,
   SkeletonRows,
@@ -70,7 +72,11 @@ interface HistoryPayload {
     readonly referrer_reward_minor: number;
     readonly status: string;
   }[];
-  readonly washJobs: readonly WashJobRecord[];
+}
+interface WashJobsPage {
+  readonly jobs: readonly WashJobRecord[];
+  readonly hasMore: boolean;
+  readonly nextCursor: string | null;
 }
 
 export default function CustomerDetailPage() {
@@ -82,29 +88,65 @@ export default function CustomerDetailPage() {
   }>("/services");
   const [edit, setEdit] = useState(false);
   const [addVehicle, setAddVehicle] = useState(false);
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
   const toast = useToast();
-  async function changeStatus() {
-    if (profile.data === null) return;
-    const reason = window.prompt(
-      `Reason to ${profile.data.status === "ACTIVE" ? "deactivate" : "reactivate"} this customer:`,
-    );
-    if (reason === null || reason.trim().length < 3) return;
-    try {
-      await api(
-        `/customers/${id}/${profile.data.status === "ACTIVE" ? "deactivate" : "reactivate"}`,
-        {
-          ...jsonBody({ reason, version: profile.data.version }),
-          method: "POST",
-        },
-      );
-      toast.success("Customer status updated.");
-      profile.reload();
-    } catch (failure) {
-      toast.error(
-        failure instanceof Error ? failure.message : "Status change failed.",
-      );
-    }
-  }
+
+  const [jobs, setJobs] = useState<readonly WashJobRecord[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [jobsError, setJobsError] = useState<string | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    setJobs([]);
+    setJobsLoading(true);
+    setJobsError(null);
+    setNextCursor(null);
+    void api<WashJobsPage>(`/customers/${id}/wash-jobs?limit=20`)
+      .then((page) => {
+        if (!mountedRef.current) return;
+        setJobs(page.jobs);
+        setNextCursor(page.nextCursor);
+      })
+      .catch((reason: unknown) => {
+        if (!mountedRef.current) return;
+        setJobsError(
+          reason instanceof Error ? reason.message : "Failed to load history.",
+        );
+      })
+      .finally(() => {
+        if (mountedRef.current) setJobsLoading(false);
+      });
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [id]);
+
+  const loadMore = useCallback(() => {
+    if (nextCursor === null || loadingMore) return;
+    setLoadingMore(true);
+    void api<WashJobsPage>(
+      `/customers/${id}/wash-jobs?cursor=${encodeURIComponent(nextCursor)}&limit=20`,
+    )
+      .then((page) => {
+        if (!mountedRef.current) return;
+        setJobs((prev) => [...prev, ...page.jobs]);
+        setNextCursor(page.nextCursor);
+      })
+      .catch((reason: unknown) => {
+        if (!mountedRef.current) return;
+        toast.error(
+          reason instanceof Error
+            ? reason.message
+            : "Failed to load more history.",
+        );
+      })
+      .finally(() => {
+        if (mountedRef.current) setLoadingMore(false);
+      });
+  }, [id, nextCursor, loadingMore, toast]);
   if (profile.loading) return <SkeletonRows />;
   if (profile.error !== null || profile.data === null)
     return (
@@ -126,7 +168,7 @@ export default function CustomerDetailPage() {
               <Edit3 size={17} /> Edit
             </Button>
             <Button
-              onClick={() => void changeStatus()}
+              onClick={() => setDeactivateOpen(true)}
               tone={customer.status === "ACTIVE" ? "danger" : "secondary"}
             >
               <UserRoundX size={17} />{" "}
@@ -339,28 +381,56 @@ export default function CustomerDetailPage() {
               </div>
               <History size={20} />
             </div>
-            {history.loading ? (
+            {jobsLoading ? (
               <SkeletonRows />
+            ) : jobsError !== null ? (
+              <ErrorState message={jobsError} />
             ) : (
-              <div className="timeline">
-                {history.data?.washJobs.map((job) => (
-                  <Link key={job.id} to={`/wash-jobs/${job.id}`}>
-                    <span className="timeline-mark" />
-                    <div>
-                      <strong>
-                        {job.job_reference} ·{" "}
-                        {job.vehicle_registration_snapshot}
-                      </strong>
-                      <small>
-                        {job.primary_service_name_snapshot} ·{" "}
-                        {dateTime(job.created_at)}
-                      </small>
-                    </div>
-                    <StatusBadge value={job.status} />
-                    <strong>{money(job.total_amount_minor)}</strong>
-                  </Link>
-                ))}
-              </div>
+              <>
+                <div className="timeline">
+                  {jobs.map((job) => (
+                    <Link key={job.id} to={`/wash-jobs/${job.id}`}>
+                      <span className="timeline-mark" />
+                      <div>
+                        <strong>
+                          {job.job_reference} ·{" "}
+                          {job.vehicle_registration_snapshot}
+                        </strong>
+                        <small>
+                          {job.primary_service_name_snapshot} ·{" "}
+                          {dateTime(job.created_at)}
+                        </small>
+                      </div>
+                      <StatusBadge value={job.status} />
+                      <strong>{money(job.total_amount_minor)}</strong>
+                    </Link>
+                  ))}
+                </div>
+                {jobs.length === 0 ? (
+                  <EmptyState
+                    icon={History}
+                    message="No wash history for this customer yet."
+                    title="No records"
+                  />
+                ) : null}
+                {nextCursor !== null ? (
+                  <div style={{ marginTop: "12px", textAlign: "center" }}>
+                    <Button
+                      busy={loadingMore}
+                      onClick={loadMore}
+                      tone="secondary"
+                    >
+                      <ChevronDown size={17} /> Load more
+                    </Button>
+                  </div>
+                ) : jobs.length > 0 ? (
+                  <div style={{ marginTop: "12px", textAlign: "center" }}>
+                    <small className="muted-text">
+                      All {jobs.length} records loaded.
+                    </small>
+                  </div>
+                ) : null}
+              </>
             )}
           </Card>
         </div>
@@ -384,7 +454,87 @@ export default function CustomerDetailPage() {
         open={addVehicle}
         vehicleTypes={catalog.data?.vehicleTypes ?? []}
       />
+      <DeactivateCustomerDialog
+        id={id}
+        onClose={() => setDeactivateOpen(false)}
+        onDone={() => {
+          setDeactivateOpen(false);
+          profile.reload();
+        }}
+        open={deactivateOpen}
+        status={customer.status}
+        version={customer.version}
+      />
     </>
+  );
+}
+
+function DeactivateCustomerDialog({
+  id,
+  onClose,
+  onDone,
+  open,
+  status,
+  version,
+}: {
+  readonly id: string;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly open: boolean;
+  readonly status: string;
+  readonly version: number;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isActive = status === "ACTIVE";
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reason = String(
+      new FormData(event.currentTarget).get("reason") ?? "",
+    );
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/customers/${id}/${isActive ? "deactivate" : "reactivate"}`, {
+        ...jsonBody({ reason, version }),
+        method: "POST",
+      });
+      onDone();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Status change failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog
+      onClose={onClose}
+      open={open}
+      title={isActive ? "Deactivate customer" : "Reactivate customer"}
+    >
+      <form className="dialog-form" onSubmit={(event) => void submit(event)}>
+        <p>
+          {isActive
+            ? "Deactivation hides this customer from selection and prevents new wash jobs."
+            : "Reactivation restores this customer for normal use."}
+        </p>
+        {error === null ? null : <div className="form-alert">{error}</div>}
+        <label>
+          <span>Reason</span>
+          <textarea minLength={3} name="reason" required />
+        </label>
+        <div className="dialog-actions">
+          <Button busy={busy} tone={isActive ? "danger" : "primary"}>
+            {isActive ? "Deactivate" : "Reactivate"}
+          </Button>
+          <Button onClick={onClose} tone="secondary" type="button">
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

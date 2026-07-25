@@ -13,7 +13,7 @@ import {
   Wrench,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { useAuth } from "../auth";
@@ -62,6 +62,7 @@ interface JobDetail extends WashJobRecord {
   readonly referral_discount_minor: number;
   readonly reward_discount_minor: number;
   readonly manual_discount_minor: number;
+  readonly manual_discount_reason?: string | null;
   readonly tax_minor: number;
   readonly rounding_minor: number;
 }
@@ -72,7 +73,7 @@ interface TimerPayload {
   }[];
 }
 
-function liveTimer(
+export function liveTimer(
   events: TimerPayload["events"],
   now: number,
 ): { readonly active: number; readonly paused: number } {
@@ -132,16 +133,34 @@ export default function WashJobDetailPage() {
     const handle = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(handle);
   }, []);
+  const timerSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
+    const isTerminal =
+      job.data?.status === "COMPLETED" || job.data?.status === "CANCELLED";
+    const sync = () => {
+      if (document.hidden) return;
+      job.reload();
+      timer.reload();
+    };
     const refresh = () => {
-      if (document.visibilityState === "visible") {
-        job.reload();
-        timer.reload();
-      }
+      if (document.visibilityState === "visible") sync();
     };
     document.addEventListener("visibilitychange", refresh);
-    return () => document.removeEventListener("visibilitychange", refresh);
-  }, [job, timer]);
+    if (timerSyncRef.current !== null) {
+      window.clearInterval(timerSyncRef.current);
+      timerSyncRef.current = null;
+    }
+    if (!isTerminal) {
+      timerSyncRef.current = window.setInterval(sync, 30_000);
+    }
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      if (timerSyncRef.current !== null) {
+        window.clearInterval(timerSyncRef.current);
+        timerSyncRef.current = null;
+      }
+    };
+  }, [id, job, timer]);
   const elapsed = useMemo(
     () => liveTimer(timer.data?.events ?? [], now),
     [now, timer.data],
@@ -421,7 +440,10 @@ export default function WashJobDetailPage() {
               ) : null}
               {record.manual_discount_minor > 0 ? (
                 <span>
-                  Manual discount{" "}
+                  Manual discount
+                  {record.manual_discount_reason
+                    ? ` (${record.manual_discount_reason})`
+                    : ""}{" "}
                   <strong>−{money(record.manual_discount_minor)}</strong>
                 </span>
               ) : null}

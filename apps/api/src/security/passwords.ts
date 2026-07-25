@@ -27,14 +27,14 @@ async function derive(
   salt: Uint8Array<ArrayBuffer>,
   rounds: number,
 ): Promise<Uint8Array> {
-  const material = await crypto.subtle.importKey(
+  const material = await globalThis.crypto.subtle.importKey(
     "raw",
     encodeUtf8(`${password}\u0000${pepper}`).buffer,
-    algorithmName,
+    { name: algorithmName },
     false,
     ["deriveBits"],
   );
-  const bits = await crypto.subtle.deriveBits(
+  const bits = await globalThis.crypto.subtle.deriveBits(
     {
       hash: digestName,
       iterations: rounds,
@@ -52,7 +52,7 @@ export async function hashPassword(
   pepper: string,
 ): Promise<string> {
   const salt = new Uint8Array(new ArrayBuffer(16));
-  crypto.getRandomValues(salt);
+  globalThis.crypto.getRandomValues(salt);
   const derived = await derive(password, pepper, salt, iterations);
   return [
     format,

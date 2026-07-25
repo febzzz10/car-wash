@@ -22,7 +22,7 @@ export function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> {
 
 export function randomToken(byteLength = 32): string {
   const bytes = new Uint8Array(new ArrayBuffer(byteLength));
-  crypto.getRandomValues(bytes);
+  globalThis.crypto.getRandomValues(bytes);
   return encodeBase64Url(bytes);
 }
 

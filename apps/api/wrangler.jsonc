@@ -7,16 +7,20 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
+	"workers_dev": false,
 	"triggers": {
 		"crons": [
 			"17 2 * * *"
 		],
 	},
 	"vars": {
-		"APP_ENV": "production",
+		"ACCESS_AUD": "",
+		"ACCESS_TEAM_DOMAIN": "",
 		"ALLOWED_ORIGINS": "https://bab9bd69.washpro-web.pages.dev",
-		"SESSION_TTL_SECONDS": "28800",
+		"APP_ENV": "production",
+		"AUTH_MODE": "cloudflare_access",
 		"INVOICE_LINK_TTL_SECONDS": "604800",
+		"SESSION_TTL_SECONDS": "28800",
 	},
 	"secrets": {
 		"required": [

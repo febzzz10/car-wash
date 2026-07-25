@@ -121,6 +121,14 @@ async function incrementLoginRateLimit(env: Env, key: string): Promise<void> {
 export const publicAuthRoutes = new Hono<AppBindings>();
 
 publicAuthRoutes.post("/login", async (c) => {
+  if (c.env.APP_ENV === "production" && c.env.AUTH_MODE === "cloudflare_access") {
+    throw new ApiError(
+      403,
+      "AUTH_PERMISSION_DENIED",
+      "Password login is not available. Sign in through Cloudflare Access.",
+    );
+  }
+
   assertAllowedOrigin(c);
   const parsed = loginRequestSchema.safeParse(
     await c.req.json().catch(() => null),
@@ -300,10 +308,13 @@ export const protectedAuthRoutes = new Hono<AppBindings>();
 
 protectedAuthRoutes.get("/session", async (c) => {
   const auth = c.get("auth");
-  const csrfToken = await createCsrfToken(
-    c.get("rawSessionToken"),
-    c.env.CSRF_SECRET,
-  );
+  const isAccess = c.env.APP_ENV === "production" && c.env.AUTH_MODE === "cloudflare_access";
+  const rawToken = c.get("rawSessionToken");
+
+  let csrfToken = "";
+  if (!isAccess && typeof rawToken === "string") {
+    csrfToken = await createCsrfToken(rawToken, c.env.CSRF_SECRET);
+  }
   const settings = await loadSettings(
     c.env,
     auth.organizationId,
@@ -313,7 +324,14 @@ protectedAuthRoutes.get("/session", async (c) => {
     data: {
       csrfToken,
       preferences: formattingPreferences(settings),
-      user: auth,
+      user: {
+        branchId: auth.branchId,
+        fullName: auth.userName,
+        id: auth.userId,
+        permissions: auth.permissions,
+        role: auth.role,
+        username: auth.userName,
+      },
     },
     success: true,
   });
@@ -321,33 +339,45 @@ protectedAuthRoutes.get("/session", async (c) => {
 
 protectedAuthRoutes.post("/logout", async (c) => {
   const auth = c.get("auth");
-  const now = new Date().toISOString();
-  await c.env.DB.batch([
-    c.env.DB.prepare(
-      "UPDATE user_sessions SET status = 'REVOKED', revoked_at = ?, revoked_reason = 'USER_LOGOUT' WHERE id = ? AND status = 'ACTIVE'",
-    ).bind(now, auth.sessionId),
-    c.env.DB.prepare(
-      `INSERT INTO audit_logs (
-        id, organization_id, branch_id, user_id, action, record_type,
-        record_id, severity, request_id, ip_address, user_agent, created_at
-      ) VALUES (?, ?, ?, ?, 'SESSION_REVOKED', 'USER_SESSION', ?, 'INFO', ?, ?, ?, ?)`,
-    ).bind(
-      crypto.randomUUID(),
-      auth.organizationId,
-      auth.branchId,
-      auth.userId,
-      auth.sessionId,
-      c.get("requestId"),
-      clientIp(c),
-      c.req.header("user-agent") ?? null,
-      now,
-    ),
-  ]);
-  deleteCookie(c, sessionCookieName, { path: "/", secure: true });
+  const isAccess = c.env.APP_ENV === "production" && c.env.AUTH_MODE === "cloudflare_access";
+
+  if (!isAccess) {
+    const now = new Date().toISOString();
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        "UPDATE user_sessions SET status = 'REVOKED', revoked_at = ?, revoked_reason = 'USER_LOGOUT' WHERE id = ? AND status = 'ACTIVE'",
+      ).bind(now, auth.sessionId),
+      c.env.DB.prepare(
+        `INSERT INTO audit_logs (
+          id, organization_id, branch_id, user_id, action, record_type,
+          record_id, severity, request_id, ip_address, user_agent, created_at
+        ) VALUES (?, ?, ?, ?, 'SESSION_REVOKED', 'USER_SESSION', ?, 'INFO', ?, ?, ?, ?)`,
+      ).bind(
+        crypto.randomUUID(),
+        auth.organizationId,
+        auth.branchId,
+        auth.userId,
+        auth.sessionId,
+        c.get("requestId"),
+        clientIp(c),
+        c.req.header("user-agent") ?? null,
+        now,
+      ),
+    ]);
+    deleteCookie(c, sessionCookieName, { path: "/", secure: true });
+  }
   return c.body(null, 204);
 });
 
 protectedAuthRoutes.post("/change-password", async (c) => {
+  if (c.env.APP_ENV === "production" && c.env.AUTH_MODE === "cloudflare_access") {
+    throw new ApiError(
+      403,
+      "AUTH_PERMISSION_DENIED",
+      "Password management is not available with Access authentication.",
+    );
+  }
+
   const body: { currentPassword?: string; newPassword?: string } = await c.req
     .json<{ currentPassword?: string; newPassword?: string }>()
     .catch(() => ({}));

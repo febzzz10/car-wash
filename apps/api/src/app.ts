@@ -2,6 +2,7 @@ import type { ApiFailure } from "@washpro/contracts";
 import { Hono } from "hono";
 
 import { ApiError } from "./http/errors";
+import { requireAccessAuth } from "./middleware/access-auth";
 import { requireAdmin, requireSession } from "./middleware/auth";
 import { auditRoutes } from "./routes/audit";
 import { protectedAuthRoutes, publicAuthRoutes } from "./routes/auth";
@@ -99,6 +100,7 @@ app.route("/api/v1/auth", publicAuthRoutes);
 app.route("/api/v1/bootstrap", bootstrapRoutes);
 
 const protectedApi = new Hono<AppBindings>();
+protectedApi.use("*", requireAccessAuth);
 protectedApi.use("*", requireSession);
 protectedApi.route("/auth", protectedAuthRoutes);
 protectedApi.route("/audit-logs", auditRoutes);

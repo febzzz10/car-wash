@@ -31,6 +31,7 @@ interface AuthContextValue {
   readonly loading: boolean;
   readonly user: AuthUser | null;
   readonly login: (identifier: string, password: string) => Promise<void>;
+  readonly loginWithAccess: () => void;
   readonly logout: () => Promise<void>;
   readonly refresh: () => Promise<void>;
 }
@@ -47,6 +48,12 @@ function mapSession(payload: SessionPayload): AuthUser {
     username: payload.user.username,
   };
 }
+
+const accessTeamDomain =
+  typeof import.meta !== "undefined" &&
+  import.meta.env?.VITE_ACCESS_TEAM_DOMAIN
+    ? import.meta.env.VITE_ACCESS_TEAM_DOMAIN
+    : "";
 
 export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -83,11 +90,28 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         configureFormatting(payload.preferences);
         setUser(mapSession(payload));
       },
+      loginWithAccess: () => {
+        if (accessTeamDomain === "") return;
+        const hostname = window.location.hostname;
+        window.location.href = `https://${accessTeamDomain}/cdn-cgi/access/login/${hostname}?redirect_uri=${encodeURIComponent(window.location.origin + "/dashboard")}`;
+      },
       logout: async () => {
-        await api<undefined>("/auth/logout", { method: "POST" });
-        setCsrfToken("");
-        configureFormatting(null);
-        setUser(null);
+        if (accessTeamDomain !== "") {
+          try {
+            await api<undefined>("/auth/logout", { method: "POST" });
+          } catch {
+            // ignore API errors during Access logout
+          }
+          setCsrfToken("");
+          configureFormatting(null);
+          setUser(null);
+          window.location.href = `https://${accessTeamDomain}/cdn-cgi/access/logout`;
+        } else {
+          await api<undefined>("/auth/logout", { method: "POST" });
+          setCsrfToken("");
+          configureFormatting(null);
+          setUser(null);
+        }
       },
       refresh,
     }),

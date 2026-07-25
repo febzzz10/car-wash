@@ -1,6 +1,9 @@
 interface Env {
+  ACCESS_AUD: string;
+  ACCESS_TEAM_DOMAIN: string;
   ALLOWED_ORIGINS: string;
   APP_ENV: string;
+  AUTH_MODE: string;
   BOOTSTRAP_TOKEN: string;
   CACHE: KVNamespace;
   CSRF_SECRET: string;

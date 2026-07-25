@@ -40,20 +40,34 @@ The setup follows Cloudflare's current [Wrangler configuration](https://develope
 
 The development resources belong to account `36c28c2516a8d4f17c0d010d6f12bf5f`. Local-to-development backup and migration commands, safety gates, exclusions, and rerun behavior are documented in `docs/cloudflare-migration.md`.
 
-## Cloudflare Workers Builds settings
+ ## Cloudflare Pages settings (web application)
 
-Configure the connected repository from the repository root with these exact values:
+Configure the connected web repository from the repository root with these exact values:
 
 | Setting | Value |
 | --- | --- |
 | Root directory | `/` |
-| Build command | `npm run build` |
-| Deploy command | `npm run deploy:api` |
+| Build command | `pnpm --filter @washpro/web build` |
+| Deploy command | `pnpm --dir apps/web exec wrangler deploy` |
+
+The build compiles TypeScript, runs Vite, and generates a Pages-compatible `dist/wrangler.json`. Wrangler then automatically discovers this configuration when run from `apps/web`. The deploy uploads static assets from `apps/web/dist` to the `washpro-web` Pages project.
+
+Do not use a root-level `npx wrangler deploy`; there is intentionally no root Wrangler configuration. The web and API deployments are independent.
+
+## Cloudflare Workers Builds settings (API Worker)
+
+Configure a separate API Worker connected build with these values:
+
+| Setting | Value |
+| --- | --- |
+| Root directory | `/` |
+| Build command | `pnpm --filter @washpro/api build` |
+| Deploy command | `npm run deploy --workspace=@washpro/api` |
 | Worker name | `car-wash` |
 
-`npm run deploy:api` dispatches to the existing `@washpro/api` workspace, where Wrangler automatically discovers `apps/api/wrangler.jsonc` and `src/index.ts`. Do not use a root-level `npx wrangler deploy`; there is intentionally no root Wrangler configuration.
+The `predeploy` lifecycle hook validates production bindings before every deployment. Do not use a root-level `npx wrangler deploy` because there is no root Wrangler configuration.
 
-The production Worker name remains `car-wash`. The named development environment uses `car-wash-remote-dev`, so it cannot accidentally replace the connected production Worker.
+The production Worker name remains `car-wash`. The API Worker is deployed separately and must not be overwritten by the web Pages deployment.
 
 ## Provision production resources
 

@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -b && vite build && node --input-type=module -e \"import{readFileSync,writeFileSync}from'fs';const p='dist/wrangler.json';const c=JSON.parse(readFileSync(p,'utf8'));c.services=[{binding:'API',service:'car-wash'}];writeFileSync(p,JSON.stringify(c));\"",
+    "build": "tsc -b && vite build",
     "dev": "vite",
     "deploy": "npm run build && wrangler deploy",
     "preview": "npm run build && wrangler dev",
-    "test": "vitest run",
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {

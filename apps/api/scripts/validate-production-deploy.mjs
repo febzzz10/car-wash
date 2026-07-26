@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { parseJsonc } from "../../../tools/cloudflare-migration/lib.mjs";
 
 const REQUIRED_SECRETS = [
+  "ADMIN_LOGIN_PASSWORD",
   "BOOTSTRAP_TOKEN",
   "CSRF_SECRET",
   "INVOICE_TOKEN_PEPPER",

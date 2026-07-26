@@ -31,11 +31,21 @@ const patchUserSchema = createUserSchema
     version: z.number().int().positive(),
   });
 const statusSchema = z.object({
-  reason: z.string().trim().min(5).max(500),
+  reason: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((v) => v || undefined),
   version: z.number().int().positive(),
 });
 const resetSchema = z.object({
-  reason: z.string().trim().min(5).max(500),
+  reason: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((v) => v || undefined),
   temporaryPassword: z.string().min(12).max(256),
 });
 
@@ -159,7 +169,11 @@ userRoutes.post("/", async (c) => {
         "RESOURCE_CONFLICT",
         "The username, email, or phone is already in use.",
       );
-    throw error;
+    throw new ApiError(
+      500,
+      "INTERNAL_ERROR",
+      "The request could not be completed.",
+    );
   }
   const created = await c.env.DB.prepare(
     "SELECT id, default_branch_id, full_name, username, email, phone, role, status, permissions_json, must_change_password, created_at, updated_at, version FROM users WHERE id = ?",
@@ -258,9 +272,9 @@ userRoutes.patch("/:id", async (c) => {
   return c.json({ data: updated, success: true });
 });
 
-for (const [path, status, action] of [
-  ["disable", "DISABLED", "USER_DISABLED"],
-  ["enable", "ACTIVE", "USER_ENABLED"],
+for (const [path, status, action, auditDescription] of [
+  ["disable", "DISABLED", "USER_DISABLED", "Staff account disabled by administrator"],
+  ["enable", "ACTIVE", "USER_ENABLED", "Staff account activated by administrator"],
 ] as const) {
   userRoutes.post(`/:id/${path}`, async (c) => {
     const parsed = statusSchema.safeParse(await c.req.json().catch(() => null));
@@ -268,12 +282,13 @@ for (const [path, status, action] of [
       throw new ApiError(
         422,
         "VALIDATION_ERROR",
-        "A reason and current version are required.",
+        "The account status could not be updated.",
       );
     const auth = c.get("auth");
     if (status === "DISABLED")
       await assertNotLastAdmin(c.env, auth.organizationId, c.req.param("id"));
     const now = new Date().toISOString();
+    const reason = parsed.data.reason;
     const result = await c.env.DB.prepare(
       "UPDATE users SET status = ?, disabled_at = ?, disabled_by_user_id = ?, disabled_reason = ?, updated_at = ?, version = version + 1 WHERE id = ? AND organization_id = ? AND version = ?",
     )
@@ -281,7 +296,7 @@ for (const [path, status, action] of [
         status,
         status === "DISABLED" ? now : null,
         status === "DISABLED" ? auth.userId : null,
-        status === "DISABLED" ? parsed.data.reason : null,
+        status === "DISABLED" ? (reason ?? null) : null,
         now,
         c.req.param("id"),
         auth.organizationId,
@@ -303,7 +318,7 @@ for (const [path, status, action] of [
     await auditStatement(c.env, {
       action,
       auth,
-      reason: parsed.data.reason,
+      reason: reason ?? auditDescription,
       recordId: c.req.param("id"),
       recordType: "USER",
       requestId: c.get("requestId"),
@@ -319,7 +334,7 @@ userRoutes.post("/:id/reset-password", async (c) => {
     throw new ApiError(
       422,
       "VALIDATION_ERROR",
-      "A temporary password and reason are required.",
+      "A temporary password is required.",
     );
   const policyError = passwordPolicyError(parsed.data.temporaryPassword);
   if (policyError !== null)
@@ -345,7 +360,7 @@ userRoutes.post("/:id/reset-password", async (c) => {
   await auditStatement(c.env, {
     action: "PASSWORD_RESET",
     auth,
-    reason: parsed.data.reason,
+    reason: parsed.data.reason ?? "Staff password reset by administrator",
     recordId: c.req.param("id"),
     recordType: "USER",
     requestId: c.get("requestId"),

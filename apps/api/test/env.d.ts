@@ -1,7 +1,10 @@
 declare namespace Cloudflare {
   interface Env {
+    ADMIN_LOGIN_EMAIL: string;
+    ADMIN_LOGIN_PASSWORD: string;
     ALLOWED_ORIGINS: string;
     APP_ENV: string;
+    AUTH_MODE: string;
     BOOTSTRAP_TOKEN: string;
     CACHE: KVNamespace;
     CSRF_SECRET: string;

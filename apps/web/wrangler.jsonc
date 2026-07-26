@@ -9,8 +9,7 @@
     "enabled": true
   },
   "assets": {
-    "directory": "dist",
-    "not_found_handling": "single-page-application"
+    "directory": "dist/client"
   },
   "compatibility_flags": [
     "nodejs_compat"

@@ -94,6 +94,11 @@ app.notFound((c) =>
 app.get("/health", (c) =>
   c.json({ data: { service: "washpro-api", status: "ok", deploy: "v2" }, success: true }),
 );
+
+// Mount health at /api prefix too so the web Worker proxy (/api/*) can reach it
+app.get("/api/health", (c) =>
+  c.json({ data: { service: "washpro-api", status: "ok", deploy: "v2" }, success: true }),
+);
 app.route("/invoice", publicInvoiceRoutes);
 app.route("/api/v1/auth", publicAuthRoutes);
 app.route("/api/v1/bootstrap", bootstrapRoutes);

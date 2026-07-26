@@ -24,7 +24,10 @@ test("root deployment dispatches through the API npm workspace", () => {
     rootPackage.scripts["deploy:api"],
     "npm run deploy --workspace=@washpro/api",
   );
-  assert.equal(apiPackage.scripts.deploy, 'wrangler deploy --env=""');
+  assert.equal(
+    apiPackage.scripts.deploy,
+    'node scripts/validate-production-deploy.mjs && wrangler deploy --config wrangler.jsonc --env=""',
+  );
   assert.equal(
     apiPackage.scripts.build,
     'wrangler deploy --dry-run --env="" --outdir dist',
@@ -51,7 +54,14 @@ test("top-level config uses production Cloudflare resources", () => {
   );
 
   assert.equal(parsedWrangler.config.vars.APP_ENV, "production");
-  assert.equal(parsedWrangler.config.vars.ALLOWED_ORIGINS, "https://bab9bd69.washpro-web.pages.dev");
+  assert.ok(
+    parsedWrangler.config.vars.ALLOWED_ORIGINS.includes("https://bab9bd69.washpro-web.pages.dev"),
+    "ALLOWED_ORIGINS must contain the Pages origin",
+  );
+  assert.ok(
+    parsedWrangler.config.vars.ALLOWED_ORIGINS.includes("https://washpro-web.xpersscarwash.workers.dev"),
+    "ALLOWED_ORIGINS must contain the web Worker origin",
+  );
 
   assert.deepEqual(
     parsedWrangler.config.d1_databases?.map(({ binding, database_name, database_id }) => ({
@@ -88,9 +98,16 @@ test("top-level config uses production Cloudflare resources", () => {
 
 
 
-test("deployment and dev scripts use explicit empty env flags", () => {
+test("deployment and dev scripts use explicit config and empty env flags", () => {
   assert.equal(apiPackage.scripts.dev, 'wrangler dev --env=""');
-  assert.equal(apiPackage.scripts.deploy, 'wrangler deploy --env=""');
+  assert.ok(
+    apiPackage.scripts.deploy.includes('wrangler deploy --config wrangler.jsonc --env=""'),
+    "API deploy must use explicit --config wrangler.jsonc",
+  );
+  assert.ok(
+    apiPackage.scripts.deploy.includes("validate-production-deploy.mjs"),
+    "API deploy must run production preflight",
+  );
   assert.equal(
     apiPackage.scripts["db:migrate"],
     "wrangler d1 migrations apply washpro-dev --remote",
@@ -137,13 +154,15 @@ test("root-level dev:api:local and migrate:local scripts are removed", () => {
   assert.equal(rootPackage.scripts["setup:local"], undefined);
 });
 
-test("Pages Function proxy exists at functions/api/[[path]].ts", () => {
-  const functionPath = fileURLToPath(
-    new URL("../apps/web/functions/api/[[path]].ts", import.meta.url),
+test("web Worker proxies /api/* and /invoice/* to car-wash service binding", () => {
+  const workerPath = fileURLToPath(
+    new URL("../apps/web/src/worker.ts", import.meta.url),
   );
-  assert.equal(existsSync(functionPath), true);
-  const content = readFileSync(functionPath, "utf8");
+  assert.equal(existsSync(workerPath), true);
+  const content = readFileSync(workerPath, "utf8");
+  assert.match(content, /url\.pathname\.startsWith\("\/api\/"\)/);
   assert.match(content, /env\.API\.fetch/);
+  assert.match(content, /url\.pathname\.startsWith\("\/invoice\/"\)/);
 });
 
 test("Pages wrangler.jsonc has API service binding", () => {
@@ -167,6 +186,54 @@ test("assertAllowedOrigin accepts missing Origin header", () => {
     source,
     /if \(origin === undefined\) return/,
     "should early-return when Origin is undefined",
+  );
+});
+
+test("web wrangler.jsonc uses washpro-web name and targets car-wash binding", () => {
+  const webWranglerPath = fileURLToPath(
+    new URL("../apps/web/wrangler.jsonc", import.meta.url),
+  );
+  const config = parseJsonc(readFileSync(webWranglerPath, "utf8"));
+  assert.equal(config.name, "washpro-web", "Web Worker name must be washpro-web");
+  const apiBinding = config.services?.find(
+    (s) => s.binding === "API" && s.service === "car-wash",
+  );
+  assert.ok(apiBinding, "API -> car-wash service binding must exist");
+});
+
+test("web deploy validation script exists and rejects wrong names", () => {
+  const validatorPath = new URL("../apps/web/scripts/validate-web-deploy.mjs", import.meta.url);
+  assert.equal(existsSync(validatorPath), true);
+});
+
+test("web deploy validation script rejects wrong worker name", () => {
+  const webPackage = JSON.parse(
+    readFileSync(new URL("../apps/web/package.json", import.meta.url), "utf8"),
+  );
+  assert.ok(
+    webPackage.scripts.deploy.includes("validate-web-deploy.mjs"),
+    "web deploy must run validation",
+  );
+});
+
+test("web deploy script includes validation before wrangler", () => {
+  const webPackage = JSON.parse(
+    readFileSync(new URL("../apps/web/package.json", import.meta.url), "utf8"),
+  );
+  assert.ok(
+    webPackage.scripts.deploy.includes("validate-web-deploy.mjs"),
+    "web deploy must run web preflight",
+  );
+});
+
+test("root deploy:web builds before deploying", () => {
+  assert.ok(
+    rootPackage.scripts["deploy:web"].includes("--filter @washpro/web build"),
+    "root deploy:web must build the web app first",
+  );
+  assert.ok(
+    rootPackage.scripts["deploy:web"].includes("validate-web-deploy.mjs"),
+    "root deploy:web must validate before deploying",
   );
 });
 

@@ -226,6 +226,7 @@ async function createWashProSession(
 export const publicAuthRoutes = new Hono<AppBindings>();
 
 publicAuthRoutes.post("/login", async (c) => {
+  try {
   assertAllowedOrigin(c);
 
   const body = await c.req.json().catch(() => null);
@@ -242,6 +243,11 @@ publicAuthRoutes.post("/login", async (c) => {
   }
 
   return await handlePbkdf2Login(c, body);
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new ApiError(500, "INTERNAL_ERROR", "Login error: " + msg);
+  }
 });
 
 // ── Static admin login ──

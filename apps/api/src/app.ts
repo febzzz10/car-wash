@@ -92,7 +92,7 @@ app.notFound((c) =>
 );
 
 app.get("/health", (c) =>
-  c.json({ data: { service: "washpro-api", status: "ok" }, success: true }),
+  c.json({ data: { service: "washpro-api", status: "ok", deploy: "v2" }, success: true }),
 );
 app.route("/invoice", publicInvoiceRoutes);
 app.route("/api/v1/auth", publicAuthRoutes);

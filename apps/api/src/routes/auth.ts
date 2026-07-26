@@ -1,5 +1,6 @@
 import { loginRequestSchema } from "@washpro/contracts";
 import { normalizeEmail, normalizePhone } from "@washpro/domain";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 
@@ -73,9 +74,12 @@ async function constantTimeDigestEqual(
 ): Promise<boolean> {
   const aBytes = encoder.encode(a);
   const bBytes = encoder.encode(b);
-  const aHash = await globalThis.crypto.subtle.digest("SHA-256", aBytes);
-  const bHash = await globalThis.crypto.subtle.digest("SHA-256", bBytes);
-  return globalThis.crypto.subtle.timingSafeEqual(aHash, bHash);
+  const crypto = globalThis.crypto.subtle as SubtleCrypto & {
+    timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean;
+  };
+  const aHash = await crypto.digest("SHA-256", aBytes);
+  const bHash = await crypto.digest("SHA-256", bBytes);
+  return crypto.timingSafeEqual(aHash, bHash);
 }
 
 function isStaticAdminMode(env: Env): boolean {
@@ -136,7 +140,7 @@ async function incrementLoginRateLimit(env: Env, key: string): Promise<void> {
 }
 
 async function createWashProSession(
-  c: ReturnType<Parameters<typeof setCookie>[0]>,
+  c: Context<AppBindings>,
   user: UserRow,
   parsedIdentifier: string,
   ipAddress: string | null,
@@ -253,7 +257,7 @@ publicAuthRoutes.post("/login", async (c) => {
 // ── Static admin login ──
 
 async function handleStaticAdminLogin(
-  c: ReturnType<Parameters<typeof setCookie>[0]>,
+  c: Context<AppBindings>,
   body: Record<string, unknown>,
 ) {
   try {
@@ -314,7 +318,7 @@ async function handleStaticAdminLogin(
     LIMIT 1`,
   )
     .bind(expectedEmail)
-    .first<UserRow>();
+    .first() as UserRow | null;
 
   if (user === null) {
     throw new ApiError(
@@ -365,7 +369,7 @@ async function handleStaticAdminLogin(
 // ── PBKDF2 password login (local development) ──
 
 async function handlePbkdf2Login(
-  c: ReturnType<Parameters<typeof setCookie>[0]>,
+  c: Context<AppBindings>,
   body: Record<string, unknown>,
 ) {
   const parsed = loginRequestSchema.safeParse(body);
@@ -399,7 +403,7 @@ async function handlePbkdf2Login(
       identifier.phone,
       identifier.phone,
     )
-    .first<UserRow>();
+    .first() as UserRow | null;
 
   const validPassword = await verifyPassword(
     parsed.data.password,

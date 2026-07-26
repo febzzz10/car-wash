@@ -69,7 +69,7 @@ describe("settings and scheduled retention", () => {
     await env.DB.prepare(
       "INSERT INTO login_attempts (id, organization_id, attempted_identifier, success, attempted_at) VALUES ('old-login-attempt', 'org-settings', 'old-user', 0, '2026-07-20T00:00:00.000Z')",
     ).run();
-    await runScheduledMaintenance(env, new Date(now));
+    await runScheduledMaintenance(env as unknown as Env, new Date(now));
     expect(
       await env.DB.prepare(
         "SELECT COUNT(*) AS count FROM login_attempts WHERE id = 'old-login-attempt'",

@@ -31,11 +31,10 @@ const patchUserSchema = createUserSchema
     version: z.number().int().positive(),
   });
 const statusSchema = z.object({
-  reason: z.string().trim().min(5).max(500),
+  reason: z.string().trim().min(1).max(500).optional(),
   version: z.number().int().positive(),
 });
 const resetSchema = z.object({
-  reason: z.string().trim().min(5).max(500),
   temporaryPassword: z.string().min(12).max(256),
 });
 
@@ -268,9 +267,14 @@ for (const [path, status, action] of [
       throw new ApiError(
         422,
         "VALIDATION_ERROR",
-        "A reason and current version are required.",
+        "A valid version number is required.",
       );
     const auth = c.get("auth");
+    const reason =
+      parsed.data.reason ||
+      (status === "DISABLED"
+        ? "Account disabled by administrator"
+        : "Account enabled by administrator");
     if (status === "DISABLED")
       await assertNotLastAdmin(c.env, auth.organizationId, c.req.param("id"));
     const now = new Date().toISOString();
@@ -281,7 +285,7 @@ for (const [path, status, action] of [
         status,
         status === "DISABLED" ? now : null,
         status === "DISABLED" ? auth.userId : null,
-        status === "DISABLED" ? parsed.data.reason : null,
+        status === "DISABLED" ? reason : null,
         now,
         c.req.param("id"),
         auth.organizationId,
@@ -303,7 +307,7 @@ for (const [path, status, action] of [
     await auditStatement(c.env, {
       action,
       auth,
-      reason: parsed.data.reason,
+      reason,
       recordId: c.req.param("id"),
       recordType: "USER",
       requestId: c.get("requestId"),
@@ -319,7 +323,7 @@ userRoutes.post("/:id/reset-password", async (c) => {
     throw new ApiError(
       422,
       "VALIDATION_ERROR",
-      "A temporary password and reason are required.",
+      "A temporary password is required.",
     );
   const policyError = passwordPolicyError(parsed.data.temporaryPassword);
   if (policyError !== null)
@@ -345,7 +349,7 @@ userRoutes.post("/:id/reset-password", async (c) => {
   await auditStatement(c.env, {
     action: "PASSWORD_RESET",
     auth,
-    reason: parsed.data.reason,
+    reason: "Password changed by administrator",
     recordId: c.req.param("id"),
     recordType: "USER",
     requestId: c.get("requestId"),

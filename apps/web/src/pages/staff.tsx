@@ -1,6 +1,8 @@
 import {
   Activity,
   Edit3,
+  Eye,
+  EyeOff,
   KeyRound,
   Plus,
   Power,
@@ -38,23 +40,30 @@ interface StaffRecord {
   readonly username: string;
   readonly version: number;
 }
+
+type ActionTarget =
+  | { readonly kind: "status"; readonly user: StaffRecord }
+  | { readonly kind: "revoke"; readonly user: StaffRecord }
+  | { readonly kind: "reset"; readonly user: StaffRecord };
+
 export default function StaffPage() {
   const state = useApiData<readonly StaffRecord[]>("/users");
   const [editing, setEditing] = useState<StaffRecord | null | undefined>(
     undefined,
   );
   const [activity, setActivity] = useState<StaffRecord | null>(null);
+  const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
   const toast = useToast();
-  async function status(user: StaffRecord) {
+
+  async function executeStatus(user: StaffRecord) {
     const action = user.status === "ACTIVE" ? "disable" : "enable";
-    const reason = window.prompt(`Reason to ${action} ${user.full_name}:`);
-    if (reason === null || reason.trim().length < 5) return;
     try {
       await api(`/users/${user.id}/${action}`, {
-        ...jsonBody({ reason, version: user.version }),
+        ...jsonBody({ version: user.version }),
         method: "POST",
       });
       toast.success(`Account ${action}d and active sessions updated.`);
+      setActionTarget(null);
       state.reload();
     } catch (failure) {
       toast.error(
@@ -62,34 +71,14 @@ export default function StaffPage() {
       );
     }
   }
-  async function reset(user: StaffRecord) {
-    const temporaryPassword = window.prompt(
-      `Enter a temporary password for ${user.full_name} (12+ characters):`,
-    );
-    if (temporaryPassword === null) return;
-    const reason = window.prompt("Reset reason:");
-    if (reason === null) return;
-    try {
-      await api(`/users/${user.id}/reset-password`, {
-        ...jsonBody({ reason, temporaryPassword }),
-        method: "POST",
-      });
-      toast.success("Temporary password set; active sessions revoked.");
-    } catch (failure) {
-      toast.error(failure instanceof Error ? failure.message : "Reset failed.");
-    }
-  }
-  async function revoke(user: StaffRecord) {
-    const reason = window.prompt(
-      `Reason to revoke all sessions for ${user.full_name}:`,
-    );
-    if (reason === null || reason.trim().length < 5) return;
+
+  async function executeRevoke(user: StaffRecord) {
     try {
       await api(`/users/${user.id}/revoke-sessions`, {
-        ...jsonBody({ reason }),
         method: "POST",
       });
       toast.success("Active sessions revoked.");
+      setActionTarget(null);
     } catch (failure) {
       toast.error(
         failure instanceof Error
@@ -98,6 +87,32 @@ export default function StaffPage() {
       );
     }
   }
+
+  async function executeReset(
+    user: StaffRecord,
+    password: string,
+    confirmPassword: string,
+  ) {
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+    if (password.length < 12) {
+      toast.error("Password must be at least 12 characters.");
+      return;
+    }
+    try {
+      await api(`/users/${user.id}/reset-password`, {
+        ...jsonBody({ temporaryPassword: password }),
+        method: "POST",
+      });
+      toast.success("Temporary password set; active sessions revoked.");
+      setActionTarget(null);
+    } catch (failure) {
+      toast.error(failure instanceof Error ? failure.message : "Reset failed.");
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -174,21 +189,27 @@ export default function StaffPage() {
                           </Button>
                           <Button
                             aria-label="Reset password"
-                            onClick={() => void reset(user)}
+                            onClick={() =>
+                              setActionTarget({ kind: "reset", user })
+                            }
                             tone="quiet"
                           >
                             <KeyRound size={17} />
                           </Button>
                           <Button
                             aria-label="Revoke sessions"
-                            onClick={() => void revoke(user)}
+                            onClick={() =>
+                              setActionTarget({ kind: "revoke", user })
+                            }
                             tone="quiet"
                           >
                             <RefreshCw size={17} />
                           </Button>
                           <Button
                             aria-label={`${user.status === "ACTIVE" ? "Disable" : "Enable"} account`}
-                            onClick={() => void status(user)}
+                            onClick={() =>
+                              setActionTarget({ kind: "status", user })
+                            }
                             tone="quiet"
                           >
                             <Power size={17} />
@@ -214,9 +235,237 @@ export default function StaffPage() {
         user={editing ?? null}
       />
       <StaffActivity onClose={() => setActivity(null)} user={activity} />
+      <StatusConfirmDialog
+        onCancel={() => setActionTarget(null)}
+        onConfirm={() => {
+          const target = actionTarget as { kind: "status"; user: StaffRecord };
+          void executeStatus(target.user);
+        }}
+        user={actionTarget?.kind === "status" ? actionTarget.user : null}
+      />
+      <RevokeConfirmDialog
+        onCancel={() => setActionTarget(null)}
+        onConfirm={() => {
+          const target = actionTarget as { kind: "revoke"; user: StaffRecord };
+          void executeRevoke(target.user);
+        }}
+        user={actionTarget?.kind === "revoke" ? actionTarget.user : null}
+      />
+      <PasswordResetDialog
+        onCancel={() => setActionTarget(null)}
+        onReset={async (password, confirmPassword) => {
+          const target = actionTarget as { kind: "reset"; user: StaffRecord };
+          await executeReset(target.user, password, confirmPassword);
+        }}
+        user={actionTarget?.kind === "reset" ? actionTarget.user : null}
+      />
     </>
   );
 }
+
+function StatusConfirmDialog({
+  onCancel,
+  onConfirm,
+  user,
+}: {
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+  readonly user: StaffRecord | null;
+}) {
+  const [busy, setBusy] = useState(false);
+  if (user === null) return null;
+  const action = user.status === "ACTIVE" ? "disable" : "enable";
+  const label = action === "disable" ? "Disable" : "Enable";
+
+  return (
+    <Dialog
+      onClose={onCancel}
+      open
+      title={`${label} ${user.full_name}'s account?`}
+    >
+      <p className="dialog-message">
+        {action === "disable"
+          ? "The user will be signed out and cannot sign in again until re-enabled."
+          : "The user will be able to sign in again."}
+      </p>
+      <div className="dialog-actions">
+        <Button onClick={onCancel} tone="secondary" type="button">
+          Cancel
+        </Button>
+        <Button
+          busy={busy}
+          onClick={async () => {
+            setBusy(true);
+            await onConfirm();
+            setBusy(false);
+          }}
+          type="button"
+        >
+          <Power size={17} />
+          {label} account
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
+function RevokeConfirmDialog({
+  onCancel,
+  onConfirm,
+  user,
+}: {
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+  readonly user: StaffRecord | null;
+}) {
+  const [busy, setBusy] = useState(false);
+  if (user === null) return null;
+
+  return (
+    <Dialog
+      onClose={onCancel}
+      open
+      title={`Revoke all active sessions for ${user.full_name}?`}
+    >
+      <p className="dialog-message">
+        The user will be signed out from every device immediately.
+      </p>
+      <div className="dialog-actions">
+        <Button onClick={onCancel} tone="secondary" type="button">
+          Cancel
+        </Button>
+        <Button
+          busy={busy}
+          onClick={async () => {
+            setBusy(true);
+            await onConfirm();
+            setBusy(false);
+          }}
+          type="button"
+        >
+          <RefreshCw size={17} />
+          Revoke sessions
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
+function PasswordResetDialog({
+  onCancel,
+  onReset,
+  user,
+}: {
+  readonly onCancel: () => void;
+  readonly onReset: (password: string, confirmPassword: string) => Promise<void>;
+  readonly user: StaffRecord | null;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (user === null) return null;
+
+  return (
+    <Dialog
+      onClose={() => {
+        setPassword("");
+        setConfirmPassword("");
+        onCancel();
+      }}
+      open
+      title={`Reset password for ${user.full_name}`}
+    >
+      <form
+        className="dialog-form"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setError(null);
+          if (password.length < 12) {
+            setError("Password must be at least 12 characters.");
+            return;
+          }
+          if (password !== confirmPassword) {
+            setError("Passwords do not match.");
+            return;
+          }
+          setBusy(true);
+          await onReset(password, confirmPassword);
+          setBusy(false);
+          setPassword("");
+          setConfirmPassword("");
+        }}
+      >
+        {error === null ? null : <div className="form-alert">{error}</div>}
+        <label>
+          <span>New temporary password</span>
+          <div className="input-with-icon">
+            <input
+              autoComplete="new-password"
+              disabled={busy}
+              minLength={12}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type={showPassword ? "text" : "password"}
+              value={password}
+            />
+            <button
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="icon-button"
+              onClick={() => setShowPassword((v) => !v)}
+              type="button"
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </label>
+        <label>
+          <span>Confirm temporary password</span>
+          <div className="input-with-icon">
+            <input
+              autoComplete="new-password"
+              disabled={busy}
+              minLength={12}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              required
+              type={showConfirm ? "text" : "password"}
+              value={confirmPassword}
+            />
+            <button
+              aria-label={showConfirm ? "Hide password" : "Show password"}
+              className="icon-button"
+              onClick={() => setShowConfirm((v) => !v)}
+              type="button"
+            >
+              {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </label>
+        <div className="dialog-actions">
+          <Button
+            onClick={() => {
+              setPassword("");
+              setConfirmPassword("");
+              onCancel();
+            }}
+            tone="secondary"
+            type="button"
+          >
+            Cancel
+          </Button>
+          <Button busy={busy} type="submit">
+            <KeyRound size={17} />
+            Reset password
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
 function StaffDialog({
   onClose,
   onDone,

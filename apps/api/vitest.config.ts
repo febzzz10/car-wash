@@ -10,6 +10,8 @@ export default defineConfig({
       miniflare: {
         bindings: {
           ALLOWED_ORIGINS: "https://washpro.test",
+          APP_ENV: "test",
+          AUTH_MODE: "static_admin",
           BOOTSTRAP_TOKEN:
             "test-bootstrap-token-must-be-at-least-32-characters",
           CSRF_SECRET: "test-csrf-secret-not-for-production",

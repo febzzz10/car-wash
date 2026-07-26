@@ -1,13 +1,12 @@
 import { loginRequestSchema } from "@washpro/contracts";
 import { normalizeEmail, normalizePhone } from "@washpro/domain";
 import { Hono } from "hono";
-import type { Context } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 
 import { ApiError } from "../http/errors";
 import { assertAllowedOrigin, clientIp } from "../http/request";
 import { sessionCookieName } from "../middleware/auth";
-import { randomToken, timingSafeEqual } from "../security/encoding";
+import { randomToken } from "../security/encoding";
 import {
   hashPassword,
   passwordPolicyError,
@@ -66,16 +65,17 @@ function normalizeIdentifier(value: string): {
   };
 }
 
+const encoder = new TextEncoder();
+
 async function constantTimeDigestEqual(
   a: string,
   b: string,
 ): Promise<boolean> {
-  const encoder = new TextEncoder();
   const aBytes = encoder.encode(a);
   const bBytes = encoder.encode(b);
   const aHash = await globalThis.crypto.subtle.digest("SHA-256", aBytes);
   const bHash = await globalThis.crypto.subtle.digest("SHA-256", bBytes);
-  return timingSafeEqual(new Uint8Array(aHash), new Uint8Array(bHash));
+  return globalThis.crypto.subtle.timingSafeEqual(aHash, bHash);
 }
 
 function isStaticAdminMode(env: Env): boolean {
@@ -136,7 +136,7 @@ async function incrementLoginRateLimit(env: Env, key: string): Promise<void> {
 }
 
 async function createWashProSession(
-  c: Context<AppBindings>,
+  c: ReturnType<Parameters<typeof setCookie>[0]>,
   user: UserRow,
   parsedIdentifier: string,
   ipAddress: string | null,
@@ -253,7 +253,7 @@ publicAuthRoutes.post("/login", async (c) => {
 // ── Static admin login ──
 
 async function handleStaticAdminLogin(
-  c: Context<AppBindings>,
+  c: ReturnType<Parameters<typeof setCookie>[0]>,
   body: Record<string, unknown>,
 ) {
   try {
@@ -365,7 +365,7 @@ async function handleStaticAdminLogin(
 // ── PBKDF2 password login (local development) ──
 
 async function handlePbkdf2Login(
-  c: Context<AppBindings>,
+  c: ReturnType<Parameters<typeof setCookie>[0]>,
   body: Record<string, unknown>,
 ) {
   const parsed = loginRequestSchema.safeParse(body);

@@ -9,17 +9,12 @@ export default defineConfig({
     cloudflareTest(async () => ({
       miniflare: {
         bindings: {
-          ADMIN_LOGIN_EMAIL: "admin@example.test",
-          ADMIN_LOGIN_PASSWORD: "test-admin-password-WashPro!234",
           ALLOWED_ORIGINS: "https://washpro.test",
-          APP_ENV: "test",
-          AUTH_MODE: "static_admin",
           BOOTSTRAP_TOKEN:
             "test-bootstrap-token-must-be-at-least-32-characters",
           CSRF_SECRET: "test-csrf-secret-not-for-production",
           INVOICE_TOKEN_PEPPER: "test-invoice-pepper-not-for-production",
           SESSION_PEPPER: "test-session-pepper-not-for-production",
-          SESSION_TTL_SECONDS: "28800",
           TEST_MIGRATIONS: await readD1Migrations(
             decodeURIComponent(
               new URL("./migrations", import.meta.url).pathname,

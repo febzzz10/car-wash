@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "wrangler deploy --dry-run --env=\"\" --outdir dist",
-    "deploy": "node scripts/validate-production-deploy.mjs && wrangler deploy --config wrangler.jsonc --env=\"\"",
+    "deploy": "wrangler deploy --env=\"\"",
     "dev": "wrangler dev --env=\"\"",
     "predeploy": "node scripts/validate-production-deploy.mjs",
     "db:migrate": "wrangler d1 migrations apply washpro-dev --remote",

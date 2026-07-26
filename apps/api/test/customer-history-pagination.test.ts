@@ -125,8 +125,8 @@ describe("customer history pagination", () => {
     expect(body1.data.jobs).toHaveLength(10);
     expect(body1.data.hasMore).toBe(true);
     expect(body1.data.nextCursor).toBeTruthy();
-    expect(body1.data.jobs[0]?.id).toBe("job-ch-pg-27");
-    expect(body1.data.jobs[9]?.id).toBe("job-ch-pg-18");
+    expect(body1.data.jobs[0].id).toBe("job-ch-pg-27");
+    expect(body1.data.jobs[9].id).toBe("job-ch-pg-18");
 
     const page2 = await app.request(
       `/api/v1/customers/customer-ch/wash-jobs?cursor=${encodeURIComponent(body1.data.nextCursor)}&limit=10`,
@@ -139,14 +139,11 @@ describe("customer history pagination", () => {
     }>();
     expect(body2.data.jobs).toHaveLength(10);
     expect(body2.data.hasMore).toBe(true);
-    expect(body2.data.nextCursor).toBeTruthy();
-    expect(body2.data.jobs[0]?.id).toBe("job-ch-pg-17");
-    expect(body2.data.jobs[9]?.id).toBe("job-ch-pg-08");
+    expect(body2.data.jobs[0].id).toBe("job-ch-pg-17");
+    expect(body2.data.jobs[9].id).toBe("job-ch-pg-08");
 
-    const cursor2 = body2.data.nextCursor;
-    if (cursor2 === null) throw new Error("Expected nextCursor for page 2");
     const page3 = await app.request(
-      `/api/v1/customers/customer-ch/wash-jobs?cursor=${encodeURIComponent(cursor2)}&limit=10`,
+      `/api/v1/customers/customer-ch/wash-jobs?cursor=${encodeURIComponent(body2.data.nextCursor)}&limit=10`,
       { headers },
       env,
     );
@@ -157,8 +154,8 @@ describe("customer history pagination", () => {
     expect(body3.data.jobs).toHaveLength(7);
     expect(body3.data.hasMore).toBe(false);
     expect(body3.data.nextCursor).toBeNull();
-    expect(body3.data.jobs[0]?.id).toBe("job-ch-pg-07");
-    expect(body3.data.jobs[6]?.id).toBe("job-ch-01");
+    expect(body3.data.jobs[0].id).toBe("job-ch-pg-07");
+    expect(body3.data.jobs[6].id).toBe("job-ch-01");
 
     // --- equal timestamps ---
     await env.DB.batch([
@@ -179,9 +176,9 @@ describe("customer history pagination", () => {
       (j: { id: string }) => j.id.startsWith("job-ch-tie-"),
     );
     expect(tieJobs).toHaveLength(3);
-    expect(tieJobs[0]?.id).toBe("job-ch-tie-c");
-    expect(tieJobs[1]?.id).toBe("job-ch-tie-b");
-    expect(tieJobs[2]?.id).toBe("job-ch-tie-a");
+    expect(tieJobs[0].id).toBe("job-ch-tie-c");
+    expect(tieJobs[1].id).toBe("job-ch-tie-b");
+    expect(tieJobs[2].id).toBe("job-ch-tie-a");
 
     // --- scope: other customer's job not returned ---
     await env.DB.batch([

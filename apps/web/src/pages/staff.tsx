@@ -38,22 +38,47 @@ interface StaffRecord {
   readonly username: string;
   readonly version: number;
 }
-
-interface ConfirmAction {
-  user: StaffRecord;
-  action: "disable" | "enable";
-}
-
 export default function StaffPage() {
   const state = useApiData<readonly StaffRecord[]>("/users");
   const [editing, setEditing] = useState<StaffRecord | null | undefined>(
     undefined,
   );
   const [activity, setActivity] = useState<StaffRecord | null>(null);
-  const [confirm, setConfirm] = useState<ConfirmAction | null>(null);
-  const [resetUser, setResetUser] = useState<StaffRecord | null>(null);
   const toast = useToast();
-
+  async function status(user: StaffRecord) {
+    const action = user.status === "ACTIVE" ? "disable" : "enable";
+    const reason = window.prompt(`Reason to ${action} ${user.full_name}:`);
+    if (reason === null || reason.trim().length < 5) return;
+    try {
+      await api(`/users/${user.id}/${action}`, {
+        ...jsonBody({ reason, version: user.version }),
+        method: "POST",
+      });
+      toast.success(`Account ${action}d and active sessions updated.`);
+      state.reload();
+    } catch (failure) {
+      toast.error(
+        failure instanceof Error ? failure.message : "Account update failed.",
+      );
+    }
+  }
+  async function reset(user: StaffRecord) {
+    const temporaryPassword = window.prompt(
+      `Enter a temporary password for ${user.full_name} (12+ characters):`,
+    );
+    if (temporaryPassword === null) return;
+    const reason = window.prompt("Reset reason:");
+    if (reason === null) return;
+    try {
+      await api(`/users/${user.id}/reset-password`, {
+        ...jsonBody({ reason, temporaryPassword }),
+        method: "POST",
+      });
+      toast.success("Temporary password set; active sessions revoked.");
+    } catch (failure) {
+      toast.error(failure instanceof Error ? failure.message : "Reset failed.");
+    }
+  }
   async function revoke(user: StaffRecord) {
     const reason = window.prompt(
       `Reason to revoke all sessions for ${user.full_name}:`,
@@ -149,7 +174,7 @@ export default function StaffPage() {
                           </Button>
                           <Button
                             aria-label="Reset password"
-                            onClick={() => setResetUser(user)}
+                            onClick={() => void reset(user)}
                             tone="quiet"
                           >
                             <KeyRound size={17} />
@@ -163,12 +188,7 @@ export default function StaffPage() {
                           </Button>
                           <Button
                             aria-label={`${user.status === "ACTIVE" ? "Disable" : "Enable"} account`}
-                            onClick={() =>
-                              setConfirm({
-                                user,
-                                action: user.status === "ACTIVE" ? "disable" : "enable",
-                              })
-                            }
+                            onClick={() => void status(user)}
                             tone="quiet"
                           >
                             <Power size={17} />
@@ -194,205 +214,9 @@ export default function StaffPage() {
         user={editing ?? null}
       />
       <StaffActivity onClose={() => setActivity(null)} user={activity} />
-      <ConfirmActionDialog
-        confirm={confirm}
-        onClose={() => setConfirm(null)}
-        onDone={() => {
-          setConfirm(null);
-          state.reload();
-        }}
-      />
-      <ResetPasswordDialog
-        onClose={() => setResetUser(null)}
-        onDone={() => {
-          setResetUser(null);
-          state.reload();
-        }}
-        user={resetUser}
-      />
     </>
   );
 }
-function ConfirmActionDialog({
-  confirm,
-  onClose,
-  onDone,
-}: {
-  readonly confirm: ConfirmAction | null;
-  readonly onClose: () => void;
-  readonly onDone: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const toast = useToast();
-  const action = confirm?.action ?? "disable";
-  const title =
-    action === "disable" ? "Disable staff account?" : "Activate staff account?";
-  const message =
-    action === "disable"
-      ? "This staff member will no longer be able to sign in."
-      : "This staff member will be reactivated.";
-  const label = action === "disable" ? "Disable" : "Activate";
-  async function handleConfirm() {
-    if (confirm === null) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api(`/users/${confirm.user.id}/${action}`, {
-        ...jsonBody({ version: confirm.user.version }),
-        method: "POST",
-      });
-      toast.success(
-        action === "disable"
-          ? "Staff account disabled successfully."
-          : "Staff account activated successfully.",
-      );
-      onDone();
-    } catch (failure) {
-      setError(
-        failure instanceof Error ? failure.message : "Account update failed.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Dialog onClose={onClose} open={confirm !== null} title={title}>
-      <div className="dialog-form">
-        {error === null ? null : <div className="form-alert">{error}</div>}
-        <p>{message}</p>
-        <div className="dialog-actions">
-          <Button onClick={onClose} tone="secondary" type="button">
-            Cancel
-          </Button>
-          <Button busy={busy} onClick={() => void handleConfirm()} tone="danger">
-            {label}
-          </Button>
-        </div>
-      </div>
-    </Dialog>
-  );
-}
-
-function ResetPasswordDialog({
-  onClose,
-  onDone,
-  user,
-}: {
-  readonly onClose: () => void;
-  readonly onDone: () => void;
-  readonly user: StaffRecord | null;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const toast = useToast();
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [validationError, setValidationError] = useState<string | null>(null);
-  function validate(): boolean {
-    if (password.length < 12) {
-      setValidationError("Password must be at least 12 characters.");
-      return false;
-    }
-    if (!/[A-Z]/u.test(password)) {
-      setValidationError("Password must contain an uppercase letter.");
-      return false;
-    }
-    if (!/[a-z]/u.test(password)) {
-      setValidationError("Password must contain a lowercase letter.");
-      return false;
-    }
-    if (!/[0-9]/u.test(password)) {
-      setValidationError("Password must contain a digit.");
-      return false;
-    }
-    if (!/[^A-Za-z0-9]/u.test(password)) {
-      setValidationError("Password must contain a symbol.");
-      return false;
-    }
-    if (password !== confirmPassword) {
-      setValidationError("Passwords do not match.");
-      return false;
-    }
-    return true;
-  }
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setValidationError(null);
-    if (!validate()) return;
-    if (user === null) return;
-    setBusy(true);
-    try {
-      await api(`/users/${user.id}/reset-password`, {
-        ...jsonBody({ temporaryPassword: password }),
-        method: "POST",
-      });
-      toast.success("Password updated successfully.");
-      onDone();
-    } catch (failure) {
-      setError(
-        failure instanceof Error ? failure.message : "Password update failed.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  function handleClose() {
-    setPassword("");
-    setConfirmPassword("");
-    setError(null);
-    setValidationError(null);
-    onClose();
-  }
-  return (
-    <Dialog
-      onClose={handleClose}
-      open={user !== null}
-      title={`Reset password for ${user?.full_name ?? ""}`}
-    >
-      <form className="dialog-form" onSubmit={(e) => void handleSubmit(e)}>
-        {error === null ? null : <div className="form-alert">{error}</div>}
-        {validationError === null ? null : (
-          <div className="form-alert">{validationError}</div>
-        )}
-        <div className="form-grid">
-          <label>
-            <span>New password</span>
-            <input
-              autoComplete="new-password"
-              minLength={12}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              type="password"
-              value={password}
-            />
-          </label>
-          <label>
-            <span>Confirm new password</span>
-            <input
-              autoComplete="new-password"
-              minLength={12}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              type="password"
-              value={confirmPassword}
-            />
-          </label>
-        </div>
-        <div className="dialog-actions">
-          <Button onClick={handleClose} tone="secondary" type="button">
-            Cancel
-          </Button>
-          <Button busy={busy} type="submit">
-            Update Password
-          </Button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
-
 function StaffDialog({
   onClose,
   onDone,

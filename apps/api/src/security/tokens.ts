@@ -6,7 +6,7 @@ import {
 } from "./encoding";
 
 export async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
+  const digest = await globalThis.crypto.subtle.digest(
     "SHA-256",
     encodeUtf8(value).buffer,
   );
@@ -24,14 +24,14 @@ export async function createCsrfToken(
   sessionToken: string,
   secret: string,
 ): Promise<string> {
-  const key = await crypto.subtle.importKey(
+  const key = await globalThis.crypto.subtle.importKey(
     "raw",
     encodeUtf8(secret).buffer,
     { hash: "SHA-256", name: "HMAC" },
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign(
+  const signature = await globalThis.crypto.subtle.sign(
     "HMAC",
     key,
     encodeUtf8(`washpro-csrf:${sessionToken}`).buffer,
@@ -44,14 +44,14 @@ export function equalTokens(left: string, right: string): boolean {
 }
 
 async function hmac(value: string, secret: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
+  const key = await globalThis.crypto.subtle.importKey(
     "raw",
     encodeUtf8(secret).buffer,
     { hash: "SHA-256", name: "HMAC" },
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign(
+  const signature = await globalThis.crypto.subtle.sign(
     "HMAC",
     key,
     encodeUtf8(value).buffer,

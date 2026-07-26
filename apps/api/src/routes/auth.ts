@@ -250,6 +250,7 @@ async function handleStaticAdminLogin(
   c: ReturnType<Parameters<typeof setCookie>[0]>,
   body: Record<string, unknown>,
 ) {
+  try {
   const suppliedEmail =
     typeof body.identifier === "string"
       ? normalizeEmail(body.identifier)
@@ -349,6 +350,10 @@ async function handleStaticAdminLogin(
 
   const session = await createWashProSession(c, user, identifier, ipAddress);
   return c.json({ data: session, success: true });
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(500, "INTERNAL_ERROR", "Auth error: " + (err instanceof Error ? err.message : String(err)));
+  }
 }
 
 // ── PBKDF2 password login (local development) ──

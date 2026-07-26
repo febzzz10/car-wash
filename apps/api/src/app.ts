@@ -59,17 +59,18 @@ app.onError((error, c) => {
     return c.json(body, error.status as 400);
   }
 
+  const msg = error instanceof Error ? error.message : String(error);
   console.error(
     JSON.stringify({
       errorName: error.name,
-      message: "Unhandled API error",
+      errorMessage: msg,
       requestId,
     }),
   );
   const body: ApiFailure = {
     error: {
       code: "INTERNAL_ERROR",
-      message: "The request could not be completed.",
+      message: `UNHANDLED: ${msg}`,
       requestId,
     },
     success: false,

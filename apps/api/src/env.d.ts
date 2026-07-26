@@ -1,6 +1,6 @@
 interface Env {
-  ACCESS_AUD: string;
-  ACCESS_TEAM_DOMAIN: string;
+  ADMIN_LOGIN_EMAIL: string;
+  ADMIN_LOGIN_PASSWORD: string;
   ALLOWED_ORIGINS: string;
   APP_ENV: string;
   AUTH_MODE: string;

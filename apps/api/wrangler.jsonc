@@ -14,16 +14,16 @@
 		],
 	},
 	"vars": {
-		"ACCESS_AUD": "",
-		"ACCESS_TEAM_DOMAIN": "",
+		"ADMIN_LOGIN_EMAIL": "xpersscarwash@gmail.com",
 		"ALLOWED_ORIGINS": "https://bab9bd69.washpro-web.pages.dev",
 		"APP_ENV": "production",
-		"AUTH_MODE": "cloudflare_access",
+		"AUTH_MODE": "static_admin",
 		"INVOICE_LINK_TTL_SECONDS": "604800",
 		"SESSION_TTL_SECONDS": "28800",
 	},
 	"secrets": {
 		"required": [
+			"ADMIN_LOGIN_PASSWORD",
 			"BOOTSTRAP_TOKEN",
 			"CSRF_SECRET",
 			"INVOICE_TOKEN_PEPPER",

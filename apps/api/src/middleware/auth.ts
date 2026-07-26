@@ -43,10 +43,6 @@ function parsePermissions(value: string | null): readonly Permission[] {
 }
 
 export const requireSession = createMiddleware<AppBindings>(async (c, next) => {
-  if (c.env.APP_ENV === "production" && c.env.AUTH_MODE === "cloudflare_access") {
-    return await next();
-  }
-
   const rawToken = getCookie(c, sessionCookieName);
   if (rawToken === undefined) {
     throw new ApiError(401, "AUTH_SESSION_EXPIRED", "Sign in to continue.");

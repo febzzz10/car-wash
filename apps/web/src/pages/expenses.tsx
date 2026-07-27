@@ -69,24 +69,7 @@ export default function ExpensesPage() {
     [state.data],
   );
   const toast = useToast();
-  async function cancel(expense: Expense) {
-    const reason = window.prompt(
-      "Cancellation reason (the original expense remains in history):",
-    );
-    if (reason === null || reason.trim().length < 5) return;
-    try {
-      await api(`/expenses/${expense.id}/cancel`, {
-        ...jsonBody({ reason, version: expense.version }),
-        method: "POST",
-      });
-      toast.success("Expense cancelled and retained in the audit trail.");
-      state.reload();
-    } catch (failure) {
-      toast.error(
-        failure instanceof Error ? failure.message : "Cancellation failed.",
-      );
-    }
-  }
+  const [cancelTarget, setCancelTarget] = useState<Expense | null>(null);
   async function exportCsv() {
     try {
       const blob = await apiBlob("/reports/export", {
@@ -226,7 +209,7 @@ export default function ExpensesPage() {
                           </Button>
                           <Button
                             aria-label={`Cancel ${expense.title}`}
-                            onClick={() => void cancel(expense)}
+                            onClick={() => setCancelTarget(expense)}
                             tone="quiet"
                           >
                             <XCircle size={17} />
@@ -257,6 +240,15 @@ export default function ExpensesPage() {
         onClose={() => setCategoryDialog(false)}
         onDone={categories.reload}
         open={categoryDialog}
+      />
+      <CancelExpenseDialog
+        expense={cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        onDone={() => {
+          setCancelTarget(null);
+          state.reload();
+        }}
+        open={cancelTarget !== null}
       />
     </>
   );
@@ -564,6 +556,66 @@ function ExpenseDialog({
           <Button busy={busy} type="submit">
             <Receipt size={17} />
             {expense === null ? "Save expense" : "Save changes"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+export function CancelExpenseDialog({
+  expense,
+  onClose,
+  onDone,
+  open,
+}: {
+  readonly expense: Expense | null;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly open: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reason = String(
+      new FormData(event.currentTarget).get("reason") ?? "",
+    ).trim();
+    if (reason.length < 5) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/expenses/${expense!.id}/cancel`, {
+        ...jsonBody({ reason, version: expense!.version }),
+        method: "POST",
+      });
+      onDone();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Cancellation failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog onClose={onClose} open={open} title="Cancel expense">
+      <form className="dialog-form" onSubmit={(event) => void submit(event)}>
+        <p>
+          Cancelling this expense removes it from active expense totals while
+          preserving its record for audit purposes.
+        </p>
+        {error === null ? null : <div className="form-alert">{error}</div>}
+        <label>
+          <span>Reason</span>
+          <textarea minLength={5} name="reason" required />
+        </label>
+        <div className="dialog-actions">
+          <Button busy={busy} tone="danger">
+            Cancel Expense
+          </Button>
+          <Button onClick={onClose} tone="secondary" type="button">
+            Keep Expense
           </Button>
         </div>
       </form>

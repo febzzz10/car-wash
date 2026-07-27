@@ -125,8 +125,10 @@ export default function WashJobDetailPage() {
   >("/wash-jobs/assignable-users", canAssign === true);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [timerCorrectionOpen, setTimerCorrectionOpen] = useState(false);
   const [assigneeId, setAssigneeId] = useState("");
   const toast = useToast();
   useEffect(() => {
@@ -161,6 +163,10 @@ export default function WashJobDetailPage() {
       }
     };
   }, [id, job, timer]);
+  const selectedAssigneeName = useMemo(() => {
+    if (assigneeId === "") return "";
+    return assignable.data?.find((p) => p.id === assigneeId)?.full_name ?? "";
+  }, [assigneeId, assignable.data]);
   const elapsed = useMemo(
     () => liveTimer(timer.data?.events ?? [], now),
     [now, timer.data],
@@ -194,30 +200,9 @@ export default function WashJobDetailPage() {
       setBusy(false);
     }
   }
-  async function assign() {
+  function assign() {
     if (job.data === null || assigneeId === "") return;
-    const reason = window.prompt("Reason for changing the assignment:");
-    if (reason === null || reason.trim().length < 5) return;
-    setBusy(true);
-    try {
-      await api(`/wash-jobs/${id}/assignment`, {
-        ...jsonBody({
-          assignedUserId: assigneeId,
-          reason,
-          version: job.data.version,
-        }),
-        method: "PATCH",
-      });
-      toast.success("Assignment updated and audited.");
-      setAssigneeId("");
-      job.reload();
-    } catch (failure) {
-      toast.error(
-        failure instanceof Error ? failure.message : "Assignment failed.",
-      );
-    } finally {
-      setBusy(false);
-    }
+    setAssignDialogOpen(true);
   }
   async function generateInvoice() {
     setBusy(true);
@@ -239,33 +224,9 @@ export default function WashJobDetailPage() {
       setBusy(false);
     }
   }
-  async function correctTimer() {
+  function correctTimer() {
     if (job.data === null) return;
-    const newValue = window.prompt(
-      "Correct active duration in seconds:",
-      String(job.data.total_active_seconds),
-    );
-    if (newValue === null) return;
-    const reason = window.prompt("Correction reason:");
-    if (reason === null || reason.trim().length < 5) return;
-    try {
-      await api(`/wash-jobs/${id}/timer-adjustments`, {
-        ...jsonBody({
-          adjustmentType: "ACTIVE_DURATION_CORRECTION",
-          newValue,
-          reason,
-          version: job.data.version,
-        }),
-        method: "POST",
-      });
-      toast.success("Audited timer correction recorded.");
-      job.reload();
-      timer.reload();
-    } catch (failure) {
-      toast.error(
-        failure instanceof Error ? failure.message : "Timer correction failed.",
-      );
-    }
+    setTimerCorrectionOpen(true);
   }
   if (job.loading) return <SkeletonRows count={7} />;
   if (job.error !== null || job.data === null)
@@ -539,6 +500,19 @@ export default function WashJobDetailPage() {
         open={cancelOpen}
         version={record.version}
       />
+      <AssignDialog
+        assigneeId={assigneeId}
+        assigneeName={selectedAssigneeName}
+        id={id}
+        onClose={() => setAssignDialogOpen(false)}
+        onDone={() => {
+          setAssignDialogOpen(false);
+          setAssigneeId("");
+          job.reload();
+        }}
+        open={assignDialogOpen}
+        version={record.version}
+      />
       <PaymentDialog
         balanceMinor={record.balance_minor}
         id={id}
@@ -549,6 +523,18 @@ export default function WashJobDetailPage() {
           payments.reload();
         }}
         open={paymentOpen}
+      />
+      <TimerCorrectionDialog
+        currentActiveSeconds={record.total_active_seconds}
+        id={id}
+        onClose={() => setTimerCorrectionOpen(false)}
+        onDone={() => {
+          setTimerCorrectionOpen(false);
+          job.reload();
+          timer.reload();
+        }}
+        open={timerCorrectionOpen}
+        version={record.version}
       />
     </>
   );
@@ -607,6 +593,180 @@ function CancelDialog({
           </Button>
           <Button busy={busy} tone="danger" type="submit">
             Cancel job
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+export function AssignDialog({
+  assigneeId,
+  assigneeName,
+  id,
+  onClose,
+  onDone,
+  open,
+  version,
+}: {
+  readonly assigneeId: string;
+  readonly assigneeName: string;
+  readonly id: string;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly open: boolean;
+  readonly version: number;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reason = String(
+      new FormData(event.currentTarget).get("reason") ?? "",
+    ).trim();
+    if (reason.length < 5) {
+      setError("Enter a reason for the assignment change (at least 5 characters).");
+      return;
+    }
+    if (reason.length > 500) {
+      setError("Reason must be at most 500 characters.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/wash-jobs/${id}/assignment`, {
+        ...jsonBody({ assignedUserId: assigneeId, reason, version }),
+        method: "PATCH",
+      });
+      onDone();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Assignment failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog onClose={onClose} open={open} title="Reassign job">
+      <form className="dialog-form" onSubmit={(event) => void submit(event)}>
+        <p>
+          Assigning to <strong>{assigneeName}</strong>.
+        </p>
+        {error === null ? null : <div className="form-alert">{error}</div>}
+        <label>
+          <span>Reason for changing the assignment</span>
+          <textarea minLength={5} maxLength={500} name="reason" required />
+        </label>
+        <div className="dialog-actions">
+          <Button onClick={onClose} tone="secondary" type="button">
+            Cancel
+          </Button>
+          <Button busy={busy} type="submit">
+            Save assignment
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+export function TimerCorrectionDialog({
+  currentActiveSeconds,
+  id,
+  onClose,
+  onDone,
+  open,
+  version,
+}: {
+  readonly currentActiveSeconds: number;
+  readonly id: string;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly open: boolean;
+  readonly version: number;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const raw = String(data.get("newValue") ?? "").trim();
+    const reason = String(data.get("reason") ?? "").trim();
+    if (raw === "") {
+      setError("Enter a corrected duration in seconds.");
+      return;
+    }
+    const seconds = Number(raw);
+    if (!Number.isFinite(seconds) || !Number.isSafeInteger(seconds)) {
+      setError("Enter a whole number of seconds.");
+      return;
+    }
+    if (seconds < 0) {
+      setError("Duration cannot be negative.");
+      return;
+    }
+    if (seconds > 31_536_000) {
+      setError("Duration cannot exceed 31,536,000 seconds (365 days).");
+      return;
+    }
+    if (reason.length < 5) {
+      setError("Enter a correction reason (at least 5 characters).");
+      return;
+    }
+    if (reason.length > 500) {
+      setError("Reason must be at most 500 characters.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/wash-jobs/${id}/timer-adjustments`, {
+        ...jsonBody({
+          adjustmentType: "ACTIVE_DURATION_CORRECTION",
+          newValue: raw,
+          reason,
+          version,
+        }),
+        method: "POST",
+      });
+      onDone();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Timer correction failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog onClose={onClose} open={open} title="Correct timer">
+      <form className="dialog-form" onSubmit={(event) => void submit(event)}>
+        <p>
+          Current active duration:{" "}
+          <strong>{duration(currentActiveSeconds)}</strong>
+        </p>
+        {error === null ? null : <div className="form-alert">{error}</div>}
+        <label>
+          <span>Corrected active duration in seconds</span>
+          <input
+            defaultValue={currentActiveSeconds}
+            min="0"
+            name="newValue"
+            required
+            step="1"
+            type="number"
+          />
+        </label>
+        <label>
+          <span>Correction reason</span>
+          <textarea minLength={5} maxLength={500} name="reason" required />
+        </label>
+        <div className="dialog-actions">
+          <Button onClick={onClose} tone="secondary" type="button">
+            Cancel
+          </Button>
+          <Button busy={busy} type="submit">
+            Record correction
           </Button>
         </div>
       </form>

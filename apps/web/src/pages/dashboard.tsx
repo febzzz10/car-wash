@@ -98,7 +98,7 @@ export default function DashboardPage() {
             />
             <Metric
               icon={Car}
-              label="Cars washed"
+              label="Vehicles washed"
               tone="navy"
               value={String(summary.data?.carsWashed ?? 0)}
             />

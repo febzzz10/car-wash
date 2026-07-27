@@ -12,7 +12,6 @@ import {
   StatusBadge,
 } from "../components/ui";
 import { useApiData } from "../hooks/use-api-data";
-import { useToast } from "../components/toast";
 import { api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
 import type { VehicleRecord, VehicleTypeRecord, WashJobRecord } from "../types";
@@ -32,7 +31,7 @@ interface VehicleHistory {
 export default function VehicleDetailPage() {
   const { id = "" } = useParams();
   const [editing, setEditing] = useState(false);
-  const toast = useToast();
+  const [statusChangeOpen, setStatusChangeOpen] = useState(false);
   const vehicle = useApiData<
     VehicleRecord & {
       readonly customer_phone: string;
@@ -43,23 +42,6 @@ export default function VehicleDetailPage() {
   const catalog = useApiData<{
     readonly vehicleTypes: readonly VehicleTypeRecord[];
   }>("/services");
-  async function changeStatus(item: VehicleRecord) {
-    const action = item.status === "ACTIVE" ? "deactivate" : "reactivate";
-    const reason = window.prompt(`Reason to ${action} this vehicle:`);
-    if (reason === null || reason.trim().length < 3) return;
-    try {
-      await api(`/vehicles/${item.id}/${action}`, {
-        ...jsonBody({ reason, version: item.version }),
-        method: "POST",
-      });
-      toast.success(`Vehicle ${action}d.`);
-      vehicle.reload();
-    } catch (failure) {
-      toast.error(
-        failure instanceof Error ? failure.message : "Vehicle update failed.",
-      );
-    }
-  }
   if (vehicle.loading) return <SkeletonRows />;
   if (vehicle.error !== null || vehicle.data === null)
     return (
@@ -81,7 +63,7 @@ export default function VehicleDetailPage() {
             <Button onClick={() => setEditing(true)} tone="secondary">
               <Edit3 size={17} /> Edit
             </Button>
-            <Button onClick={() => void changeStatus(item)} tone="quiet">
+            <Button onClick={() => setStatusChangeOpen(true)} tone="quiet">
               <Power size={17} />
               {item.status === "ACTIVE" ? "Deactivate" : "Reactivate"}
             </Button>
@@ -179,7 +161,87 @@ export default function VehicleDetailPage() {
         vehicle={item}
         vehicleTypes={catalog.data?.vehicleTypes ?? []}
       />
+      <ChangeVehicleStatusDialog
+        id={item.id}
+        onClose={() => setStatusChangeOpen(false)}
+        onDone={() => {
+          setStatusChangeOpen(false);
+          vehicle.reload();
+        }}
+        open={statusChangeOpen}
+        status={item.status}
+        version={item.version}
+      />
     </>
+  );
+}
+
+export function ChangeVehicleStatusDialog({
+  id,
+  onClose,
+  onDone,
+  open,
+  status,
+  version,
+}: {
+  readonly id: string;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly open: boolean;
+  readonly status: string;
+  readonly version: number;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isActive = status === "ACTIVE";
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reason = String(
+      new FormData(event.currentTarget).get("reason") ?? "",
+    );
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/vehicles/${id}/${isActive ? "deactivate" : "reactivate"}`, {
+        ...jsonBody({ reason, version }),
+        method: "POST",
+      });
+      onDone();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Status change failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog
+      onClose={onClose}
+      open={open}
+      title={isActive ? "Deactivate vehicle" : "Reactivate vehicle"}
+    >
+      <form className="dialog-form" onSubmit={(event) => void submit(event)}>
+        <p>
+          {isActive
+            ? "Deactivation hides this vehicle from selection and prevents it from being used for new wash jobs."
+            : "Reactivation makes this vehicle available for future wash jobs."}
+        </p>
+        {error === null ? null : <div className="form-alert">{error}</div>}
+        <label>
+          <span>Reason</span>
+          <textarea minLength={3} name="reason" required />
+        </label>
+        <div className="dialog-actions">
+          <Button busy={busy} tone={isActive ? "danger" : "primary"}>
+            {isActive ? "Deactivate" : "Reactivate"}
+          </Button>
+          <Button onClick={onClose} tone="secondary" type="button">
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

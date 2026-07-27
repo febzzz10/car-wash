@@ -886,6 +886,12 @@ tbody tr:hover {
   line-height: 1.45;
   padding: 11px 13px;
 }
+.field-error {
+  color: #81272c;
+  display: block;
+  font-size: 0.77rem;
+  margin-top: 4px;
+}
 .skeleton-list {
   display: flex;
   flex-direction: column;

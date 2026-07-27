@@ -1,8 +1,9 @@
 import { Gift, Power, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import {
   Button,
   Card,
+  Dialog,
   EmptyState,
   ErrorState,
   PageHeader,
@@ -51,6 +52,7 @@ export default function ReferralsPage() {
   const state = useApiData<Payload>("/referrals");
   const [tab, setTab] = useState<"codes" | "redemptions" | "rewards">("codes");
   const toast = useToast();
+  const [adjustTarget, setAdjustTarget] = useState<Reward | null>(null);
   async function toggle(code: ReferralCode) {
     try {
       await api(`/referrals/codes/${code.id}`, {
@@ -64,26 +66,6 @@ export default function ReferralsPage() {
     } catch (failure) {
       toast.error(
         failure instanceof Error ? failure.message : "Referral update failed.",
-      );
-    }
-  }
-  async function adjust(reward: Reward) {
-    const amount = window.prompt(
-      `Additional reward amount for ${reward.customer_name}:`,
-    );
-    if (amount === null) return;
-    const reason = window.prompt("Adjustment reason:");
-    if (reason === null) return;
-    try {
-      await api(`/referrals/rewards/${reward.id}/adjust`, {
-        ...jsonBody({ amountMinor: Math.round(Number(amount) * 100), reason }),
-        method: "POST",
-      });
-      toast.success("Reward adjustment added to the append-only ledger.");
-      state.reload();
-    } catch (failure) {
-      toast.error(
-        failure instanceof Error ? failure.message : "Adjustment failed.",
       );
     }
   }
@@ -225,7 +207,7 @@ export default function ReferralsPage() {
                     <td>
                       {["PENDING", "AVAILABLE"].includes(item.status) ? (
                         <Button
-                          onClick={() => void adjust(item)}
+                          onClick={() => setAdjustTarget(item)}
                           tone="secondary"
                         >
                           <Gift size={16} /> Adjust
@@ -239,6 +221,105 @@ export default function ReferralsPage() {
           </div>
         )}
       </Card>
+      <RewardAdjustmentDialog
+        reward={adjustTarget}
+        onClose={() => setAdjustTarget(null)}
+        onDone={() => {
+          setAdjustTarget(null);
+          state.reload();
+        }}
+        open={adjustTarget !== null}
+      />
     </>
+  );
+}
+
+export function RewardAdjustmentDialog({
+  reward,
+  onClose,
+  onDone,
+  open,
+}: {
+  readonly reward: Reward | null;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly open: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const toast = useToast();
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFieldError(null);
+    const data = new FormData(event.currentTarget);
+    const amountRaw = String(data.get("amount") ?? "").trim();
+    const reason = String(data.get("reason") ?? "").trim();
+    const amount = Number(amountRaw);
+    if (!amountRaw || !Number.isFinite(amount) || amount <= 0) return;
+    const parts = amountRaw.split(".");
+    if (parts.length === 2 && parts[1]!.length > 2) {
+      setFieldError("Adjustment amount can have at most two decimal places.");
+      return;
+    }
+    const amountMinor = Math.round(amount * 100);
+    if (amountMinor < 1) return;
+    if (reason.length < 5 || reason.length > 500) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/referrals/rewards/${reward!.id}/adjust`, {
+        ...jsonBody({
+          amountMinor,
+          reason,
+        }),
+        method: "POST",
+      });
+      toast.success("Reward adjustment added to the append-only ledger.");
+      onDone();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Adjustment failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog onClose={onClose} open={open} title="Adjust referral reward">
+      <form className="dialog-form" onSubmit={(event) => void submit(event)}>
+        <p>
+          Change the referral reward balance by entering an adjustment amount
+          and a reason for the audit record.
+        </p>
+        {error === null ? null : <div className="form-alert">{error}</div>}
+        <label>
+          <span>Adjustment amount</span>
+          <input
+            autoFocus
+            min="0.01"
+            name="amount"
+            required
+            step="0.01"
+            type="number"
+          />
+          {fieldError === null ? null : (
+            <span className="field-error">{fieldError}</span>
+          )}
+        </label>
+        <label>
+          <span>Reason</span>
+          <textarea minLength={5} name="reason" required />
+        </label>
+        <div className="dialog-actions">
+          <Button busy={busy} tone="primary">
+            Apply Adjustment
+          </Button>
+          <Button onClick={onClose} tone="secondary" type="button">
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

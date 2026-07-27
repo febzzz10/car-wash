@@ -7,11 +7,13 @@ import {
   Printer,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import { useState, type FormEvent } from "react";
 
 import { useAuth } from "../auth";
 import {
   Button,
   Card,
+  Dialog,
   ErrorState,
   PageHeader,
   SkeletonRows,
@@ -19,7 +21,7 @@ import {
 } from "../components/ui";
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
-import { API_BASE, api } from "../lib/api";
+import { API_BASE, api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
 
 interface InvoiceItem {
@@ -117,40 +119,7 @@ export default function InvoiceDetailPage() {
       );
     }
   }
-  async function revise() {
-    const reason = window.prompt(
-      "Reason for this immutable invoice correction:",
-    );
-    if (reason === null || reason.trim().length < 5) return;
-    const customerName = window.prompt(
-      "Correct customer name (leave unchanged if blank):",
-      invoice.data?.customer_name_snapshot ?? "",
-    );
-    if (customerName === null) return;
-    try {
-      const revised = await api<{ readonly id: string }>(
-        `/invoices/${id}/revisions`,
-        {
-          body: JSON.stringify({
-            customerName: customerName.trim() || undefined,
-            idempotencyKey: crypto.randomUUID(),
-            reason,
-          }),
-          method: "POST",
-        },
-      );
-      toast.success(
-        "Invoice revision created; the original remains unchanged.",
-      );
-      window.location.assign(`/invoices/${revised.id}`);
-    } catch (failure) {
-      toast.error(
-        failure instanceof Error
-          ? failure.message
-          : "Invoice correction failed.",
-      );
-    }
-  }
+  const [correctionOpen, setCorrectionOpen] = useState(false);
   if (invoice.loading) return <SkeletonRows />;
   if (invoice.error !== null || invoice.data === null)
     return (
@@ -169,7 +138,7 @@ export default function InvoiceDetailPage() {
         actions={
           <div className="button-row">
             {user?.role === "ADMIN" ? (
-              <Button onClick={() => void revise()} tone="secondary">
+              <Button onClick={() => setCorrectionOpen(true)} tone="secondary">
                 Create correction
               </Button>
             ) : null}
@@ -309,6 +278,93 @@ export default function InvoiceDetailPage() {
           </Card>
         </aside>
       </div>
+      <InvoiceRevisionDialog
+        id={id}
+        customerName={item.customer_name_snapshot}
+        onClose={() => setCorrectionOpen(false)}
+        open={correctionOpen}
+      />
     </>
+  );
+}
+
+export function InvoiceRevisionDialog({
+  customerName,
+  id,
+  onClose,
+  open,
+}: {
+  readonly customerName: string;
+  readonly id: string;
+  readonly onClose: () => void;
+  readonly open: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const reason = String(data.get("reason") ?? "").trim();
+    const name = String(data.get("customerName") ?? "").trim();
+    if (reason.length < 5) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const revised = await api<{ readonly id: string }>(
+        `/invoices/${id}/revisions`,
+        {
+          ...jsonBody({
+            customerName: name || undefined,
+            idempotencyKey: crypto.randomUUID(),
+            reason,
+          }),
+          method: "POST",
+        },
+      );
+      toast.success(
+        "Invoice revision created; the original remains unchanged.",
+      );
+      window.location.assign(`/invoices/${revised.id}`);
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Invoice correction failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog onClose={onClose} open={open} title="Create correction">
+      <form className="dialog-form" onSubmit={(event) => void submit(event)}>
+        <p>
+          Invoice corrections create an immutable revision. The original invoice
+          remains unchanged in the audit trail.
+        </p>
+        {error === null ? null : <div className="form-alert">{error}</div>}
+        <label>
+          <span>Reason</span>
+          <textarea minLength={5} name="reason" required />
+        </label>
+        <label>
+          <span>Customer name</span>
+          <input
+            defaultValue={customerName}
+            name="customerName"
+            minLength={2}
+          />
+        </label>
+        <div className="dialog-actions">
+          <Button busy={busy} tone="primary">
+            Create correction
+          </Button>
+          <Button onClick={onClose} tone="secondary" type="button">
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

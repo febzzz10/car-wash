@@ -1,5 +1,5 @@
 import { vehicleInputSchema, vehicleTypeCodeSchema } from "@washpro/contracts";
-import { normalizeRegistration } from "@washpro/domain";
+import { normalizeRegistration, normalizeVehicleModel } from "@washpro/domain";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -104,8 +104,14 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
     vehicleTypeCode: parsed.data.vehicleTypeCode,
     vehicleTypeId,
   };
+  const modelNormalized:
+    | { readonly name: string; readonly normalizedName: string }
+    | null =
+    parsed.data.model !== undefined && parsed.data.model !== null
+      ? normalizeVehicleModel(parsed.data.model)
+      : null;
   try {
-    await c.env.DB.batch([
+    const statements = [
       c.env.DB.prepare(
         `INSERT INTO vehicles (
           id, organization_id, customer_id, vehicle_type_id, registration_number,
@@ -120,7 +126,7 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
         registration.display,
         registration.search,
         parsed.data.make ?? null,
-        parsed.data.model ?? null,
+        modelNormalized === null ? null : modelNormalized.name,
         parsed.data.manufacturingYear ?? null,
         parsed.data.colour ?? null,
         parsed.data.fuelType ?? null,
@@ -138,7 +144,25 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
         recordType: "VEHICLE",
         requestId: c.get("requestId"),
       }),
-    ]);
+    ];
+    if (modelNormalized !== null) {
+      statements.push(
+        c.env.DB.prepare(
+          `INSERT INTO vehicle_models (id, organization_id, name, normalized_name, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (organization_id, normalized_name)
+           DO UPDATE SET updated_at = excluded.updated_at`,
+        ).bind(
+          crypto.randomUUID(),
+          auth.organizationId,
+          modelNormalized.name,
+          modelNormalized.normalizedName,
+          now,
+          now,
+        ),
+      );
+    }
+    await c.env.DB.batch(statements);
   } catch (error) {
     if (duplicate(error)) {
       throw new ApiError(
@@ -204,6 +228,12 @@ vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
     parsed.data.registrationNumber === undefined
       ? undefined
       : normalizeRegistration(parsed.data.registrationNumber);
+  const modelNormalized:
+    | { readonly name: string; readonly normalizedName: string }
+    | null =
+    parsed.data.model !== undefined && parsed.data.model !== null
+      ? normalizeVehicleModel(parsed.data.model)
+      : null;
   const now = new Date().toISOString();
   try {
     const result = await c.env.DB.prepare(
@@ -228,7 +258,7 @@ vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
         parsed.data.make === undefined ? 0 : 1,
         parsed.data.make ?? null,
         parsed.data.model === undefined ? 0 : 1,
-        parsed.data.model ?? null,
+        modelNormalized === null ? null : modelNormalized.name,
         parsed.data.manufacturingYear === undefined ? 0 : 1,
         parsed.data.manufacturingYear ?? null,
         parsed.data.colour === undefined ? 0 : 1,
@@ -250,6 +280,23 @@ vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
         "RESOURCE_CONFLICT",
         "This vehicle changed on another device.",
       );
+    }
+    if (modelNormalized !== null) {
+      await c.env.DB.prepare(
+        `INSERT INTO vehicle_models (id, organization_id, name, normalized_name, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (organization_id, normalized_name)
+         DO UPDATE SET updated_at = excluded.updated_at`,
+      )
+        .bind(
+          crypto.randomUUID(),
+          auth.organizationId,
+          modelNormalized.name,
+          modelNormalized.normalizedName,
+          now,
+          now,
+        )
+        .run();
     }
   } catch (error) {
     if (duplicate(error))

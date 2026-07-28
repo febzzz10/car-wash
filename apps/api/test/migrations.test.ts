@@ -35,6 +35,7 @@ const expectedTables = [
   "timer_events",
   "user_sessions",
   "users",
+  "vehicle_models",
   "vehicle_photos",
   "vehicle_types",
   "vehicles",

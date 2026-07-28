@@ -25,6 +25,7 @@ import {
   SearchField,
   SkeletonRows,
 } from "../components/ui";
+import VehicleModelAutocomplete from "../components/vehicle-model-autocomplete";
 import VehicleTypeSelect from "../components/vehicle-type-select";
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
@@ -1275,7 +1276,7 @@ export function NewVehicleDialog({
           </label>
           <label>
             <span>Model</span>
-            <input name="model" />
+            <VehicleModelAutocomplete name="model" />
           </label>
         </div>
         <label>

@@ -21,6 +21,7 @@ import { servicePriceRoutes, serviceRoutes } from "./routes/services";
 import { settingRoutes } from "./routes/settings";
 import { uploadRoutes } from "./routes/uploads";
 import { userRoutes } from "./routes/users";
+import { vehicleModelRoutes } from "./routes/vehicle-models";
 import { vehicleRoutes } from "./routes/vehicles";
 import { washJobRoutes } from "./routes/wash-jobs";
 import type { AppBindings } from "./types";
@@ -92,9 +93,9 @@ app.notFound((c) =>
   ),
 );
 
-app.get("/health", (c) =>
-  c.json({ data: { service: "washpro-api", status: "ok", deploy: "v2" }, success: true }),
-);
+const healthResponse = { data: { service: "washpro-api", status: "ok", deploy: "v2" }, success: true } as const;
+app.get("/health", (c) => c.json(healthResponse));
+app.get("/api/health", (c) => c.json(healthResponse));
 app.route("/invoice", publicInvoiceRoutes);
 app.route("/api/v1/auth", publicAuthRoutes);
 app.route("/api/v1/bootstrap", bootstrapRoutes);
@@ -117,6 +118,7 @@ protectedApi.route("/settings", settingRoutes);
 protectedApi.route("/service-prices", servicePriceRoutes);
 protectedApi.route("/uploads", uploadRoutes);
 protectedApi.route("/users", userRoutes);
+protectedApi.route("/vehicle-models", vehicleModelRoutes);
 protectedApi.route("/vehicles", vehicleRoutes);
 protectedApi.route("/wash-jobs", washJobRoutes);
 protectedApi.route("/wash-jobs", invoiceJobRoutes);

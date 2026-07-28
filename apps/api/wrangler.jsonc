@@ -15,7 +15,7 @@
 	},
 	"vars": {
 		"ADMIN_LOGIN_EMAIL": "xpersscarwash@gmail.com",
-		"ALLOWED_ORIGINS": "https://bab9bd69.washpro-web.pages.dev,https://washpro-web.xpersscarwash.workers.dev",
+		"ALLOWED_ORIGINS": "https://washpro-web.xpersscarwash.workers.dev",
 		"APP_ENV": "production",
 		"AUTH_MODE": "static_admin",
 		"INVOICE_LINK_TTL_SECONDS": "604800",

@@ -14,6 +14,7 @@ import {
 import { useApiData } from "../hooks/use-api-data";
 import { api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
+import VehicleModelAutocomplete from "../components/vehicle-model-autocomplete";
 import VehicleTypeSelect from "../components/vehicle-type-select";
 import type { VehicleRecord, WashJobRecord } from "../types";
 
@@ -330,7 +331,10 @@ function VehicleEditDialog({
           </label>
           <label>
             <span>Model</span>
-            <input defaultValue={vehicle.model ?? ""} name="model" />
+            <VehicleModelAutocomplete
+              defaultValue={vehicle.model ?? ""}
+              name="model"
+            />
           </label>
           <label>
             <span>Manufacturing year</span>

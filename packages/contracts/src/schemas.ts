@@ -80,6 +80,11 @@ export const vehicleInputSchema = z.object({
   notes: z.string().trim().max(2_000).optional(),
 });
 
+export const vehicleModelSuggestQuerySchema = z.object({
+  q: z.string().trim().max(80).default(""),
+  limit: z.coerce.number().int().min(1).max(20).default(10),
+});
+
 export const paymentInputSchema = z.object({
   washJobId: identifierSchema,
   amountMinor: positiveMoneyMinorSchema,

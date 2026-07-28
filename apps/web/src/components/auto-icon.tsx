@@ -18,14 +18,11 @@ export default function AutoRickshaw({
       viewBox="0 0 24 24"
       width={size}
     >
-      <path d="M3 15a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-1H3Z" />
-      <path d="M7 15a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V9H7Z" />
-      <path d="M12 15a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-1h-5Z" />
-      <line x1="3" x2="22" y1="8" y2="8" />
-      <path d="M16 8V5a2 2 0 0 0-2-2h-3a2 2 0 0 0-1.857 1.257L7 8" />
-      <line x1="6" x2="6" y1="17" y2="20" />
-      <line x1="9" x2="9" y1="17" y2="20" />
-      <line x1="14" x2="14" y1="17" y2="20" />
+      <circle cx="7" cy="17.5" r="2.4" />
+      <circle cx="15.5" cy="17.5" r="2.4" />
+      <path d="M4.5 15V7a3 3 0 0 1 3-3h7.5a2.5 2.5 0 0 1 2.3 1.5l2 4.3a3 3 0 0 1 .2 1.2v4" />
+      <path d="M4.5 15h14.5" />
+      <path d="M10 4v6" />
     </svg>
   );
 }

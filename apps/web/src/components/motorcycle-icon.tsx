@@ -18,13 +18,12 @@ export default function Motorcycle({
       viewBox="0 0 24 24"
       width={size}
     >
-      <circle cx="6" cy="16" r="3" />
-      <circle cx="18" cy="16" r="3" />
-      <path d="M6 16h3l2-4h3l1.5-3H11" />
-      <path d="M16 16h2" />
-      <path d="M14 8h3a3 3 0 0 1 3 3v1" />
-      <line x1="6" x2="6" y1="19" y2="20" />
-      <line x1="18" x2="18" y1="19" y2="20" />
+      <circle cx="5.5" cy="17" r="2.8" />
+      <circle cx="18.5" cy="17" r="2.8" />
+      <path d="M5.5 17 9.8 11h4.4" />
+      <path d="M14.2 11 16 7.5" />
+      <path d="M16 7.5 18.5 17" />
+      <path d="M15.5 7.5h3" />
     </svg>
   );
 }

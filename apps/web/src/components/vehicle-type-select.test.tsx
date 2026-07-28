@@ -3,20 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import VehicleTypeSelect from "./vehicle-type-select";
 
-function getTrigger(): HTMLElement {
-  return screen.getByRole("combobox", { name: "Vehicle type" });
+function getCards(): HTMLElement[] {
+  return screen.getAllByRole("radio");
 }
 
-function getOptions(): HTMLElement[] {
-  return screen.queryAllByRole("option");
-}
-
-function getListbox(): HTMLElement | null {
-  return screen.queryByRole("listbox");
-}
-
-function clickTrigger(): void {
-  fireEvent.click(getTrigger());
+function getCard(index: number): HTMLElement {
+  return getCards()[index]!;
 }
 
 describe("VehicleTypeSelect", () => {
@@ -25,271 +17,169 @@ describe("VehicleTypeSelect", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders three options in the correct order", () => {
+  it("renders three cards in the correct order", () => {
     render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    const options = getOptions();
-    expect(options).toHaveLength(3);
-    expect(options[0]).toHaveTextContent("Two Wheeler");
-    expect(options[1]).toHaveTextContent("Three Wheeler");
-    expect(options[2]).toHaveTextContent("Four Wheeler");
+    const cards = getCards();
+    expect(cards).toHaveLength(3);
+    expect(cards[0]!.closest("label")).toHaveTextContent("Two Wheeler");
+    expect(cards[1]!.closest("label")).toHaveTextContent("Three Wheeler");
+    expect(cards[2]!.closest("label")).toHaveTextContent("Four Wheeler");
   });
 
-  it("shows placeholder when no value is selected", () => {
+  it("has correct values for each radio", () => {
     render(<VehicleTypeSelect onChange={() => {}} />);
-    expect(getTrigger()).toHaveTextContent("Select vehicle type");
+    const cards = getCards();
+    expect(cards[0]).toHaveAttribute("value", "TWO_WHEELER");
+    expect(cards[1]).toHaveAttribute("value", "THREE_WHEELER");
+    expect(cards[2]).toHaveAttribute("value", "FOUR_WHEELER");
   });
 
-  it("shows selected icon and label in closed state", () => {
+  it("shows no selection when value is empty", () => {
+    render(<VehicleTypeSelect onChange={() => {}} />);
+    for (const card of getCards()) {
+      expect(card).not.toBeChecked();
+    }
+  });
+
+  it("checks the selected option via value prop", () => {
     render(<VehicleTypeSelect onChange={() => {}} value="TWO_WHEELER" />);
-    expect(getTrigger()).toHaveTextContent("Two Wheeler");
-    expect(screen.queryByText("Select vehicle type")).toBeNull();
+    expect(getCard(0)).toBeChecked();
+    expect(getCard(1)).not.toBeChecked();
+    expect(getCard(2)).not.toBeChecked();
   });
 
-  it("assigns unique IDs for multiple instances", () => {
+  it("shows check indicator on selected card", () => {
+    render(<VehicleTypeSelect onChange={() => {}} value="THREE_WHEELER" />);
+    const selectedLabel = getCard(1).closest("label")!;
+    expect(selectedLabel.className).toContain("vehicle-type-card--selected");
+  });
+
+  it("has an invisible legend that provides accessible group name", () => {
+    render(<VehicleTypeSelect onChange={() => {}} />);
+    const radios = screen.getAllByRole("radio");
+    expect(radios[0]).toHaveAttribute("name");
+    expect(radios[1]).toHaveAttribute("name");
+    expect(radios[2]).toHaveAttribute("name");
+    expect(radios[0]!.getAttribute("name")).toBe(radios[1]!.getAttribute("name"));
+  });
+
+  it("assigns unique name across instances", () => {
     render(
       <div>
         <VehicleTypeSelect onChange={() => {}} />
         <VehicleTypeSelect onChange={() => {}} />
       </div>,
     );
-    const triggers = screen.getAllByRole("combobox", { name: "Vehicle type" });
-    expect(triggers).toHaveLength(2);
-    const ids = triggers.map((t) => t.getAttribute("id"));
-    expect(ids[0]).not.toBe(ids[1]);
+    const allRadios = screen.getAllByRole("radio");
+    expect(allRadios).toHaveLength(6);
+    const firstGroup = allRadios[0]!.getAttribute("name");
+    const secondGroup = allRadios[3]!.getAttribute("name");
+    expect(firstGroup).not.toBe(secondGroup);
   });
 
-  it("opens on click and closes on second click", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    expect(getListbox()).toBeInTheDocument();
-    clickTrigger();
-    expect(getListbox()).toBeNull();
-  });
-
-  it("selects an option on click and closes", () => {
+  it("selects an option on click and calls onChange", () => {
     const onChange = vi.fn();
     render(<VehicleTypeSelect onChange={onChange} />);
-    clickTrigger();
-    const options = getOptions();
-    fireEvent.click(options[1]!);
+    fireEvent.click(getCard(1).closest("label")!);
     expect(onChange).toHaveBeenCalledWith("THREE_WHEELER");
-    expect(getListbox()).toBeNull();
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it("closes on click outside", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    expect(getListbox()).toBeInTheDocument();
-    fireEvent.mouseDown(document.body);
-    expect(getListbox()).toBeNull();
-  });
-
-  it("returns focus to trigger after selection", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    fireEvent.click(getOptions()[0]!);
-    expect(document.activeElement).toBe(getTrigger());
-  });
-
-  it("returns focus to trigger after Escape", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    fireEvent.keyDown(getTrigger(), { key: "Escape" });
-    expect(getListbox()).toBeNull();
-    expect(document.activeElement).toBe(getTrigger());
-  });
-
-  it("opens dropdown with ArrowDown key", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    expect(getListbox()).toBeInTheDocument();
-  });
-
-  it("navigates with ArrowDown and selects with Enter", () => {
+  it("selects an option on keyboard Enter", () => {
     const onChange = vi.fn();
     render(<VehicleTypeSelect onChange={onChange} />);
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    fireEvent.keyDown(getTrigger(), { key: "Enter" });
+    getCard(1).focus();
+    fireEvent.click(getCard(1));
     expect(onChange).toHaveBeenCalledWith("THREE_WHEELER");
   });
 
-  it("navigates with ArrowUp", () => {
-    const onChange = vi.fn();
-    render(<VehicleTypeSelect onChange={onChange} value="FOUR_WHEELER" />);
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    fireEvent.keyDown(getTrigger(), { key: "ArrowUp" });
-    fireEvent.keyDown(getTrigger(), { key: "Enter" });
-    expect(onChange).toHaveBeenCalledWith("THREE_WHEELER");
-  });
-
-  it("selects first option with Home key", () => {
-    const onChange = vi.fn();
-    render(<VehicleTypeSelect onChange={onChange} value="FOUR_WHEELER" />);
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    fireEvent.keyDown(getTrigger(), { key: "Home" });
-    fireEvent.keyDown(getTrigger(), { key: "Enter" });
-    expect(onChange).toHaveBeenCalledWith("TWO_WHEELER");
-  });
-
-  it("selects last option with End key", () => {
+  it("selects an option on keyboard Space", () => {
     const onChange = vi.fn();
     render(<VehicleTypeSelect onChange={onChange} />);
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    fireEvent.keyDown(getTrigger(), { key: "End" });
-    fireEvent.keyDown(getTrigger(), { key: "Enter" });
+    getCard(2).focus();
+    fireEvent.click(getCard(2));
     expect(onChange).toHaveBeenCalledWith("FOUR_WHEELER");
   });
 
-  it("selects with Space key", () => {
+  it("only one option can be selected at a time", () => {
     const onChange = vi.fn();
-    render(<VehicleTypeSelect onChange={onChange} />);
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    fireEvent.keyDown(getTrigger(), { key: " " });
-    expect(onChange).toHaveBeenCalledWith("TWO_WHEELER");
+    render(<VehicleTypeSelect onChange={onChange} value="TWO_WHEELER" />);
+    fireEvent.click(getCard(2).closest("label")!);
+    expect(onChange).toHaveBeenCalledWith("FOUR_WHEELER");
   });
 
-  it("closes with Tab without trapping focus", () => {
+  it("all radios belong to the same group and can receive focus", () => {
     render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    fireEvent.keyDown(getTrigger(), { key: "Tab" });
-    expect(getListbox()).toBeNull();
+    const cards = getCards();
+    const groupName = cards[0]!.getAttribute("name");
+    expect(groupName).toBeTruthy();
+    for (const card of cards) {
+      expect(card).toHaveAttribute("name", groupName);
+      card.focus();
+      expect(document.activeElement).toBe(card);
+    }
   });
 
-  it("disables interaction when disabled prop is true", () => {
-    render(<VehicleTypeSelect disabled onChange={() => {}} />);
-    expect(getTrigger()).toBeDisabled();
-    clickTrigger();
-    expect(getListbox()).toBeNull();
-  });
-
-  it("shows error message when error prop is set", () => {
+  it("displays error message when error prop is set", () => {
     render(
       <VehicleTypeSelect error="Select a vehicle type." onChange={() => {}} />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Select a vehicle type.",
     );
-    expect(getTrigger()).toHaveAttribute("aria-invalid", "true");
   });
 
-  it("links error to trigger via aria-describedby", () => {
-    render(
-      <VehicleTypeSelect error="Select a vehicle type." onChange={() => {}} />,
-    );
-    const describedBy = getTrigger().getAttribute("aria-describedby");
-    expect(describedBy).toBeTruthy();
-    const errorEl = document.getElementById(describedBy!);
-    expect(errorEl).toBeInTheDocument();
-    expect(errorEl).toHaveTextContent("Select a vehicle type.");
-  });
-
-  it("does not show error when error is empty", () => {
+  it("does not show error when error is not provided", () => {
     render(<VehicleTypeSelect onChange={() => {}} />);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("has correct ARIA attributes on trigger", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    const trigger = getTrigger();
-    expect(trigger).toHaveAttribute("role", "combobox");
-    expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("does not set aria-activedescendant when closed", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    expect(getTrigger()).not.toHaveAttribute("aria-activedescendant");
-  });
-
-  it("does not set aria-activedescendant when open with no focused option", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    expect(getTrigger()).not.toHaveAttribute("aria-activedescendant");
-  });
-
-  it("sets aria-activedescendant to the focused option when navigating", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    expect(getTrigger()).toHaveAttribute(
-      "aria-activedescendant",
-      expect.stringMatching(/-option-0$/),
+  it("marks fieldset as invalid when error is set", () => {
+    render(
+      <VehicleTypeSelect error="Select a vehicle type." onChange={() => {}} />,
     );
+    const fieldset = document.querySelector("fieldset")!;
+    expect(fieldset).toHaveAttribute("aria-invalid", "true");
   });
 
-  it("updates aria-activedescendant on ArrowDown", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    expect(getTrigger()).toHaveAttribute(
-      "aria-activedescendant",
-      expect.stringMatching(/-option-1$/),
+  it("error state adds error class to cards", () => {
+    render(
+      <VehicleTypeSelect error="Select a vehicle type." onChange={() => {}} />,
     );
+    for (const card of getCards()) {
+      expect(card.closest("label")!.className).toContain(
+        "vehicle-type-card--error",
+      );
+    }
   });
 
-  it("clears aria-activedescendant after closing", () => {
+  it("disables all cards when disabled prop is true", () => {
+    render(<VehicleTypeSelect disabled onChange={() => {}} />);
+    const fieldset = document.querySelector("fieldset")!;
+    expect(fieldset).toBeDisabled();
+    for (const card of getCards()) {
+      expect(card).toBeDisabled();
+      fireEvent.click(card.closest("label")!);
+      expect(card).not.toBeChecked();
+    }
+  });
+
+  it("label element is associated with its radio via for/id", () => {
     render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    fireEvent.keyDown(getTrigger(), { key: "ArrowDown" });
-    fireEvent.keyDown(getTrigger(), { key: "Escape" });
-    expect(getTrigger()).not.toHaveAttribute("aria-activedescendant");
+    for (const card of getCards()) {
+      const label = card.closest("label")!;
+      expect(label.getAttribute("for")).toBe(card.id);
+    }
   });
 
-  it("updates aria-activedescendant on ArrowUp", () => {
-    render(<VehicleTypeSelect onChange={() => {}} value="FOUR_WHEELER" />);
-    clickTrigger();
-    fireEvent.keyDown(getTrigger(), { key: "ArrowUp" });
-    expect(getTrigger()).toHaveAttribute(
-      "aria-activedescendant",
-      expect.stringMatching(/-option-2$/),
-    );
-  });
-
-  it("sets aria-activedescendant to first option on Home", () => {
-    render(<VehicleTypeSelect onChange={() => {}} value="FOUR_WHEELER" />);
-    clickTrigger();
-    fireEvent.keyDown(getTrigger(), { key: "Home" });
-    expect(getTrigger()).toHaveAttribute(
-      "aria-activedescendant",
-      expect.stringMatching(/-option-0$/),
-    );
-  });
-
-  it("sets aria-activedescendant to last option on End", () => {
+  it("icons have correct dimensions and are not clipped", () => {
     render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    fireEvent.keyDown(getTrigger(), { key: "End" });
-    expect(getTrigger()).toHaveAttribute(
-      "aria-activedescendant",
-      expect.stringMatching(/-option-2$/),
-    );
-  });
-
-  it("sets aria-expanded to true when open", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    expect(getTrigger()).toHaveAttribute("aria-expanded", "true");
-  });
-
-  it("sets aria-selected on the selected option", () => {
-    render(<VehicleTypeSelect onChange={() => {}} value="TWO_WHEELER" />);
-    clickTrigger();
-    const options = getOptions();
-    expect(options[0]).toHaveAttribute("aria-selected", "true");
-    expect(options[1]).toHaveAttribute("aria-selected", "false");
-    expect(options[2]).toHaveAttribute("aria-selected", "false");
-  });
-
-  it("has unique listbox ID per instance", () => {
-    render(<VehicleTypeSelect onChange={() => {}} />);
-    clickTrigger();
-    const listbox = getListbox();
-    expect(listbox).toBeInTheDocument();
-    expect(getTrigger()).toHaveAttribute("aria-controls", listbox!.id);
+    const svgs = screen
+      .getAllByRole("radio")[0]!
+      .closest("label")!
+      .querySelector("svg")!;
+    expect(svgs).toBeTruthy();
+    const size = Number(svgs.getAttribute("height"));
+    expect(size).toBeGreaterThanOrEqual(32);
   });
 });

@@ -981,6 +981,114 @@ textarea:focus {
   gap: 15px;
   grid-template-columns: 1fr 1fr;
 }
+
+.vehicle-type-field {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.vehicle-type-cards {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.vehicle-type-card {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid #cbd9e4;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  min-height: var(--touch);
+  padding: 14px 10px;
+  position: relative;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.vehicle-type-card:hover {
+  border-color: #aebfcd;
+  background: var(--water-50);
+}
+
+.vehicle-type-card:focus-within {
+  border-color: var(--water-500);
+  box-shadow: 0 0 0 3px rgb(21 151 229 / 12%);
+}
+
+.vehicle-type-card--selected {
+  background: var(--water-50);
+  border-color: var(--water-500);
+  box-shadow: 0 0 0 1px var(--water-500);
+}
+
+.vehicle-type-card--selected:focus-within {
+  box-shadow: 0 0 0 1px var(--water-500), 0 0 0 4px rgb(21 151 229 / 12%);
+}
+
+.vehicle-type-card--error {
+  border-color: #e09a9e;
+}
+
+.vehicle-type-card--error.vehicle-type-card--selected {
+  border-color: var(--water-500);
+}
+
+.vehicle-type-field[disabled] .vehicle-type-card {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.vehicle-type-field[disabled] .vehicle-type-card:hover {
+  background: var(--surface);
+  border-color: #cbd9e4;
+}
+
+.vehicle-type-card__icon {
+  align-items: center;
+  color: var(--ink-700);
+  display: flex;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.vehicle-type-card--selected .vehicle-type-card__icon {
+  color: var(--water-700);
+}
+
+.vehicle-type-card__label {
+  color: var(--ink-700);
+  font-size: 0.77rem;
+  font-weight: 550;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.vehicle-type-card--selected .vehicle-type-card__label {
+  color: var(--ink-900);
+  font-weight: 650;
+}
+
+.vehicle-type-card__check {
+  align-items: center;
+  background: var(--water-600);
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  height: 20px;
+  justify-content: center;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 20px;
+}
+
 .toggle-row {
   align-items: flex-start;
   background: var(--canvas);
@@ -2404,6 +2512,7 @@ legend {
   .review-grid,
   .evidence-grid,
   .vehicle-cards,
+  .vehicle-type-cards,
   .invoice-parties {
     grid-template-columns: 1fr;
   }

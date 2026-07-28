@@ -1,27 +1,27 @@
 # PROJECT_STATE.md — Current WashPro Implementation State
 
-*Last updated: 2026-07-27*
+*Last updated: 2026-07-28*
 
 ## Active deployments
 
 | Worker | Version ID | Commit |
 |--------|------------|--------|
-| washpro-web | `185b7484-4b1f-492c-a500-32d0d78bd50e` | `21222e8` |
-| car-wash | `964bd4c1-42d6-48c7-9802-ece10afd23ec` | `e23753c` |
+| washpro-web | `8b31c071-3f74-4e28-af1b-115bfbc48794` | `ef28b0c` |
+| car-wash | `52426036-9b15-473a-a564-7f00a1336cf3` | `ef28b0c` |
 
 ## Production URL
 
 `https://washpro-web.xpersscarwash.workers.dev`
 
-## Test results (last run `21222e8`)
+## Test results (last run `ef28b0c`)
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 9 | 64 | ✅ All pass |
-| @washpro/api | 12 | 20 | ✅ All pass |
+| @washpro/web | 9 | 185 | ✅ All pass |
+| @washpro/api | 13 | 21 | ✅ All pass |
 | @washpro/contracts | 1 | 4 | ✅ All pass |
 | @washpro/domain | 9 | 30 | ✅ All pass |
-| **Total** | **31** | **118** | **✅ All pass** |
+| **Total** | **32** | **240** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -38,6 +38,8 @@ All packages: ✅ 0 errors
 4. **Expense cancellation dialog** (`21222e8`): Replaced `window.prompt()` for expense cancellation reason with a styled `CancelExpenseDialog`. Matches customer/vehicle dialog patterns. `minLength=5` matches backend schema.
 
 5. **Invoice correction dialog** (not yet deployed): Replaced two `window.prompt()` calls for invoice correction reason and customer name with a single `InvoiceRevisionDialog` containing reason textarea and pre-filled customer name input.
+
+6. **Vehicle-type consolidation** (`ef28b0c`, migration 0011): Replaced 9 legacy types (SUV, SEDAN, etc.) with 3 canonical codes (TWO_WHEELER, THREE_WHEELER, FOUR_WHEELER). Applied to production D1 via step-by-step SQL. Removed `BEGIN TRANSACTION`/`COMMIT` from migration file for D1 remote compatibility. Had to drop `tr_invoices_issued_no_update` trigger temporarily to clear self-referencing FK on invoice revisions. API deployed `52426036-9b15-473a-a564-7f00a1336cf3`, web deployed `8b31c071-3f74-4e28-af1b-115bfbc48794`.
 
 ## Known issues
 

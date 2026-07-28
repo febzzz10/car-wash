@@ -1,9 +1,8 @@
 -- Migration: Consolidate vehicle types from 9 to 3 canonical codes
 -- Replaces MOTORBIKE, HATCHBACK, SEDAN, SUV, MUV, VAN, PICKUP, COMMERCIAL, OTHER
 -- with TWO_WHEELER, THREE_WHEELER, FOUR_WHEELER per organization.
--- Wrapped in a transaction for atomicity.
-
-BEGIN TRANSACTION;
+-- Each statement runs atomically; consistency is guaranteed by DELETE + INSERT
+-- order (reverse FK dependency) and the UNIQUE index on (organization_id, code).
 
 -- Step 1: Drop restrictive triggers that block data deletion
 DROP TRIGGER IF EXISTS tr_payments_no_delete;
@@ -114,5 +113,3 @@ CREATE TRIGGER tr_referral_reward_transactions_no_delete
 BEGIN
   SELECT RAISE(ABORT, 'reward transactions are append-only');
 END;
-
-COMMIT;

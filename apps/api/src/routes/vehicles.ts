@@ -1,5 +1,5 @@
 import { vehicleInputSchema, vehicleTypeCodeSchema } from "@washpro/contracts";
-import { normalizeRegistration, normalizeVehicleModel } from "@washpro/domain";
+import { normalizeRegistration, normalizeVehicleMake, normalizeVehicleModel } from "@washpro/domain";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -110,6 +110,12 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
     parsed.data.model !== undefined && parsed.data.model !== null
       ? normalizeVehicleModel(parsed.data.model)
       : null;
+  const makeNormalized:
+    | { readonly name: string; readonly normalizedName: string }
+    | null =
+    parsed.data.make !== undefined && parsed.data.make !== null
+      ? normalizeVehicleMake(parsed.data.make)
+      : null;
   try {
     const statements = [
       c.env.DB.prepare(
@@ -125,7 +131,7 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
         vehicleTypeId,
         registration.display,
         registration.search,
-        parsed.data.make ?? null,
+        makeNormalized === null ? null : makeNormalized.name,
         modelNormalized === null ? null : modelNormalized.name,
         parsed.data.manufacturingYear ?? null,
         parsed.data.colour ?? null,
@@ -157,6 +163,23 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
           auth.organizationId,
           modelNormalized.name,
           modelNormalized.normalizedName,
+          now,
+          now,
+        ),
+      );
+    }
+    if (makeNormalized !== null) {
+      statements.push(
+        c.env.DB.prepare(
+          `INSERT INTO vehicle_makes (id, organization_id, name, normalized_name, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (organization_id, normalized_name)
+           DO UPDATE SET updated_at = excluded.updated_at`,
+        ).bind(
+          crypto.randomUUID(),
+          auth.organizationId,
+          makeNormalized.name,
+          makeNormalized.normalizedName,
           now,
           now,
         ),
@@ -234,6 +257,12 @@ vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
     parsed.data.model !== undefined && parsed.data.model !== null
       ? normalizeVehicleModel(parsed.data.model)
       : null;
+  const makeNormalized:
+    | { readonly name: string; readonly normalizedName: string }
+    | null =
+    parsed.data.make !== undefined && parsed.data.make !== null
+      ? normalizeVehicleMake(parsed.data.make)
+      : null;
   const now = new Date().toISOString();
   try {
     const result = await c.env.DB.prepare(
@@ -256,7 +285,7 @@ vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
         registration?.display ?? null,
         registration?.search ?? null,
         parsed.data.make === undefined ? 0 : 1,
-        parsed.data.make ?? null,
+        makeNormalized === null ? null : makeNormalized.name,
         parsed.data.model === undefined ? 0 : 1,
         modelNormalized === null ? null : modelNormalized.name,
         parsed.data.manufacturingYear === undefined ? 0 : 1,
@@ -293,6 +322,23 @@ vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
           auth.organizationId,
           modelNormalized.name,
           modelNormalized.normalizedName,
+          now,
+          now,
+        )
+        .run();
+    }
+    if (makeNormalized !== null) {
+      await c.env.DB.prepare(
+        `INSERT INTO vehicle_makes (id, organization_id, name, normalized_name, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (organization_id, normalized_name)
+         DO UPDATE SET updated_at = excluded.updated_at`,
+      )
+        .bind(
+          crypto.randomUUID(),
+          auth.organizationId,
+          makeNormalized.name,
+          makeNormalized.normalizedName,
           now,
           now,
         )

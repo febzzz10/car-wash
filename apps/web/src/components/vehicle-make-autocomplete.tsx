@@ -1,6 +1,6 @@
 import VehicleAttributeAutocomplete from "./vehicle-attribute-autocomplete";
 
-interface VehicleModelAutocompleteProps {
+interface VehicleMakeAutocompleteProps {
   readonly "aria-describedby"?: string;
   readonly className?: string;
   readonly defaultValue?: string;
@@ -14,6 +14,6 @@ interface VehicleModelAutocompleteProps {
   readonly value?: string;
 }
 
-export default function VehicleModelAutocomplete(props: VehicleModelAutocompleteProps) {
-  return <VehicleAttributeAutocomplete {...props} endpoint="/vehicle-models" />;
+export default function VehicleMakeAutocomplete(props: VehicleMakeAutocompleteProps) {
+  return <VehicleAttributeAutocomplete {...props} endpoint="/vehicle-makes" />;
 }

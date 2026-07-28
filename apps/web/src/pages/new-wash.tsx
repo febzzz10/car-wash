@@ -25,6 +25,7 @@ import {
   SearchField,
   SkeletonRows,
 } from "../components/ui";
+import VehicleMakeAutocomplete from "../components/vehicle-make-autocomplete";
 import VehicleModelAutocomplete from "../components/vehicle-model-autocomplete";
 import VehicleTypeSelect from "../components/vehicle-type-select";
 import { useToast } from "../components/toast";
@@ -1272,7 +1273,7 @@ export function NewVehicleDialog({
         <div className="form-grid">
           <label>
             <span>Make</span>
-            <input name="make" />
+            <VehicleMakeAutocomplete name="make" />
           </label>
           <label>
             <span>Model</span>

@@ -1,9 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import VehicleModelAutocomplete from "./vehicle-model-autocomplete";
+import VehicleMakeAutocomplete from "./vehicle-make-autocomplete";
 
-const mockModels = [{ name: "WagonR" }, { name: "WR-V" }];
+const mockMakes = [{ name: "Tata" }, { name: "Toyota" }];
 
 vi.mock("../lib/api", () => ({
   api: vi.fn(),
@@ -20,53 +20,53 @@ vi.mock("../lib/api", () => ({
 
 const { api } = vi.mocked(await import("../lib/api"));
 
-describe("VehicleModelAutocomplete", () => {
+describe("VehicleMakeAutocomplete", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
   });
 
-  it("renders an input with name=model", () => {
-    render(<VehicleModelAutocomplete name="model" />);
+  it("renders an input with name=make", () => {
+    render(<VehicleMakeAutocomplete name="make" />);
     const input = screen.getByRole("combobox");
-    expect(input).toHaveAttribute("name", "model");
+    expect(input).toHaveAttribute("name", "make");
   });
 
-  it("fetches from /vehicle-models endpoint", async () => {
-    vi.mocked(api).mockResolvedValue(mockModels);
-    render(<VehicleModelAutocomplete name="model" />);
+  it("fetches from /vehicle-makes endpoint", async () => {
+    vi.mocked(api).mockResolvedValue(mockMakes);
+    render(<VehicleMakeAutocomplete name="make" />);
     const input = screen.getByRole("combobox") as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "W" } });
+    fireEvent.change(input, { target: { value: "T" } });
     await waitFor(() => {
       expect(api).toHaveBeenCalledWith(
-        expect.stringContaining("/vehicle-models"),
+        expect.stringContaining("/vehicle-makes"),
         expect.anything(),
       );
     });
   });
 
   it("uses the provided value", () => {
-    render(<VehicleModelAutocomplete name="model" value="WagonR" />);
+    render(<VehicleMakeAutocomplete name="make" value="Tata" />);
     const input = screen.getByRole("combobox");
-    expect(input).toHaveValue("WagonR");
+    expect(input).toHaveValue("Tata");
   });
 
   it("uses the provided defaultValue", () => {
-    render(<VehicleModelAutocomplete name="model" defaultValue="WR-V" />);
+    render(<VehicleMakeAutocomplete name="make" defaultValue="Toyota" />);
     const input = screen.getByRole("combobox");
-    expect(input).toHaveValue("WR-V");
+    expect(input).toHaveValue("Toyota");
   });
 
   it("calls onChange when the value changes", () => {
     const onChange = vi.fn();
-    render(<VehicleModelAutocomplete name="model" onChange={onChange} />);
+    render(<VehicleMakeAutocomplete name="make" onChange={onChange} />);
     const input = screen.getByRole("combobox");
-    fireEvent.change(input, { target: { value: "W" } });
-    expect(onChange).toHaveBeenCalledWith("W");
+    fireEvent.change(input, { target: { value: "T" } });
+    expect(onChange).toHaveBeenCalledWith("T");
   });
 
   it("sets aria-autocomplete to list", () => {
-    render(<VehicleModelAutocomplete name="model" />);
+    render(<VehicleMakeAutocomplete name="make" />);
     expect(screen.getByRole("combobox")).toHaveAttribute(
       "aria-autocomplete",
       "list",
@@ -74,7 +74,7 @@ describe("VehicleModelAutocomplete", () => {
   });
 
   it("does not call the API when the input is blank", async () => {
-    render(<VehicleModelAutocomplete name="model" />);
+    render(<VehicleMakeAutocomplete name="make" />);
     const input = screen.getByRole("combobox") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "" } });
     await vi.waitFor(() => {

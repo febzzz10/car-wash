@@ -6,6 +6,7 @@ import {
   normalizeNameSearch,
   normalizePhone,
   normalizeRegistration,
+  normalizeVehicleMake,
   normalizeVehicleModel,
 } from "./normalization";
 
@@ -30,6 +31,31 @@ describe("normalization", () => {
     expect(normalizeEmail("  Owner@WashPro.IN ")).toBe("owner@washpro.in");
     expect(normalizeNameSearch("  Anu   Joseph ")).toBe("anu joseph");
     expect(normalizeCode(" wash 20 ")).toBe("WASH20");
+  });
+
+  it("normalizes vehicle make display and deduplication values", () => {
+    expect(normalizeVehicleMake("  Tata  ")).toEqual({
+      name: "Tata",
+      normalizedName: "tata",
+    });
+    expect(normalizeVehicleMake("Maruti   Suzuki")).toEqual({
+      name: "Maruti Suzuki",
+      normalizedName: "maruti suzuki",
+    });
+    expect(normalizeVehicleMake("   ")).toBeNull();
+    expect(normalizeVehicleMake("")).toBeNull();
+    expect(normalizeVehicleMake("Hyundai")).toEqual({
+      name: "Hyundai",
+      normalizedName: "hyundai",
+    });
+    expect(normalizeVehicleMake("BMW")).toEqual({
+      name: "BMW",
+      normalizedName: "bmw",
+    });
+    expect(normalizeVehicleMake("Land Rover")).toEqual({
+      name: "Land Rover",
+      normalizedName: "land rover",
+    });
   });
 
   it("normalizes vehicle model display and deduplication values", () => {

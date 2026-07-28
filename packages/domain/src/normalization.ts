@@ -47,3 +47,9 @@ export function normalizeVehicleModel(
   if (name.length === 0) return null;
   return { name, normalizedName: name.toLowerCase() };
 }
+
+export function normalizeVehicleMake(
+  input: string,
+): { name: string; normalizedName: string } | null {
+  return normalizeVehicleModel(input);
+}

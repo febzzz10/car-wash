@@ -98,7 +98,7 @@ async function mockApplication(page: Page, user = admin): Promise<void> {
           registration_number: "KL 01 AA 1000",
           status: "ACTIVE",
           vehicle_type_id: "type-1",
-          vehicle_type_name: "SUV",
+          vehicle_type_name: "Four Wheeler",
           version: 1,
         },
       ]);
@@ -136,7 +136,7 @@ async function mockApplication(page: Page, user = admin): Promise<void> {
             version: 1,
           },
         ],
-        vehicleTypes: [{ code: "SUV", id: "type-1", name: "SUV" }],
+        vehicleTypes: [{ code: "FOUR_WHEELER", id: "type-1", name: "Four Wheeler" }],
       });
     if (path.endsWith("/wash-jobs/assignable-users"))
       return fulfill(route, [

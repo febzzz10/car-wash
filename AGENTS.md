@@ -331,3 +331,87 @@ Every task must end with a report containing:
 11. Git status
 12. Remaining issues
 13. Manual verification still required (e.g. browser login test)
+
+---
+
+## Vehicle autocomplete rules
+
+### Current state (commit `169da79`)
+
+Vehicle Model and Vehicle Make both have persistent, organization-scoped autocomplete dictionaries stored in Cloudflare D1.
+
+### Database tables
+
+- `vehicle_models` (migration `0012_vehicle_models.sql`) — normalized model names per organization.
+- `vehicle_makes` (migration `0013_vehicle_makes.sql`) — normalized make names per organization.
+
+Both tables share the same schema:
+- `id`, `organization_id`, `name`, `normalized_name`, `created_at`, `updated_at`
+- `UNIQUE (organization_id, normalized_name)` — prevents duplicates per org.
+
+### Shared frontend component
+
+`apps/web/src/components/vehicle-attribute-autocomplete.tsx` is a generic autocomplete with:
+- `endpoint` prop (e.g. `/vehicle-makes`, `/vehicle-models`).
+- 200ms debounce, AbortController for stale request cancellation.
+- ARIA attributes: `combobox` role, `aria-autocomplete="list"`, `aria-expanded`, `aria-activedescendant`, `aria-controls`.
+- Keyboard navigation: ArrowDown/ArrowUp to highlight, Enter to select, Escape to dismiss.
+- Click-outside dismiss, loading spinner, disabled/required support.
+- API failure fallback: input remains editable, no unhandled errors.
+
+Thin wrappers:
+- `VehicleModelAutocomplete` → endpoint `/vehicle-models`
+- `VehicleMakeAutocomplete` → endpoint `/vehicle-makes`
+
+### API endpoints
+
+- `GET /api/v1/vehicle-models?q=<prefix>&limit=<1-20>` — protected, scoped by org.
+- `GET /api/v1/vehicle-makes?q=<prefix>&limit=<1-20>` — protected, scoped by org.
+
+Both use:
+- `requireSession` + `requirePermission("vehicles.read")`.
+- Prefix-range scan (`>=` / `<`) on `normalized_name`.
+- Exact match ranked first, rest alphabetical.
+- Max 80 characters, limit clamped 1–20.
+- Parameterised queries — no `LIKE` or `GLOB`.
+
+### Vehicle create/update integration (`apps/api/src/routes/vehicles.ts`)
+
+- `POST /api/v1/vehicles` — normalizes make/model via `normalizeVehicleMake` / `normalizeVehicleModel`, upserts into corresponding dictionary within `DB.batch()`.
+- `PATCH /api/v1/vehicles/:id` — same normalization and upsert after successful version-guarded update.
+- Upsert uses `ON CONFLICT (organization_id, normalized_name) DO UPDATE SET updated_at = excluded.updated_at` — preserves first clean display capitalization.
+- Upsert only runs after successful vehicle save, never on validation/auth/conflict failures.
+- Blank/null values are never stored.
+
+### Normalization (`packages/domain/src/normalization.ts`)
+
+`normalizeVehicleMake` delegates to the same logic as `normalizeVehicleModel`:
+- Trims surrounding whitespace.
+- Collapses repeated internal whitespace.
+- Produces lowercase normalized value for deduplication.
+- Returns `null` for blank input.
+- Preserves meaningful punctuation (hyphens, etc.).
+
+### Backfill rules
+
+- Backfill is only required for records that existed **before** the migration was applied, or were imported directly into D1 without using the normal API.
+- New vehicles created/edited through the normal API automatically save their make/model.
+- **Do not add public or temporary backfill HTTP routes.**
+- The TypeScript backfill scripts (`scripts/backfill-vehicle-models.ts`, `scripts/backfill-vehicle-makes.ts`) require a Workers D1 binding and cannot be run directly against remote D1 via `pnpm tsx`.
+- If backfill is genuinely required, use `wrangler d1 execute` with safe idempotent `INSERT ... ON CONFLICT` statements.
+
+### Security and isolation
+
+- All queries are scoped by `auth.organizationId`.
+- `normalized_name` is never exposed to clients.
+- No public or admin bypass backfill endpoint exists.
+- CSRF protection, session auth, and permission checks are preserved for all state-changing operations.
+- Do not request or expose production credentials.
+
+### Verified deployment
+
+- API Worker (`car-wash`): `ac745ccf-1972-49b9-8959-074aac321e10`
+- Web Worker (`washpro-web`): `0d6919f1-563f-4ca3-afcc-9c98c6e7d4d3`
+- 263 automated tests passed (0 failed, 0 skipped).
+- All authenticated production tests A–H passed.
+- **Status:** fully implemented, deployed and production-verified.

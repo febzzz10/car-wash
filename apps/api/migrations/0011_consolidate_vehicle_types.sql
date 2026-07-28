@@ -6,6 +6,7 @@
 BEGIN TRANSACTION;
 
 -- Step 1: Drop restrictive triggers that block data deletion
+DROP TRIGGER IF EXISTS tr_payments_no_delete;
 DROP TRIGGER IF EXISTS tr_refunds_no_update;
 DROP TRIGGER IF EXISTS tr_refunds_no_delete;
 DROP TRIGGER IF EXISTS tr_invoices_no_delete;
@@ -13,6 +14,7 @@ DROP TRIGGER IF EXISTS tr_invoice_items_no_update;
 DROP TRIGGER IF EXISTS tr_invoice_items_no_delete;
 DROP TRIGGER IF EXISTS tr_timer_events_no_delete;
 DROP TRIGGER IF EXISTS tr_timer_adjustments_no_delete;
+DROP TRIGGER IF EXISTS tr_referral_reward_transactions_no_delete;
 
 -- Step 2: Delete records in reverse FK dependency order
 -- Deepest dependencies first (referenced by other tables)
@@ -59,6 +61,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_vehicle_types_org_code
   ON vehicle_types (organization_id, code);
 
 -- Step 6: Recreate dropped triggers with original behavior
+CREATE TRIGGER tr_payments_no_delete
+  BEFORE DELETE ON payments
+BEGIN
+  SELECT RAISE(ABORT, 'payments are append-only');
+END;
+
 CREATE TRIGGER tr_invoices_no_delete
   BEFORE DELETE ON invoices
 BEGIN
@@ -99,6 +107,12 @@ CREATE TRIGGER tr_refunds_no_delete
   BEFORE DELETE ON refunds
 BEGIN
   SELECT RAISE(ABORT, 'refunds are append-only');
+END;
+
+CREATE TRIGGER tr_referral_reward_transactions_no_delete
+  BEFORE DELETE ON referral_reward_transactions
+BEGIN
+  SELECT RAISE(ABORT, 'reward transactions are append-only');
 END;
 
 COMMIT;

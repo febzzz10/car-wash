@@ -3,7 +3,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Crosshair,
   Gift,
   MapPin,
   Plus,
@@ -48,8 +47,7 @@ import type {
 const stepLabels = [
   "Customer",
   "Vehicle",
-  "Live photo",
-  "Location",
+  "Live photo & location",
   "Services",
   "Benefits",
   "Assign",
@@ -72,12 +70,10 @@ interface RewardRecord {
   readonly remaining_amount_minor: number;
 }
 interface Evidence {
-  readonly accuracyMeters?: number | undefined;
-  readonly capturedAt?: string | undefined;
-  readonly latitude?: number | undefined;
-  readonly longitude?: number | undefined;
   readonly photoAssetId?: string | undefined;
   readonly photoPreview?: string | undefined;
+  readonly place?: string | undefined;
+  readonly capturedAt?: string | undefined;
 }
 
 export default function NewWashPage() {
@@ -107,9 +103,6 @@ export default function NewWashPage() {
   );
   const [manualDiscountReason, setManualDiscountReason] = useState(
     restored?.manualDiscountReason ?? "",
-  );
-  const [locationOverrideReason, setLocationOverrideReason] = useState(
-    restored?.locationOverrideReason ?? "",
   );
   const [assignedUserId, setAssignedUserId] = useState(
     restored?.assignedUserId ?? "",
@@ -154,7 +147,6 @@ export default function NewWashPage() {
         rewardUnits: rewardAmountMinor,
         manualDiscountMinor,
         manualDiscountReason: manualDiscountReason || undefined,
-        locationOverrideReason: locationOverrideReason || undefined,
         servicePriceId: primaryServiceId || undefined,
         startImmediately,
         step,
@@ -172,7 +164,6 @@ export default function NewWashPage() {
     rewardId,
     manualDiscountMinor,
     manualDiscountReason,
-    locationOverrideReason,
     startImmediately,
     step,
     vehicleId,
@@ -220,7 +211,6 @@ export default function NewWashPage() {
         customerId !== "",
         vehicleId !== "",
         evidence.photoAssetId !== undefined,
-        evidence.latitude !== undefined,
         primaryServiceId !== "",
         (rewardId === "" || rewardAmountMinor > 0) &&
           (manualDiscountMinor === 0 ||
@@ -234,14 +224,7 @@ export default function NewWashPage() {
   async function createJob(
     requestedStatus?: "DRAFT" | "WAITING" | "IN_PROGRESS",
   ) {
-    if (
-      evidence.photoAssetId === undefined ||
-      evidence.latitude === undefined ||
-      evidence.longitude === undefined ||
-      evidence.accuracyMeters === undefined ||
-      evidence.capturedAt === undefined
-    )
-      return;
+    if (evidence.photoAssetId === undefined) return;
     setBusy(true);
     setError(null);
     try {
@@ -255,14 +238,8 @@ export default function NewWashPage() {
           initialStatus:
             requestedStatus ?? (startImmediately ? "IN_PROGRESS" : "WAITING"),
           location: {
-            accuracyMeters: evidence.accuracyMeters,
-            capturedAt: evidence.capturedAt,
-            latitude: evidence.latitude,
-            longitude: evidence.longitude,
-            overrideReason:
-              locationOverrideReason.trim().length >= 5
-                ? locationOverrideReason.trim()
-                : undefined,
+            place: evidence.place ?? "",
+            capturedAt: evidence.capturedAt ?? new Date().toISOString(),
           },
           manualDiscountReason:
             manualDiscountMinor > 0 ? manualDiscountReason.trim() : undefined,
@@ -408,18 +385,9 @@ export default function NewWashPage() {
             </SelectionStep>
           ) : null}
           {step === 2 ? (
-            <CameraStep evidence={evidence} onChange={setEvidence} />
+            <PhotoLocationStep evidence={evidence} onChange={setEvidence} />
           ) : null}
           {step === 3 ? (
-            <LocationStep
-              canOverride={user?.role === "ADMIN"}
-              evidence={evidence}
-              onChange={setEvidence}
-              onOverrideReasonChange={setLocationOverrideReason}
-              overrideReason={locationOverrideReason}
-            />
-          ) : null}
-          {step === 4 ? (
             <SelectionStep
               heading="Choose services"
               intro="Select one primary service and any eligible add-ons. Final pricing, discounts, and tax are recalculated on the server."
@@ -704,9 +672,9 @@ export default function NewWashPage() {
               <Camera size={17} /> Live photo{" "}
               {evidence.photoAssetId === undefined ? "needed" : "captured"}
             </span>
-            <span className={evidence.latitude === undefined ? "" : "done"}>
-              <MapPin size={17} /> GPS{" "}
-              {evidence.latitude === undefined ? "needed" : "captured"}
+            <span className={evidence.place === undefined ? "" : "done"}>
+              <MapPin size={17} /> Place{" "}
+              {evidence.place === undefined ? "optional" : "captured"}
             </span>
           </div>
         </aside>
@@ -795,7 +763,24 @@ function SummaryLine({
   );
 }
 
-function CameraStep({
+async function reverseGeocode(
+  latitude: number,
+  longitude: number,
+): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=0`,
+      { headers: { "Accept-Language": "en" } },
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as { display_name?: string };
+    return data.display_name?.slice(0, 500) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function PhotoLocationStep({
   evidence,
   onChange,
 }: {
@@ -805,15 +790,19 @@ function CameraStep({
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [challenge, setChallenge] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [camBusy, setCamBusy] = useState(false);
+  const [camError, setCamError] = useState<string | null>(null);
+  const [locBusy, setLocBusy] = useState(false);
+  const [locError, setLocError] = useState<string | null>(null);
+  const photoDone = evidence.photoAssetId !== undefined;
+  const locationDone = evidence.place !== undefined;
   useEffect(
     () => () => stream.current?.getTracks().forEach((track) => track.stop()),
     [],
   );
   async function start() {
-    setBusy(true);
-    setError(null);
+    setCamBusy(true);
+    setCamError(null);
     try {
       const result = await api<{ readonly nonce: string }>(
         "/uploads/photo-challenge",
@@ -834,7 +823,7 @@ function CameraStep({
         await video.current.play();
       }
     } catch (reason) {
-      setError(
+      setCamError(
         reason instanceof DOMException && reason.name === "NotAllowedError"
           ? "Camera access was denied. Allow camera permission in your browser settings, then retry."
           : reason instanceof Error
@@ -842,13 +831,13 @@ function CameraStep({
             : "The camera is unavailable.",
       );
     } finally {
-      setBusy(false);
+      setCamBusy(false);
     }
   }
   async function capture() {
     if (video.current === null || challenge === null) return;
-    setBusy(true);
-    setError(null);
+    setCamBusy(true);
+    setCamError(null);
     try {
       const maxWidth = 1600;
       const ratio = Math.min(1, maxWidth / video.current.videoWidth);
@@ -893,13 +882,13 @@ function CameraStep({
         photoPreview: URL.createObjectURL(blob),
       });
     } catch (reason) {
-      setError(
+      setCamError(
         reason instanceof Error
           ? reason.message
           : "Photo upload failed. Retake and retry.",
       );
     } finally {
-      setBusy(false);
+      setCamBusy(false);
     }
   }
   async function retake() {
@@ -912,18 +901,49 @@ function CameraStep({
     onChange({ ...evidence, photoAssetId: undefined, photoPreview: undefined });
     setChallenge(null);
   }
+  async function captureLocation() {
+    if (!("geolocation" in navigator)) {
+      setLocError("Geolocation is not available in this browser.");
+      return;
+    }
+    setLocBusy(true);
+    setLocError(null);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const place = await reverseGeocode(
+          position.coords.latitude,
+          position.coords.longitude,
+        );
+        onChange({
+          ...evidence,
+          place: place ?? `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`,
+          capturedAt: new Date(position.timestamp).toISOString(),
+        });
+        setLocBusy(false);
+      },
+      (failure) => {
+        setLocError(
+          failure.code === failure.PERMISSION_DENIED
+            ? "Location access was denied. Allow location permission, then retry."
+            : "GPS could not get a reliable position. Move to an open area and retry.",
+        );
+        setLocBusy(false);
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
+    );
+  }
   return (
     <SelectionStep
-      heading="Capture the vehicle live"
-      intro="A live rear-camera frame is required. Gallery uploads are intentionally unavailable."
+      heading="Capture photo & location"
+      intro="Take a live rear-camera photo of the vehicle. Optionally capture the location to record a place name."
     >
       <div className="camera-stage">
         {evidence.photoPreview !== undefined ? (
           <img
             alt="Live vehicle capture preview"
-            height="480"
+            height="240"
             src={evidence.photoPreview}
-            width="640"
+            width="320"
           />
         ) : (
           <video muted playsInline ref={video} />
@@ -936,136 +956,53 @@ function CameraStep({
           </div>
         ) : null}
       </div>
-      {error === null ? null : (
+      {camError === null ? null : (
         <div className="form-alert" role="alert">
-          {error}
+          {camError}
         </div>
       )}
       <div className="camera-actions">
-        {evidence.photoAssetId !== undefined ? (
+        {photoDone ? (
           <Button onClick={() => void retake()} tone="secondary">
-            <RotateCcw size={18} /> Retake
+            <RotateCcw size={18} /> Retake photo
           </Button>
         ) : challenge === null ? (
-          <Button busy={busy} onClick={() => void start()}>
+          <Button busy={camBusy} onClick={() => void start()}>
             <Camera size={18} /> Allow camera
           </Button>
         ) : (
-          <Button busy={busy} onClick={() => void capture()}>
+          <Button busy={camBusy} onClick={() => void capture()}>
             <Camera size={18} /> Capture live photo
           </Button>
         )}
       </div>
-    </SelectionStep>
-  );
-}
-
-function LocationStep({
-  canOverride,
-  evidence,
-  onChange,
-  onOverrideReasonChange,
-  overrideReason,
-}: {
-  readonly canOverride: boolean;
-  readonly evidence: Evidence;
-  readonly onChange: (evidence: Evidence) => void;
-  readonly onOverrideReasonChange: (value: string) => void;
-  readonly overrideReason: string;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  function locate() {
-    setBusy(true);
-    setError(null);
-    if (!("geolocation" in navigator)) {
-      setError("Geolocation is not available in this browser.");
-      setBusy(false);
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        onChange({
-          ...evidence,
-          accuracyMeters: position.coords.accuracy,
-          capturedAt: new Date(position.timestamp).toISOString(),
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-        setBusy(false);
-      },
-      (failure) => {
-        setError(
-          failure.code === failure.PERMISSION_DENIED
-            ? "Location access was denied. Allow location permission, then retry."
-            : "GPS could not get a reliable position. Move to an open area and retry.",
-        );
-        setBusy(false);
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
-    );
-  }
-  return (
-    <SelectionStep
-      heading="Verify business location"
-      intro="High-accuracy browser GPS is compared with the configured branch coordinates and allowed radius on the server."
-    >
-      <div
-        className={`location-panel ${evidence.latitude === undefined ? "" : "captured"}`}
-      >
-        <span className="location-radar">
-          <Crosshair size={32} />
-        </span>
-        {evidence.latitude === undefined ? (
-          <>
-            <strong>Location not captured</strong>
-            <p>Stand near the vehicle and enable precise location.</p>
-          </>
-        ) : (
-          <>
-            <strong>GPS captured</strong>
-            <p>
-              Accuracy ±{Math.round(evidence.accuracyMeters ?? 0)} m ·
-              verification occurs when the job is created.
+      {photoDone ? (
+        <div className="location-capture-section">
+          <hr />
+          <h3>Location place</h3>
+          {locationDone ? (
+            <div className="location-captured-info">
+              <MapPin size={18} />
+              <span>{evidence.place}</span>
+            </div>
+          ) : (
+            <p className="step-intro">
+              Optionally capture your current location to record a readable place
+              name instead of raw GPS coordinates.
             </p>
-            {(evidence.accuracyMeters ?? 0) > 50 ? (
-              <span className="accuracy-warning">
-                Accuracy is poor. Retry outdoors before continuing.
-              </span>
-            ) : null}
-          </>
-        )}
-      </div>
-      {error === null ? null : (
-        <div className="form-alert" role="alert">
-          {error}
+          )}
+          {locError === null ? null : (
+            <div className="form-alert" role="alert">
+              {locError}
+            </div>
+          )}
+          {!locationDone ? (
+            <Button busy={locBusy} onClick={() => void captureLocation()}>
+              <MapPin size={18} /> Capture place name
+            </Button>
+          ) : null}
         </div>
-      )}
-      {canOverride ? (
-        <label className="location-override">
-          <span>Admin override reason (only for a rejected GPS check)</span>
-          <textarea
-            minLength={5}
-            onChange={(event) => onOverrideReasonChange(event.target.value)}
-            placeholder="Explain the verified exception…"
-            value={overrideReason}
-          />
-          <small>
-            If supplied, the server records an audited override only when GPS is
-            outside the radius or below the configured accuracy.
-          </small>
-        </label>
       ) : null}
-      <Button busy={busy} onClick={locate}>
-        {evidence.latitude === undefined ? (
-          <MapPin size={18} />
-        ) : (
-          <RotateCcw size={18} />
-        )}{" "}
-        {evidence.latitude === undefined
-          ? "Capture precise location"
-          : "Retry GPS"}
-      </Button>
     </SelectionStep>
   );
 }

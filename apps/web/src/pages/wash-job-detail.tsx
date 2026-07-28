@@ -57,6 +57,8 @@ interface JobDetail extends WashJobRecord {
   readonly items: readonly JobItem[];
   readonly locations: readonly LocationEvidence[];
   readonly photos: readonly PhotoEvidence[];
+  readonly location_place?: string | null;
+  readonly location_captured_at?: string | null;
   readonly subtotal_minor: number;
   readonly coupon_discount_minor: number;
   readonly referral_discount_minor: number;
@@ -361,17 +363,29 @@ export default function WashJobDetailPage() {
                 <span className="evidence-icon">
                   <MapPin />
                 </span>
-                <strong>Branch location</strong>
-                <span>
-                  {titleCase(
-                    record.locations.at(-1)?.location_status ?? "NOT CAPTURED",
-                  )}
-                </span>
-                <small>
-                  {record.locations.length === 0
-                    ? "—"
-                    : `${Math.round(record.locations.at(-1)?.distance_from_branch_meters ?? 0)} m from branch · ±${Math.round(record.locations.at(-1)?.accuracy_meters ?? 0)} m`}
-                </small>
+                <strong>Location</strong>
+                {record.location_place !== null && record.location_place !== undefined ? (
+                  <>
+                    <span>{record.location_place}</span>
+                    <small>{dateTime(record.location_captured_at)}</small>
+                  </>
+                ) : record.locations.length > 0 ? (
+                  <>
+                    <span>
+                      {titleCase(
+                        record.locations.at(-1)?.location_status ?? "NOT CAPTURED",
+                      )}
+                    </span>
+                    <small>
+                      {`${Math.round(record.locations.at(-1)?.distance_from_branch_meters ?? 0)} m from branch · ±${Math.round(record.locations.at(-1)?.accuracy_meters ?? 0)} m`}
+                    </small>
+                  </>
+                ) : (
+                  <>
+                    <span>Not captured</span>
+                    <small>—</small>
+                  </>
+                )}
               </div>
             </div>
           </Card>

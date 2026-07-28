@@ -1,6 +1,5 @@
 import type {
   DiscountType,
-  LocationStatus,
   WashJobStatus,
 } from "@washpro/contracts";
 import {
@@ -10,7 +9,6 @@ import {
   normalizeCode,
   validateCoupon,
   validateReferral,
-  verifyLocation,
 } from "@washpro/domain";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -36,11 +34,8 @@ const createJobSchema = z.object({
   idempotencyKey: z.string().trim().min(16).max(128),
   initialStatus: z.enum(["DRAFT", "WAITING", "IN_PROGRESS"]).default("WAITING"),
   location: z.object({
-    accuracyMeters: z.number().nonnegative(),
+    place: z.string().max(500).default(""),
     capturedAt: z.iso.datetime({ offset: true }),
-    latitude: z.number().min(-90).max(90),
-    longitude: z.number().min(-180).max(180),
-    overrideReason: z.string().trim().min(5).max(500).optional(),
   }),
   manualDiscountMinor: z.number().int().nonnegative().default(0),
   manualDiscountReason: z.string().trim().min(5).max(500).optional(),
@@ -321,46 +316,6 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
     );
   }
 
-  if (related.branch_latitude === null || related.branch_longitude === null) {
-    throw new ApiError(
-      422,
-      "LOCATION_CAPTURE_REQUIRED",
-      "Business GPS coordinates are not configured.",
-    );
-  }
-  const location = verifyLocation({
-    allowedRadiusMeters: related.branch_radius,
-    business: {
-      latitude: related.branch_latitude,
-      longitude: related.branch_longitude,
-    },
-    captured: {
-      accuracyMeters: parsed.data.location.accuracyMeters,
-      latitude: parsed.data.location.latitude,
-      longitude: parsed.data.location.longitude,
-    },
-    maximumAccuracyMeters: related.branch_accuracy,
-  });
-  let locationStatus: LocationStatus = location.status;
-  if (location.status !== "AT_BUSINESS_LOCATION") {
-    if (
-      parsed.data.location.overrideReason !== undefined &&
-      auth.role === "ADMIN"
-    ) {
-      locationStatus = "OVERRIDDEN";
-    } else {
-      throw new ApiError(
-        422,
-        location.status === "POOR_ACCURACY"
-          ? "LOCATION_ACCURACY_LOW"
-          : "LOCATION_OUTSIDE_ALLOWED_RADIUS",
-        location.status === "POOR_ACCURACY"
-          ? "GPS accuracy is too low. Move to an open area and retry."
-          : "The device is outside the allowed business location.",
-      );
-    }
-  }
-
   const settings = await loadSettings(
     c.env,
     auth.organizationId,
@@ -612,7 +567,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
   const jobReference = `WJ-${year}-${String(nextSequence).padStart(6, "0")}`;
   const jobId = crypto.randomUUID();
   const photoId = crypto.randomUUID();
-  const locationId = crypto.randomUUID();
+
   const status = parsed.data.initialStatus;
   const requestHash = await sha256(JSON.stringify(parsed.data));
   const discounts = allocate(
@@ -635,7 +590,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       nextSequence - 1,
     ),
     c.env.DB.prepare(
-      `INSERT INTO wash_jobs (id, organization_id, branch_id, job_reference, customer_id, vehicle_id, assigned_user_id, customer_name_snapshot, customer_phone_snapshot, vehicle_registration_snapshot, vehicle_type_name_snapshot, vehicle_make_snapshot, vehicle_model_snapshot, status, subtotal_minor, coupon_discount_minor, referral_discount_minor, reward_discount_minor, manual_discount_minor, total_discount_minor, taxable_amount_minor, tax_minor, rounding_minor, total_amount_minor, balance_minor, tax_rate_basis_points, started_at, mandatory_photo_verified, mandatory_location_verified, business_location_status, notes, manual_discount_reason, created_by_user_id, updated_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO wash_jobs (id, organization_id, branch_id, job_reference, customer_id, vehicle_id, assigned_user_id, customer_name_snapshot, customer_phone_snapshot, vehicle_registration_snapshot, vehicle_type_name_snapshot, vehicle_make_snapshot, vehicle_model_snapshot, status, subtotal_minor, coupon_discount_minor, referral_discount_minor, reward_discount_minor, manual_discount_minor, total_discount_minor, taxable_amount_minor, tax_minor, rounding_minor, total_amount_minor, balance_minor, tax_rate_basis_points, started_at, mandatory_photo_verified, mandatory_location_verified, location_place, location_captured_at, notes, manual_discount_reason, created_by_user_id, updated_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       jobId,
       auth.organizationId,
@@ -664,7 +619,8 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       bill.totalAmountMinor,
       taxRate,
       status === "IN_PROGRESS" ? now.toISOString() : null,
-      locationStatus,
+      parsed.data.location.place || null,
+      parsed.data.location.capturedAt,
       parsed.data.notes ?? null,
       parsed.data.manualDiscountReason ?? null,
       auth.userId,
@@ -714,30 +670,6 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       now.toISOString(),
     ),
     c.env.DB.prepare(
-      `INSERT INTO location_captures (id, organization_id, branch_id, wash_job_id, vehicle_photo_id, latitude, longitude, accuracy_meters, captured_at, captured_by_user_id, business_latitude_snapshot, business_longitude_snapshot, allowed_radius_meters_snapshot, minimum_accuracy_meters_snapshot, distance_from_business_meters, verification_status, override_reason, overridden_by_user_id, overridden_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      locationId,
-      auth.organizationId,
-      auth.branchId,
-      jobId,
-      photoId,
-      parsed.data.location.latitude,
-      parsed.data.location.longitude,
-      parsed.data.location.accuracyMeters,
-      parsed.data.location.capturedAt,
-      auth.userId,
-      related.branch_latitude,
-      related.branch_longitude,
-      related.branch_radius,
-      related.branch_accuracy,
-      location.distanceMeters,
-      locationStatus,
-      parsed.data.location.overrideReason ?? null,
-      locationStatus === "OVERRIDDEN" ? auth.userId : null,
-      locationStatus === "OVERRIDDEN" ? now.toISOString() : null,
-      now.toISOString(),
-    ),
-    c.env.DB.prepare(
       `INSERT INTO idempotency_keys (id, organization_id, user_id, idempotency_key, operation_type, request_hash, response_status, response_body_json, resource_type, resource_id, state, expires_at, created_at, completed_at) VALUES (?, ?, ?, ?, 'WASH_JOB_CREATE', ?, 201, ?, 'WASH_JOB', ?, 'COMPLETED', ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(),
@@ -752,23 +684,14 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       now.toISOString(),
     ),
     auditStatement(c.env, {
-      action:
-        locationStatus === "OVERRIDDEN"
-          ? "WASH_JOB_CREATED_WITH_LOCATION_OVERRIDE"
-          : "WASH_JOB_CREATED",
+      action: "WASH_JOB_CREATED",
       auth,
-      next: { bill, jobId, jobReference, locationStatus, serviceIds },
-      reason:
-        parsed.data.location.overrideReason ??
-        parsed.data.manualDiscountReason ??
-        null,
+      next: { bill, jobId, jobReference, serviceIds },
+      reason: parsed.data.manualDiscountReason ?? null,
       recordId: jobId,
       recordType: "WASH_JOB",
       requestId: c.get("requestId"),
-      severity:
-        locationStatus === "OVERRIDDEN" || bill.manualDiscountMinor > 0
-          ? "WARNING"
-          : "INFO",
+      severity: bill.manualDiscountMinor > 0 ? "WARNING" : "INFO",
     }),
   ];
   if (status === "IN_PROGRESS") {

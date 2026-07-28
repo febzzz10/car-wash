@@ -121,10 +121,8 @@ describe("wash, timer, payment, and refund workflow", () => {
           idempotencyKey: "referral-wash-create-0001",
           initialStatus: "WAITING",
           location: {
-            accuracyMeters: 12,
+            place: "Test Location, Kochi",
             capturedAt: new Date().toISOString(),
-            latitude: 10.0001,
-            longitude: 76.0001,
           },
           photoAssetId: "asset-referral-wash",
           primaryServiceId: "service-primary",
@@ -204,10 +202,8 @@ describe("wash, timer, payment, and refund workflow", () => {
           idempotencyKey: "wash-create-key-0001",
           initialStatus: "WAITING",
           location: {
-            accuracyMeters: 12,
+            place: "Test Location, Kochi",
             capturedAt: new Date().toISOString(),
-            latitude: 10.0001,
-            longitude: 76.0001,
           },
           photoAssetId: "asset-live-wash",
           primaryServiceId: "service-primary",

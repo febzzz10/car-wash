@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseWizardDraft, serializeWizardDraft } from "./wizard-draft";
 
 describe("New Wash draft persistence", () => {
-  it("preserves safe selections but never persists photo or GPS evidence", () => {
+  it("preserves safe selections across sessions", () => {
     const value = serializeWizardDraft({
       step: 5,
       customerId: "customer-1",
@@ -16,18 +16,10 @@ describe("New Wash draft persistence", () => {
       rewardId: "reward-1",
       manualDiscountMinor: 100,
       manualDiscountReason: "Service recovery",
-      locationOverrideReason: "Verified temporary bay relocation",
       assignedUserId: "staff-1",
       startImmediately: true,
-      photoUploadId: "private-photo",
-      latitude: 9.98,
-      longitude: 76.28,
-      gpsAccuracyM: 12,
     });
 
-    expect(value).not.toContain("private-photo");
-    expect(value).not.toContain("latitude");
-    expect(value).not.toContain("longitude");
     expect(parseWizardDraft(value)).toMatchObject({
       step: 5,
       customerId: "customer-1",

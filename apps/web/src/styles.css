@@ -1003,9 +1003,9 @@ textarea:focus {
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   justify-content: center;
-  min-height: var(--touch);
+  min-height: 130px;
   padding: 14px 10px;
   position: relative;
   transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
@@ -1049,17 +1049,15 @@ textarea:focus {
   border-color: #cbd9e4;
 }
 
-.vehicle-type-card__icon {
-  align-items: center;
-  color: var(--ink-700);
-  display: flex;
-  height: 40px;
-  justify-content: center;
-  width: 40px;
-}
-
-.vehicle-type-card--selected .vehicle-type-card__icon {
-  color: var(--water-700);
+.vehicle-type-card__image {
+  display: block;
+  height: 68px;
+  margin: 0 auto 8px;
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+  width: 82px;
 }
 
 .vehicle-type-card__label {
@@ -2562,6 +2560,23 @@ legend {
     left: 16px;
     right: 16px;
     width: auto;
+  }
+  .vehicle-type-card {
+    flex-direction: row;
+    gap: 12px;
+    justify-content: flex-start;
+    min-height: var(--touch);
+    padding: 10px 14px;
+  }
+  .vehicle-type-card__image {
+    height: 44px;
+    margin: 0;
+    width: 54px;
+  }
+  .vehicle-type-card__check {
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
   }
   .login-story {
     min-height: 260px;

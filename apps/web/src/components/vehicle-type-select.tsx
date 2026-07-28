@@ -31,7 +31,6 @@ export default function VehicleTypeSelect({
       <legend className="sr-only">Vehicle type</legend>
       <div className="vehicle-type-cards">
         {VEHICLE_TYPE_OPTIONS.map((option) => {
-          const Icon = option.icon;
           const inputId = `${groupId}-${option.value}`;
           const checked = option.value === value;
           return (
@@ -50,9 +49,12 @@ export default function VehicleTypeSelect({
                 type="radio"
                 value={option.value}
               />
-              <span className="vehicle-type-card__icon">
-                <Icon aria-hidden size={40} />
-              </span>
+              <img
+                alt=""
+                aria-hidden="true"
+                className="vehicle-type-card__image"
+                src={option.imageSrc}
+              />
               <span className="vehicle-type-card__label">{option.label}</span>
               {checked ? (
                 <span aria-hidden className="vehicle-type-card__check">

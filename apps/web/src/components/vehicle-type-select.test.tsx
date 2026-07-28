@@ -172,14 +172,22 @@ describe("VehicleTypeSelect", () => {
     }
   });
 
-  it("icons have correct dimensions and are not clipped", () => {
+  it("renders three vehicle images with empty alt text", () => {
     render(<VehicleTypeSelect onChange={() => {}} />);
-    const svgs = screen
-      .getAllByRole("radio")[0]!
-      .closest("label")!
-      .querySelector("svg")!;
-    expect(svgs).toBeTruthy();
-    const size = Number(svgs.getAttribute("height"));
-    expect(size).toBeGreaterThanOrEqual(32);
+    const images = document.querySelectorAll(".vehicle-type-card__image");
+    expect(images).toHaveLength(3);
+    images.forEach((img) => {
+      expect(img).toHaveAttribute("alt", "");
+      expect(img).toHaveAttribute("aria-hidden", "true");
+    });
+  });
+
+  it("images use the correct PNG sources from shared config", () => {
+    render(<VehicleTypeSelect onChange={() => {}} />);
+    const images = document.querySelectorAll(".vehicle-type-card__image");
+    expect(images).toHaveLength(3);
+    images.forEach((img) => {
+      expect(img.getAttribute("src")).toContain("png");
+    });
   });
 });

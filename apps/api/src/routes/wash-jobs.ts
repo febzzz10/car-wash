@@ -25,6 +25,8 @@ import {
 } from "../services/settings";
 import type { AppBindings } from "../types";
 
+const COORDINATE_ONLY = /^\s*(?:(?:lat(?:itude)?|lng|long(?:itude)?)\s*[:=]\s*)?-?\d{1,2}(?:\.\d+)?\s*[°d]?\s*[NS]?\s*[,;\s]+\s*(?:(?:lat(?:itude)?|lng|long(?:itude)?)\s*[:=]\s*)?-?\d{1,3}(?:\.\d+)?\s*[°d]?\s*[EW]?\s*$/i;
+
 const idSchema = z.string().trim().min(8).max(64);
 const createJobSchema = z.object({
   addOnServiceIds: z.array(idSchema).max(20).default([]),
@@ -34,9 +36,19 @@ const createJobSchema = z.object({
   idempotencyKey: z.string().trim().min(16).max(128),
   initialStatus: z.enum(["DRAFT", "WAITING", "IN_PROGRESS"]).default("WAITING"),
   location: z.object({
-    place: z.string().max(500).default(""),
-    capturedAt: z.iso.datetime({ offset: true }),
-  }),
+    place: z.string().trim().min(1).max(500)
+      .refine(
+        (val) => !COORDINATE_ONLY.test(val),
+        { message: "Location place must be a human-readable place name, not raw coordinates." },
+      )
+      .optional(),
+    capturedAt: z.iso.datetime({ offset: true }).optional(),
+  }).strict().refine(
+    (data) =>
+      (data.place !== undefined && data.capturedAt !== undefined) ||
+      (data.place === undefined && data.capturedAt === undefined),
+    { message: "Both place and capturedAt must be provided together, or both omitted." },
+  ),
   manualDiscountMinor: z.number().int().nonnegative().default(0),
   manualDiscountReason: z.string().trim().min(5).max(500).optional(),
   notes: z.string().trim().max(2000).optional(),
@@ -46,7 +58,7 @@ const createJobSchema = z.object({
   rewardAmountMinor: z.number().int().positive().optional(),
   rewardId: idSchema.optional(),
   vehicleId: idSchema,
-});
+}).strict();
 const actionSchema = z.object({ version: z.number().int().positive() });
 const cancelSchema = actionSchema.extend({
   reason: z.string().trim().min(5).max(500),
@@ -620,7 +632,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       taxRate,
       status === "IN_PROGRESS" ? now.toISOString() : null,
       parsed.data.location.place || null,
-      parsed.data.location.capturedAt,
+      parsed.data.location.capturedAt ?? null,
       parsed.data.notes ?? null,
       parsed.data.manualDiscountReason ?? null,
       auth.userId,

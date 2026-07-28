@@ -18,7 +18,10 @@
 		"ALLOWED_ORIGINS": "https://washpro-web.xpersscarwash.workers.dev",
 		"APP_ENV": "production",
 		"AUTH_MODE": "static_admin",
+		"GEOCODE_CACHE_TTL_SECONDS": "172800",
+		"GEOCODE_USER_AGENT": "WashPro/1.0 (xpersscarwash@gmail.com)",
 		"INVOICE_LINK_TTL_SECONDS": "604800",
+		"LOCATIONIQ_BASE_URL": "https://us1.locationiq.com",
 		"SESSION_TTL_SECONDS": "28800",
 	},
 	"secrets": {
@@ -26,7 +29,9 @@
 			"ADMIN_LOGIN_PASSWORD",
 			"BOOTSTRAP_TOKEN",
 			"CSRF_SECRET",
+			"GEOCODE_CACHE_PEPPER",
 			"INVOICE_TOKEN_PEPPER",
+			"LOCATIONIQ_API_KEY",
 			"SESSION_PEPPER",
 		],
 	},
@@ -36,6 +41,20 @@
 			"database_name": "washpro-dev",
 			"database_id": "f12e4f56-470a-488f-8e34-da502fe974d7",
 			"migrations_dir": "migrations",
+		},
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "NOMINATIM_THROTTLE",
+				"class_name": "NominatimThrottle",
+			},
+		],
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["NominatimThrottle"],
 		},
 	],
 	"r2_buckets": [

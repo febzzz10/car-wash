@@ -204,9 +204,10 @@ All UI components are in `apps/web/src/components/ui.tsx`: `Button`, `Card`, `Di
 | `env.CACHE` | KV | `72cd173f95...` |
 | `env.UPLOADS` | R2 | `washpro-uploads-dev` |
 | `env.INVOICES` | R2 | `washpro-invoices-dev` |
+| `env.NOMINATIM_THROTTLE` | Durable Object | Nominatim 1s throttle (class `NominatimThrottle`) |
 
 **API Worker secrets** (set via `wrangler secret put`):
-`ADMIN_LOGIN_PASSWORD`, `BOOTSTRAP_TOKEN`, `CSRF_SECRET`, `INVOICE_TOKEN_PEPPER`, `SESSION_PEPPER`
+`ADMIN_LOGIN_PASSWORD`, `BOOTSTRAP_TOKEN`, `CSRF_SECRET`, `GEOCODE_CACHE_PEPPER`, `INVOICE_TOKEN_PEPPER`, `LOCATIONIQ_API_KEY`, `SESSION_PEPPER`
 
 ### Must follow
 - Do not create new D1, KV, R2, Worker, Pages, or service-binding resources unless explicitly requested.
@@ -415,3 +416,113 @@ Both use:
 - 263 automated tests passed (0 failed, 0 skipped).
 - All authenticated production tests A–H passed.
 - **Status:** fully implemented, deployed and production-verified.
+
+---
+
+## Server-side reverse-geocoding rules
+
+### Current state (implemented 2026-07-28)
+
+- `POST /api/v1/geocode/reverse` with JSON body `{ latitude, longitude }` returns `{ data: { place } }`.
+- Protected by `requireSession` + `requirePermission("wash_jobs.create")` + CSRF (POST triggers CSRF check).
+- Rate-limited per authenticated user identity (13 total requests per 600-second window: 10 standard + 3 burst).
+- Rate-limit KV key is a SHA-256 hash of the identity: `geocode:v1:rate:<sha256(userId + "\0" + ip)>`. Raw userId and IP never appear in the KV key.
+- Results cached in KV (`geocode:v1:<sha256(coords + "\0" + pepper)>`) with TTL from `GEOCODE_CACHE_TTL_SECONDS` (default 172800s / 48h).
+- Cache key is HMAC'd with `GEOCODE_CACHE_PEPPER` (secret). Cache stores only `{ "place": "..." }` — no coordinates.
+- **No** `LIKE` or `GLOB` — purely coordinate-based reverse geocoding.
+
+### Architecture
+
+1. **Frontend** (`apps/web/src/pages/new-wash.tsx`): Browser Geolocation API provides raw coordinates, sends `POST` with `{ latitude, longitude }` to the API endpoint. Stores only `place` + `capturedAt` in state. Never calls Nominatim directly.
+2. **Route** (`apps/api/src/routes/geocode.ts`): Validates `lat`/`lon` bounds with Zod `.strict()`, rate-checks, delegates to service.
+3. **Service** (`apps/api/src/services/geocode.ts`): KV cache → LocationIQ primary → Nominatim fallback (through DO).
+4. **Durable Object** (`apps/api/src/durable-objects/nominatim-throttle.ts`): Queue-based serialization, enforces ≥1000ms between outbound Nominatim calls. Restart-safe: persists `lastNominatimCallAt` timestamp in DO storage.
+
+### Provider flow
+
+KV cache → LocationIQ (`LOCATIONIQ_BASE_URL`) → globally throttled Nominatim (through `NOMINATIM_THROTTLE` DO) → safe 502 failure (`GEOCODING_UNAVAILABLE`).
+
+- LocationIQ is the primary provider.
+- Public Nominatim is fallback only.
+- Every Nominatim request goes through the globally named Durable Object (`idFromName("nominatim-global-throttle")`).
+- Nominatim calls are spaced ≥1,000ms application-wide, enforced by both in-memory state and persisted DO storage.
+
+### Place formatting
+
+Place strings are constructed from structured address fields only (locality, district, state). `display_name` is never read, stored, cached, or returned by the service or route.
+
+### Coordinate privacy
+
+Coordinates are strictly temporary and must never be:
+- Returned in API response bodies.
+- Stored in frontend state (only `place` + `capturedAt`).
+- Stored in drafts (coordinate-only places are stripped by wizard-draft normalization).
+- Stored in KV cache values (only `{ place }`).
+- Stored in D1.
+- Stored in Durable Object storage.
+- Logged (no console.log in any geocode code path).
+- Exposed in error messages.
+
+### Rate-limit key privacy
+
+The authenticated user ID and IP address exist temporarily in server memory while the rate-limit identity is hashed via SHA-256. They are never written in readable form to KV, logs, responses, errors, or persistent storage. The final KV key format is `geocode:v1:rate:<sha256(userId + "\0" + ip)>`. The hash provides identifier obscurity, not authentication (the rate limiter is a fairness mechanism, not an access control).
+
+### Cloudflare resources
+
+| Binding | Type | Purpose |
+|---------|------|---------|
+| `NOMINATIM_THROTTLE` | Durable Object (class `NominatimThrottle`) | Queue-based 1s throttle for Nominatim fallback |
+| `GEOCODE_CACHE_PEPPER` | Secret | HMAC key for geocode KV cache keys |
+| `GEOCODE_CACHE_TTL_SECONDS` | Var | KV cache TTL (clamped 300–172800) |
+| `GEOCODE_USER_AGENT` | Var | User-Agent for LocationIQ requests |
+| `LOCATIONIQ_API_KEY` | Secret | LocationIQ API key |
+| `LOCATIONIQ_BASE_URL` | Var | LocationIQ endpoint (must be `https://us1.locationiq.com` or `https://eu1.locationiq.com`) |
+
+### Security rules
+
+- `GEOCODE_CACHE_PEPPER` and `LOCATIONIQ_API_KEY` are secrets, never exposed to clients.
+- `display_name` from LocationIQ/Nominatim is never used. Only structured address fields (locality/district/state) are extracted.
+- Parameterised URL construction — coordinate values are embedded in URL query strings (this is required by the provider API), but never passed to D1.
+- Rate limiting prevents abuse (KV-based, 13 requests per 600s window).
+- `requireSession` + `requirePermission("wash_jobs.create")` — no unauthenticated or unauthorized geocoding.
+
+### Frontend rules
+
+- `new-wash.tsx` sends coordinates via `api<T>("/api/v1/geocode/reverse", ...)` using `jsonBody({ latitude, longitude })`.
+- Only `place` + `capturedAt` are stored in state (`Evidence` type).
+- Legacy records show "Legacy location recorded" with safe timestamp on wash-job-detail and customer-detail pages.
+- Accuracy, distance, GPS labels, and coordinates are never displayed.
+- Live photo is required. Location is optional.
+- OSM attribution: "Location data © OpenStreetMap contributors" in app-shell sidebar.
+
+### Draft rules
+
+- `wizard-draft.ts` rejects coordinate-only places via `COORDINATE_ONLY` regex.
+- `persistedDraftSchema.refine` strips coordinate-only places.
+- `serialize()` removes coordinate-only places before saving.
+- `parse()` removes coordinate-only places after loading.
+- No latitude, longitude, or accuracy fields exist in any draft type.
+
+### Durable Object restart safety
+
+- `NominatimThrottle` persists `nextAllowedAt` in DO storage (`this.ctx.storage`).
+- The timestamp is persisted **before** the Nominatim fetch call, so a crash during the request still reserves the one-second slot.
+- On instance restart or eviction, the stored timestamp is loaded (via `blockConcurrencyWhile`) before any requests are processed.
+- This guarantees the ≥1000ms spacing survives DO lifecycle events.
+- Only a single `number` timestamp is persisted — no coordinates, URLs, User-Agent values, or provider responses.
+
+### Durable Object request handling
+
+- Coordinates may exist temporarily inside the DO request URL while performing the Nominatim fallback call. They are not logged or persisted in DO storage. The DO returns only the provider response to the internal geocoding service for normalization.
+- Provider URLs are never logged or stored.
+- No automatic provider retry. Provider failure returns 502 immediately.
+- Five-second timeout per provider call via `AbortSignal.timeout(5000)`.
+
+### Durable Object deployment
+
+- Wrangler `migrations` block registers `NominatimThrottle` class. Run `wrangler deploy` to create the DO.
+- The DO is a single global instance (`idFromName("nominatim-global-throttle")`). No sharding needed at current scale.
+
+### No database changes
+
+No new D1 tables or migrations. The geocode feature is cache-only (KV) with external API fallback.

@@ -50,8 +50,7 @@ test("top-level config uses production Cloudflare resources", () => {
     "../../node_modules/wrangler/config-schema.json",
   );
 
-  assert.equal(parsedWrangler.config.vars.APP_ENV, "production");
-  assert.equal(parsedWrangler.config.vars.ALLOWED_ORIGINS, "https://bab9bd69.washpro-web.pages.dev");
+  assert.equal(parsedWrangler.config.vars.ALLOWED_ORIGINS, "https://washpro-web.xpersscarwash.workers.dev");
 
   assert.deepEqual(
     parsedWrangler.config.d1_databases?.map(({ binding, database_name, database_id }) => ({
@@ -137,12 +136,14 @@ test("root-level dev:api:local and migrate:local scripts are removed", () => {
   assert.equal(rootPackage.scripts["setup:local"], undefined);
 });
 
-test("Pages Function proxy exists at functions/api/[[path]].ts", () => {
-  const functionPath = fileURLToPath(
-    new URL("../apps/web/functions/api/[[path]].ts", import.meta.url),
+test("Web Worker proxies API and invoice paths to service binding", () => {
+  const workerPath = fileURLToPath(
+    new URL("../apps/web/src/worker.ts", import.meta.url),
   );
-  assert.equal(existsSync(functionPath), true);
-  const content = readFileSync(functionPath, "utf8");
+  assert.equal(existsSync(workerPath), true);
+  const content = readFileSync(workerPath, "utf8");
+  assert.match(content, /url\.pathname\.startsWith\("\/api\/"\)/);
+  assert.match(content, /url\.pathname\.startsWith\("\/invoice\/"\)/);
   assert.match(content, /env\.API\.fetch/);
 });
 
@@ -180,4 +181,30 @@ test("frontend API_BASE defaults to empty string (relative /api/v1/ paths)", () 
     /API_BASE = import\.meta\.env\.VITE_API_BASE_URL \?\? ""/,
     "should default to empty string for same-origin API calls",
   );
+});
+
+test("API wrangler defines NominatimThrottle Durable Object", () => {
+  const doBindings = parsedWrangler.config.durable_objects?.bindings ?? [];
+  const throttle = doBindings.find(
+    (b) => b.name === "NOMINATIM_THROTTLE" && b.class_name === "NominatimThrottle",
+  );
+  assert.ok(throttle, "NOMINATIM_THROTTLE Durable Object binding exists");
+});
+
+test("API wrangler defines geocode vars", () => {
+  const vars = parsedWrangler.config.vars ?? {};
+  assert.equal(typeof vars.GEOCODE_CACHE_TTL_SECONDS, "string");
+  assert.equal(typeof vars.GEOCODE_USER_AGENT, "string");
+  assert.equal(typeof vars.LOCATIONIQ_BASE_URL, "string");
+});
+
+test("API wrangler defines geocode secrets", () => {
+  const secrets = parsedWrangler.config.secrets?.required ?? [];
+  const required = ["GEOCODE_CACHE_PEPPER", "LOCATIONIQ_API_KEY"];
+  for (const name of required) {
+    assert.ok(
+      secrets.includes(name),
+      `secret ${name} must be listed in wrangler.jsonc secrets.required`,
+    );
+  }
 });

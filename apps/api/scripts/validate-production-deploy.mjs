@@ -8,7 +8,9 @@ const REQUIRED_SECRETS = [
   "ADMIN_LOGIN_PASSWORD",
   "BOOTSTRAP_TOKEN",
   "CSRF_SECRET",
+  "GEOCODE_CACHE_PEPPER",
   "INVOICE_TOKEN_PEPPER",
+  "LOCATIONIQ_API_KEY",
   "SESSION_PEPPER",
 ];
 
@@ -117,6 +119,29 @@ export function validateProductionConfig(config, options = {}) {
         `${bindingName} must use a real production R2 bucket name, not a local placeholder.`,
       );
     }
+  }
+
+  const doBindings = config?.durable_objects?.bindings;
+  const doBinding = Array.isArray(doBindings)
+    ? doBindings.find((b) => b?.name === "NOMINATIM_THROTTLE")
+    : undefined;
+  if (!doBinding || doBinding.class_name !== "NominatimThrottle") {
+    errors.push("NOMINATIM_THROTTLE Durable Object binding must be configured with class_name 'NominatimThrottle'.");
+  }
+
+  const baseUrl = config?.vars?.LOCATIONIQ_BASE_URL;
+  if (typeof baseUrl !== "string" || !["https://us1.locationiq.com", "https://eu1.locationiq.com"].includes(baseUrl)) {
+    errors.push("LOCATIONIQ_BASE_URL must be https://us1.locationiq.com or https://eu1.locationiq.com.");
+  }
+
+  const userAgent = config?.vars?.GEOCODE_USER_AGENT;
+  if (typeof userAgent !== "string" || userAgent.trim() === "") {
+    errors.push("GEOCODE_USER_AGENT must be set.");
+  }
+
+  const ttl = Number(config?.vars?.GEOCODE_CACHE_TTL_SECONDS);
+  if (!Number.isInteger(ttl) || ttl < 300 || ttl > 172800) {
+    errors.push("GEOCODE_CACHE_TTL_SECONDS must be an integer between 300 and 172800.");
   }
 
   const requiredSecrets = config?.secrets?.required;

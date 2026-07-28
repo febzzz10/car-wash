@@ -1,13 +1,13 @@
 # PROJECT_STATE.md — Current WashPro Implementation State
 
-*Last updated: 2026-07-28*
+*Last updated: 2026-07-29*
 
 ## Active deployments
 
 | Worker | Version ID | Commit |
 |--------|------------|--------|
-| washpro-web | `8556f5d7-0a9e-4afb-8353-c14a0333eda0` | (uncommitted) |
-| car-wash | `192b4281-108f-47a5-8caa-6eca62ce0177` | (uncommitted) |
+| washpro-web | `16ff6203-180d-4fd0-b374-a7a13baf6359` | (uncommitted) |
+| car-wash | `d49e520d-b222-48f5-b850-6400ecd45321` | (uncommitted) |
 
 ## Production URL
 
@@ -17,11 +17,11 @@
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 12 | 191 | ✅ All pass |
-| @washpro/api | 13 | 21 | ✅ All pass |
+| @washpro/web | 15 | 226 | ✅ All pass |
+| @washpro/api | 14 | 66 | ✅ All pass |
 | @washpro/contracts | 1 | 4 | ✅ All pass |
-| @washpro/domain | 9 | 31 | ✅ All pass |
-| **Total** | **35** | **247** | **✅ All pass** |
+| @washpro/domain | 9 | 32 | ✅ All pass |
+| **Total** | **39** | **328** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -52,6 +52,21 @@ All packages: ✅ 0 errors
 2. **Cloudflare Git integration**: Auto-deploy on push may overwrite manually deployed Workers. The integration configuration in the Cloudflare Dashboard should be verified to use correct `pnpm`-based build commands.
 
 3. ~~**ALLOWED_ORIGINS mismatch**~~ **Resolved**: Updated to `https://washpro-web.xpersscarwash.workers.dev` (Wrangler `vars` env var, not a secret). API redeployed `192b4281`.
+
+## Resolved: Server-side reverse geocoding (deployed 2026-07-29)
+
+Replaced browser-side Nominatim reverse geocoding with `POST /api/v1/geocode/reverse` endpoint using LocationIQ primary + Nominatim fallback through crash-safe Durable Object throttle. All 14 deployment preflight checks pass. 328 automated tests (66 API + 226 web + 32 domain + 4 contracts).
+
+New infrastructure:
+- `NominatimThrottle` Durable Object (queue-based FIFO, ≥1s spacing, crash-safe with persisted `nextAllowedAt`)
+- `geocode.ts` service (KV cache → LocationIQ → Nominatim DO fallback)
+- `rate-limit.ts` KV rate limiter (13/600s per user+IP, hashed identity keys)
+- `geocode.ts` route with Zod validation, permission, and CSRF checks
+- Frontend: `new-wash.tsx` POSTs coordinates via `api()`, stores only `place`+`capturedAt`
+- Legacy location display: "Legacy location recorded" with safe timestamp
+- OSM attribution in sidebar
+- DO migration corrected to `new_sqlite_classes` for Cloudflare free plan
+- Secrets `LOCATIONIQ_API_KEY` and `GEOCODE_CACHE_PEPPER` confirmed on API Worker
 
 ## Current archive configuration
 

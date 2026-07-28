@@ -347,25 +347,20 @@ export default function CustomerDetailPage() {
                     </div>
                   ))}
                 </HistoryGroup>
-                <HistoryGroup
-                  title={`GPS captures (${history.data?.locations.length ?? 0})`}
-                >
-                  {history.data?.locations.slice(0, 5).map((location) => (
-                    <div key={location.id}>
-                      <span>
-                        <strong>
-                          {location.location_status.replaceAll("_", " ")}
-                        </strong>
-                        <small>{dateTime(location.captured_at)}</small>
-                      </span>
-                      <small>
-                        ±{Math.round(location.accuracy_meters)} m ·{" "}
-                        {Math.round(location.distance_from_branch_meters)} m
-                        away
-                      </small>
-                    </div>
-                  ))}
-                </HistoryGroup>
+                {history.data?.locations && history.data.locations.length > 0 ? (
+                  <HistoryGroup
+                    title={`Location captures (${history.data.locations.length})`}
+                  >
+                    {history.data.locations.slice(0, 5).map((location) => (
+                      <div key={location.id}>
+                        <span>
+                          <strong>Legacy location recorded</strong>
+                          <small>{dateTime(location.captured_at)}</small>
+                        </span>
+                      </div>
+                    ))}
+                  </HistoryGroup>
+                ) : null}
               </div>
             )}
           </Card>

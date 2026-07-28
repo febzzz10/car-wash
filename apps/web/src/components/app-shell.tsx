@@ -125,6 +125,9 @@ export function AppShell() {
           <strong>Need help?</strong>
           <span>Check setup and recovery guides</span>
         </div>
+        <div className="sidebar__attribution">
+          <span>Location data © OpenStreetMap contributors</span>
+        </div>
       </aside>
       {menuOpen ? (
         <button

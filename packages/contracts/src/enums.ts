@@ -139,6 +139,8 @@ export const ERROR_CODES = [
   "UPLOAD_TOO_LARGE",
   "UPLOAD_FAILED",
   "RATE_LIMITED",
+  "GEOCODE_RATE_LIMITED",
+  "GEOCODING_UNAVAILABLE",
   "INTERNAL_ERROR",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

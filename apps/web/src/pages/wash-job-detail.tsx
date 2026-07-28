@@ -371,14 +371,8 @@ export default function WashJobDetailPage() {
                   </>
                 ) : record.locations.length > 0 ? (
                   <>
-                    <span>
-                      {titleCase(
-                        record.locations.at(-1)?.location_status ?? "NOT CAPTURED",
-                      )}
-                    </span>
-                    <small>
-                      {`${Math.round(record.locations.at(-1)?.distance_from_branch_meters ?? 0)} m from branch · ±${Math.round(record.locations.at(-1)?.accuracy_meters ?? 0)} m`}
-                    </small>
+                    <span>Legacy location recorded</span>
+                    <small>{dateTime(record.locations.at(-1)?.captured_at)}</small>
                   </>
                 ) : (
                   <>

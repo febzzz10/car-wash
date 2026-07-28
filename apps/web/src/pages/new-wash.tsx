@@ -30,10 +30,11 @@ import VehicleTypeSelect from "../components/vehicle-type-select";
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
 import { api, jsonBody } from "../lib/api";
-import { money } from "../lib/format";
+import { dateTime, money } from "../lib/format";
 import {
   parseWizardDraft,
   serializeWizardDraft,
+  STEP_IDS,
   WASH_DRAFT_STORAGE_KEY,
 } from "../lib/wizard-draft";
 import type {
@@ -47,10 +48,10 @@ import type {
 const stepLabels = [
   "Customer",
   "Vehicle",
+  "Assign",
   "Live photo & location",
   "Services",
   "Benefits",
-  "Assign",
   "Review",
 ] as const;
 interface ServicePayload {
@@ -150,7 +151,11 @@ export default function NewWashPage() {
         servicePriceId: primaryServiceId || undefined,
         startImmediately,
         step,
+        stepId: STEP_IDS[step]!,
         vehicleId: vehicleId || undefined,
+        photoAssetId: evidence.photoAssetId,
+        place: evidence.place,
+        capturedAt: evidence.capturedAt,
       }),
     );
   }, [
@@ -158,6 +163,9 @@ export default function NewWashPage() {
     assignedUserId,
     couponCode,
     customerId,
+    evidence.capturedAt,
+    evidence.photoAssetId,
+    evidence.place,
     primaryServiceId,
     referralCode,
     rewardAmountMinor,
@@ -210,12 +218,12 @@ export default function NewWashPage() {
       [
         customerId !== "",
         vehicleId !== "",
+        assignedUserId !== "",
         evidence.photoAssetId !== undefined,
         primaryServiceId !== "",
         (rewardId === "" || rewardAmountMinor > 0) &&
           (manualDiscountMinor === 0 ||
             manualDiscountReason.trim().length >= 5),
-        assignedUserId !== "",
         true,
       ][step] ?? false
     );
@@ -237,10 +245,10 @@ export default function NewWashPage() {
           idempotencyKey: crypto.randomUUID(),
           initialStatus:
             requestedStatus ?? (startImmediately ? "IN_PROGRESS" : "WAITING"),
-          location: {
-            place: evidence.place ?? "",
-            capturedAt: evidence.capturedAt ?? new Date().toISOString(),
-          },
+          location:
+            evidence.place !== undefined && evidence.capturedAt !== undefined
+              ? { place: evidence.place.trim(), capturedAt: evidence.capturedAt }
+              : {},
           manualDiscountReason:
             manualDiscountMinor > 0 ? manualDiscountReason.trim() : undefined,
           manualDiscountMinor,
@@ -385,9 +393,50 @@ export default function NewWashPage() {
             </SelectionStep>
           ) : null}
           {step === 2 ? (
-            <PhotoLocationStep evidence={evidence} onChange={setEvidence} />
+            <SelectionStep
+              heading="Assign the wash"
+              intro="Only active users at this branch are available."
+            >
+              {staff.loading ? (
+                <SkeletonRows />
+              ) : staff.error !== null ? (
+                <ErrorState message={staff.error} onRetry={staff.reload} />
+              ) : (
+                <div className="choice-grid">
+                  {staff.data?.map((person) => (
+                    <Choice
+                      active={person.id === assignedUserId}
+                      key={person.id}
+                      onClick={() => setAssignedUserId(person.id)}
+                      primary={person.full_name}
+                      secondary={
+                        person.role === "ADMIN"
+                          ? "Administrator"
+                          : "Staff member"
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+              <label className="toggle-row">
+                <input
+                  checked={startImmediately}
+                  onChange={(event) =>
+                    setStartImmediately(event.target.checked)
+                  }
+                  type="checkbox"
+                />
+                <span>
+                  <strong>Start immediately</strong>
+                  <small>Otherwise the job enters Waiting.</small>
+                </span>
+              </label>
+            </SelectionStep>
           ) : null}
           {step === 3 ? (
+            <PhotoLocationStep evidence={evidence} onChange={setEvidence} />
+          ) : null}
+          {step === 4 ? (
             <SelectionStep
               heading="Choose services"
               intro="Select one primary service and any eligible add-ons. Final pricing, discounts, and tax are recalculated on the server."
@@ -556,53 +605,22 @@ export default function NewWashPage() {
             </SelectionStep>
           ) : null}
           {step === 6 ? (
-            <SelectionStep
-              heading="Assign the wash"
-              intro="Only active users at this branch are available."
-            >
-              {staff.loading ? (
-                <SkeletonRows />
-              ) : staff.error !== null ? (
-                <ErrorState message={staff.error} onRetry={staff.reload} />
-              ) : (
-                <div className="choice-grid">
-                  {staff.data?.map((person) => (
-                    <Choice
-                      active={person.id === assignedUserId}
-                      key={person.id}
-                      onClick={() => setAssignedUserId(person.id)}
-                      primary={person.full_name}
-                      secondary={
-                        person.role === "ADMIN"
-                          ? "Administrator"
-                          : "Staff member"
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-              <label className="toggle-row">
-                <input
-                  checked={startImmediately}
-                  onChange={(event) =>
-                    setStartImmediately(event.target.checked)
-                  }
-                  type="checkbox"
-                />
-                <span>
-                  <strong>Start immediately</strong>
-                  <small>Otherwise the job enters Waiting.</small>
-                </span>
-              </label>
-            </SelectionStep>
-          ) : null}
-          {step === 7 ? (
             <ReviewStep
               addOns={selectedAddOns}
+              assignedUserName={
+                assignedUserId === ""
+                  ? "Unassigned"
+                  : (staff.data?.find((p) => p.id === assignedUserId)
+                      ?.full_name ?? "Unassigned")
+              }
+              couponCode={couponCode}
               customer={selectedCustomer}
-              estimate={estimate}
               enteredDiscountMinor={rewardAmountMinor + manualDiscountMinor}
+              estimate={estimate}
+              evidence={evidence}
               primary={selectedPrimary}
+              referralCode={referralCode}
+              rewardAmountMinor={rewardAmountMinor}
               startImmediately={startImmediately}
               vehicle={selectedVehicle}
             />
@@ -649,6 +667,19 @@ export default function NewWashPage() {
           <SummaryLine
             label="Vehicle"
             value={selectedVehicle?.registration_number ?? "Not selected"}
+          />
+          <SummaryLine
+            label="Assigned to"
+            value={
+              assignedUserId === ""
+                ? "Unassigned"
+                : (staff.data?.find((p) => p.id === assignedUserId)
+                    ?.full_name ?? "Unassigned")
+            }
+          />
+          <SummaryLine
+            label="Start"
+            value={startImmediately ? "Immediately" : "On creation"}
           />
           <SummaryLine
             label="Service"
@@ -761,23 +792,6 @@ function SummaryLine({
       <strong>{value}</strong>
     </div>
   );
-}
-
-async function reverseGeocode(
-  latitude: number,
-  longitude: number,
-): Promise<string | null> {
-  try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=0`,
-      { headers: { "Accept-Language": "en" } },
-    );
-    if (!response.ok) return null;
-    const data = (await response.json()) as { display_name?: string };
-    return data.display_name?.slice(0, 500) ?? null;
-  } catch {
-    return null;
-  }
 }
 
 function PhotoLocationStep({
@@ -902,6 +916,7 @@ function PhotoLocationStep({
     setChallenge(null);
   }
   async function captureLocation() {
+    if (locBusy) return;
     if (!("geolocation" in navigator)) {
       setLocError("Geolocation is not available in this browser.");
       return;
@@ -910,22 +925,33 @@ function PhotoLocationStep({
     setLocError(null);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const place = await reverseGeocode(
-          position.coords.latitude,
-          position.coords.longitude,
-        );
-        onChange({
-          ...evidence,
-          place: place ?? `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`,
-          capturedAt: new Date(position.timestamp).toISOString(),
-        });
-        setLocBusy(false);
+        const capturedAt = Number.isFinite(position.timestamp)
+          ? new Date(position.timestamp).toISOString()
+          : new Date().toISOString();
+        try {
+          const result = await api<{ readonly place: string }>("/geocode/reverse", {
+            ...jsonBody({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            }),
+            method: "POST",
+          });
+          onChange({
+            ...evidence,
+            place: result.place,
+            capturedAt,
+          });
+        } catch {
+          setLocError("Unable to identify the current place.");
+        } finally {
+          setLocBusy(false);
+        }
       },
       (failure) => {
         setLocError(
           failure.code === failure.PERMISSION_DENIED
-            ? "Location access was denied. Allow location permission, then retry."
-            : "GPS could not get a reliable position. Move to an open area and retry.",
+            ? "Location permission was denied."
+            : "Unable to get the current location.",
         );
         setLocBusy(false);
       },
@@ -988,7 +1014,7 @@ function PhotoLocationStep({
           ) : (
             <p className="step-intro">
               Optionally capture your current location to record a readable place
-              name instead of raw GPS coordinates.
+              name.
             </p>
           )}
           {locError === null ? null : (
@@ -998,7 +1024,7 @@ function PhotoLocationStep({
           )}
           {!locationDone ? (
             <Button busy={locBusy} onClick={() => void captureLocation()}>
-              <MapPin size={18} /> Capture place name
+              <MapPin size={18} /> Capture place
             </Button>
           ) : null}
         </div>
@@ -1009,18 +1035,28 @@ function PhotoLocationStep({
 
 function ReviewStep({
   addOns,
+  assignedUserName,
+  couponCode,
   customer,
-  estimate,
   enteredDiscountMinor,
+  estimate,
+  evidence,
   primary,
+  referralCode,
+  rewardAmountMinor,
   startImmediately,
   vehicle,
 }: {
   readonly addOns: readonly ServiceRecord[];
+  readonly assignedUserName: string;
+  readonly couponCode: string;
   readonly customer: CustomerRecord | undefined;
-  readonly estimate: number;
   readonly enteredDiscountMinor: number;
+  readonly estimate: number;
+  readonly evidence: Evidence;
   readonly primary: ServiceRecord | undefined;
+  readonly referralCode: string;
+  readonly rewardAmountMinor: number;
   readonly startImmediately: boolean;
   readonly vehicle: VehicleRecord | undefined;
 }) {
@@ -1041,18 +1077,86 @@ function ReviewStep({
           <small>{vehicle?.vehicle_type_name}</small>
         </div>
         <div>
-          <span>Primary service</span>
-          <strong>{primary?.name}</strong>
-          <small>
-            {addOns.length} add-on{addOns.length === 1 ? "" : "s"}
-          </small>
+          <span>Assigned to</span>
+          <strong>{assignedUserName}</strong>
         </div>
         <div>
           <span>Initial status</span>
           <strong>{startImmediately ? "In Progress" : "Waiting"}</strong>
           <small>Server timestamped</small>
         </div>
+        {evidence.photoAssetId !== undefined ? (
+          <div>
+            <span>Vehicle photo</span>
+            {evidence.photoPreview !== undefined ? (
+              <img
+                alt="Live vehicle capture"
+                className="review-photo"
+                height="120"
+                src={evidence.photoPreview}
+                width="160"
+              />
+            ) : (
+              <p className="review-photo-fallback">
+                Live photo captured
+                {evidence.photoAssetId !== undefined &&
+                evidence.photoPreview === undefined
+                  ? " (restored from draft)"
+                  : ""}
+              </p>
+            )}
+          </div>
+        ) : null}
+        {evidence.place !== undefined && evidence.capturedAt !== undefined ? (
+          <>
+            <div>
+              <span>Location place</span>
+              <strong>{evidence.place}</strong>
+            </div>
+            <div>
+              <span>Captured at</span>
+              <strong>
+                {dateTime(evidence.capturedAt)}
+              </strong>
+            </div>
+          </>
+        ) : (
+          <div>
+            <span>Location</span>
+            <strong>Not captured</strong>
+          </div>
+        )}
+        <div>
+          <span>Primary service</span>
+          <strong>{primary?.name}</strong>
+          <small>
+            {addOns.length} add-on{addOns.length === 1 ? "" : "s"}
+          </small>
+        </div>
       </div>
+      {couponCode || referralCode || rewardAmountMinor > 0 ? (
+        <div className="review-benefits">
+          <p className="eyebrow">Benefits</p>
+          {couponCode ? (
+            <div className="summary-line">
+              <span>Coupon</span>
+              <strong>{couponCode}</strong>
+            </div>
+          ) : null}
+          {referralCode ? (
+            <div className="summary-line">
+              <span>Referral</span>
+              <strong>{referralCode}</strong>
+            </div>
+          ) : null}
+          {rewardAmountMinor > 0 ? (
+            <div className="summary-line">
+              <span>Reward</span>
+              <strong>{money(rewardAmountMinor)}</strong>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="review-total">
         <span>Estimated service value</span>
         <strong>{money(estimate)}</strong>

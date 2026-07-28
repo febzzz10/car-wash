@@ -35,7 +35,7 @@ beforeEach(async () => {
       "INSERT OR IGNORE INTO referral_codes (id, organization_id, customer_id, code, code_normalized, status, issued_at, created_at, updated_at) VALUES ('refcode-wash', 'org-wash', 'referrer-wash', 'RAVI500', 'RAVI500', 'ACTIVE', ?, ?, ?)",
     ).bind(timestamp, timestamp, timestamp),
     env.DB.prepare(
-      "INSERT OR IGNORE INTO vehicle_types (id, organization_id, code, name, created_at, updated_at) VALUES ('type-wash-sedan', 'org-wash', 'SEDAN', 'Sedan', ?, ?)",
+      "INSERT OR IGNORE INTO vehicle_types (id, organization_id, code, name, created_at, updated_at) VALUES ('type-wash-sedan', 'org-wash', 'FOUR_WHEELER', 'Four Wheeler', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
       "INSERT OR IGNORE INTO vehicles (id, organization_id, customer_id, vehicle_type_id, registration_number, registration_normalized, make, model, created_at, updated_at) VALUES ('vehicle-wash', 'org-wash', 'customer-wash', 'type-wash-sedan', 'KL 07 AB 1234', 'KL07AB1234', 'Honda', 'City', ?, ?)",

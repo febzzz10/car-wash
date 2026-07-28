@@ -1,3 +1,4 @@
+import { vehicleTypeCodeSchema } from "@washpro/contracts";
 import { normalizeCode } from "@washpro/domain";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -26,7 +27,7 @@ const priceSchema = z.object({
   effectiveFrom: z.iso.datetime({ offset: true }).optional(),
   priceMinor: z.number().int().nonnegative(),
   serviceId: z.string().min(8).max(64),
-  vehicleTypeId: z.string().min(8).max(64),
+  vehicleTypeCode: vehicleTypeCodeSchema,
 });
 
 export const serviceRoutes = new Hono<AppBindings>();
@@ -50,7 +51,7 @@ serviceRoutes.get("/", async (c) => {
       .bind(auth.organizationId)
       .all(),
     c.env.DB.prepare(
-      "SELECT * FROM vehicle_types WHERE organization_id = ? AND is_active = 1 ORDER BY display_order, name",
+      "SELECT id, code, name FROM vehicle_types WHERE organization_id = ? AND is_active = 1 ORDER BY display_order, name",
     )
       .bind(auth.organizationId)
       .all(),
@@ -272,12 +273,20 @@ servicePriceRoutes.post("/", requirePermission("pricing.manage"), async (c) => {
   if (!parsed.success)
     throw new ApiError(422, "VALIDATION_ERROR", "Check the price details.");
   const auth = c.get("auth");
+  const vt = await c.env.DB.prepare(
+    "SELECT id FROM vehicle_types WHERE organization_id = ? AND code = ? AND is_active = 1",
+  )
+    .bind(auth.organizationId, parsed.data.vehicleTypeCode)
+    .first<{ id: string }>();
+  if (vt === null)
+    throw new ApiError(422, "VALIDATION_ERROR", "Select a valid vehicle type.");
+  const vehicleTypeId = vt.id;
   const effectiveFrom = parsed.data.effectiveFrom ?? new Date().toISOString();
   const id = crypto.randomUUID();
   const existing = await c.env.DB.prepare(
     "SELECT * FROM service_prices WHERE organization_id = ? AND service_id = ? AND vehicle_type_id = ? AND is_active = 1 AND effective_to IS NULL",
   )
-    .bind(auth.organizationId, parsed.data.serviceId, parsed.data.vehicleTypeId)
+    .bind(auth.organizationId, parsed.data.serviceId, vehicleTypeId)
     .first<Record<string, unknown>>();
   const statements: D1PreparedStatement[] = [];
   if (existing !== null) {
@@ -289,18 +298,16 @@ servicePriceRoutes.post("/", requirePermission("pricing.manage"), async (c) => {
   }
   statements.push(
     c.env.DB.prepare(
-      "INSERT INTO service_prices (id, organization_id, service_id, vehicle_type_id, price_minor, effective_from, created_by_user_id, created_at) SELECT ?, ?, s.id, vt.id, ?, ?, ?, ? FROM services s CROSS JOIN vehicle_types vt WHERE s.id = ? AND s.organization_id = ? AND vt.id = ? AND vt.organization_id = ?",
+      "INSERT INTO service_prices (id, organization_id, service_id, vehicle_type_id, price_minor, effective_from, created_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     ).bind(
       id,
       auth.organizationId,
+      parsed.data.serviceId,
+      vehicleTypeId,
       parsed.data.priceMinor,
       effectiveFrom,
       auth.userId,
       new Date().toISOString(),
-      parsed.data.serviceId,
-      auth.organizationId,
-      parsed.data.vehicleTypeId,
-      auth.organizationId,
     ),
     auditStatement(c.env, {
       action: "SERVICE_PRICE_CHANGED",

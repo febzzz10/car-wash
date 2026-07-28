@@ -19,7 +19,6 @@ import { dateTime, money } from "../lib/format";
 import type {
   CustomerRecord,
   VehicleRecord,
-  VehicleTypeRecord,
   WashJobRecord,
 } from "../types";
 import { CustomerDialog } from "./customers";
@@ -83,9 +82,6 @@ export default function CustomerDetailPage() {
   const { id = "" } = useParams();
   const profile = useApiData<CustomerDetail>(`/customers/${id}`);
   const history = useApiData<HistoryPayload>(`/customers/${id}/history`);
-  const catalog = useApiData<{
-    readonly vehicleTypes: readonly VehicleTypeRecord[];
-  }>("/services");
   const [edit, setEdit] = useState(false);
   const [addVehicle, setAddVehicle] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
@@ -452,7 +448,6 @@ export default function CustomerDetailPage() {
           profile.reload();
         }}
         open={addVehicle}
-        vehicleTypes={catalog.data?.vehicleTypes ?? []}
       />
       <DeactivateCustomerDialog
         id={id}

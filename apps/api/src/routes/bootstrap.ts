@@ -37,15 +37,9 @@ const bootstrapSchema = z.object({
 });
 
 const vehicleTypes = [
-  ["MOTORBIKE", "Bike"],
-  ["HATCHBACK", "Hatchback"],
-  ["SEDAN", "Sedan"],
-  ["SUV", "SUV"],
-  ["MUV", "MUV"],
-  ["VAN", "Van"],
-  ["PICKUP", "Pickup"],
-  ["COMMERCIAL", "Commercial Vehicle"],
-  ["OTHER", "Other"],
+  ["TWO_WHEELER", "Two Wheeler"],
+  ["THREE_WHEELER", "Three Wheeler"],
+  ["FOUR_WHEELER", "Four Wheeler"],
 ] as const;
 const expenseCategories = [
   ["CLEANING_CHEMICALS", "Cleaning Chemicals"],

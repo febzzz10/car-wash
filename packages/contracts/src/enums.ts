@@ -91,6 +91,13 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
+export const VEHICLE_TYPES = [
+  "TWO_WHEELER",
+  "THREE_WHEELER",
+  "FOUR_WHEELER",
+] as const;
+export type VehicleType = (typeof VEHICLE_TYPES)[number];
+
 export const ERROR_CODES = [
   "AUTH_INVALID_CREDENTIALS",
   "AUTH_ACCOUNT_DISABLED",

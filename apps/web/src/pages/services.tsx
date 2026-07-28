@@ -272,16 +272,16 @@ function PriceDialog({
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const toast = useToast();
-  async function save(vehicleTypeId: string, form: HTMLFormElement) {
+  async function save(vehicleTypeCode: string, form: HTMLFormElement) {
     if (service === null) return;
-    setBusyId(vehicleTypeId);
+    setBusyId(vehicleTypeCode);
     try {
       const value = Number(new FormData(form).get("price"));
       await api("/service-prices", {
         ...jsonBody({
           priceMinor: Math.round(value * 100),
           serviceId: service.id,
-          vehicleTypeId,
+          vehicleTypeCode,
         }),
         method: "POST",
       });
@@ -312,10 +312,10 @@ function PriceDialog({
           );
           return (
             <form
-              key={type.id}
+              key={type.code}
               onSubmit={(event) => {
                 event.preventDefault();
-                void save(type.id, event.currentTarget);
+                void save(type.code, event.currentTarget);
               }}
             >
               <label>
@@ -331,7 +331,7 @@ function PriceDialog({
                   type="number"
                 />
               </label>
-              <Button busy={busyId === type.id} tone="secondary" type="submit">
+              <Button busy={busyId === type.code} tone="secondary" type="submit">
                 Save revision
               </Button>
             </form>

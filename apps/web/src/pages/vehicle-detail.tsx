@@ -14,7 +14,8 @@ import {
 import { useApiData } from "../hooks/use-api-data";
 import { api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
-import type { VehicleRecord, VehicleTypeRecord, WashJobRecord } from "../types";
+import VehicleTypeSelect from "../components/vehicle-type-select";
+import type { VehicleRecord, WashJobRecord } from "../types";
 
 interface VehicleHistory {
   readonly invoices: readonly {
@@ -39,9 +40,6 @@ export default function VehicleDetailPage() {
     }
   >(`/vehicles/${id}`);
   const history = useApiData<VehicleHistory>(`/vehicles/${id}/history`);
-  const catalog = useApiData<{
-    readonly vehicleTypes: readonly VehicleTypeRecord[];
-  }>("/services");
   if (vehicle.loading) return <SkeletonRows />;
   if (vehicle.error !== null || vehicle.data === null)
     return (
@@ -159,7 +157,6 @@ export default function VehicleDetailPage() {
         }}
         open={editing}
         vehicle={item}
-        vehicleTypes={catalog.data?.vehicleTypes ?? []}
       />
       <ChangeVehicleStatusDialog
         id={item.id}
@@ -250,18 +247,25 @@ function VehicleEditDialog({
   onDone,
   open,
   vehicle,
-  vehicleTypes,
 }: {
   readonly onClose: () => void;
   readonly onDone: () => void;
   readonly open: boolean;
   readonly vehicle: VehicleRecord;
-  readonly vehicleTypes: readonly VehicleTypeRecord[];
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [vehicleTypeCode, setVehicleTypeCode] = useState(
+    vehicle.vehicle_type_code,
+  );
+  const [fieldError, setFieldError] = useState<string | null>(null);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (vehicleTypeCode === "") {
+      setFieldError("Select a vehicle type.");
+      return;
+    }
+    setFieldError(null);
     const values = new FormData(event.currentTarget);
     setBusy(true);
     setError(null);
@@ -276,7 +280,7 @@ function VehicleEditDialog({
           model: values.get("model") || null,
           notes: values.get("notes") || null,
           registrationNumber: values.get("registrationNumber"),
-          vehicleTypeId: values.get("vehicleTypeId"),
+          vehicleTypeCode,
           version: vehicle.version,
         }),
         method: "PATCH",
@@ -311,17 +315,14 @@ function VehicleEditDialog({
           </label>
           <label>
             <span>Vehicle type</span>
-            <select
-              defaultValue={vehicle.vehicle_type_id}
-              name="vehicleTypeId"
-              required
-            >
-              {vehicleTypes.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+            <VehicleTypeSelect
+              {...(fieldError !== null ? { error: fieldError } : {})}
+              onChange={(code) => {
+                setVehicleTypeCode(code);
+                setFieldError(null);
+              }}
+              value={vehicleTypeCode}
+            />
           </label>
           <label>
             <span>Make</span>

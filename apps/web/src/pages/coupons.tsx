@@ -1,5 +1,5 @@
 import { Edit3, Plus, Power, TicketPercent } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 
 import {
   Button,
@@ -212,6 +212,20 @@ function CouponDialog({
     `/coupons/${coupon?.id ?? "none"}`,
     open && coupon !== null,
   );
+  const vehicleTypeIdToCode = useMemo(
+    () => new Map(catalog?.vehicleTypes.map((vt) => [vt.id, vt.code]) ?? []),
+    [catalog],
+  );
+  const mappedVehicleTypes: string[] | null | undefined = useMemo(() => {
+    if (detail.data === null) return undefined;
+    const codes: string[] = [];
+    for (const item of detail.data.eligibleVehicleTypes) {
+      const code = vehicleTypeIdToCode.get(item.vehicle_type_id);
+      if (code === undefined) return null;
+      codes.push(code);
+    }
+    return codes;
+  }, [detail.data, vehicleTypeIdToCode]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -229,7 +243,7 @@ function CouponDialog({
               ? Math.round(Number(form.get("value")) * 100)
               : Math.round(Number(form.get("value")) * 100),
           eligibleServiceIds: form.getAll("services"),
-          eligibleVehicleTypeIds: form.getAll("vehicles"),
+          eligibleVehicleTypeCodes: form.getAll("vehicles"),
           expiresAt: new Date(String(form.get("expires"))).toISOString(),
           maximumDiscountMinor:
             form.get("maximum") === ""
@@ -267,18 +281,37 @@ function CouponDialog({
     new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
       .toISOString()
       .slice(0, 16);
-  if (coupon !== null && detail.loading)
-    return (
-      <Dialog onClose={onClose} open={open} title="Edit coupon">
-        <SkeletonRows />
-      </Dialog>
-    );
+  if (coupon !== null) {
+    if (detail.loading || mappedVehicleTypes === undefined)
+      return (
+        <Dialog onClose={onClose} open={open} title="Edit coupon">
+          <SkeletonRows />
+        </Dialog>
+      );
+    if (detail.error !== null)
+      return (
+        <Dialog onClose={onClose} open={open} title="Edit coupon">
+          <div className="form-alert">Failed to load coupon details.</div>
+        </Dialog>
+      );
+    if (mappedVehicleTypes === null)
+      return (
+        <Dialog onClose={onClose} open={open} title="Edit coupon">
+          <div className="form-alert">
+            A vehicle type in this coupon is no longer available. Contact your
+            administrator.
+          </div>
+        </Dialog>
+      );
+  }
   const current = detail.data ?? coupon;
   const selectedServices = new Set(
     detail.data?.eligibleServices.map((item) => item.service_id) ?? [],
   );
   const selectedVehicleTypes = new Set(
-    detail.data?.eligibleVehicleTypes.map((item) => item.vehicle_type_id) ?? [],
+    coupon !== null && mappedVehicleTypes !== null && mappedVehicleTypes !== undefined
+      ? mappedVehicleTypes
+      : [],
   );
   return (
     <Dialog
@@ -417,12 +450,12 @@ function CouponDialog({
           <legend>Eligible vehicle types (none means all)</legend>
           <div className="permission-grid">
             {catalog?.vehicleTypes.map((item) => (
-              <label key={item.id}>
+              <label key={item.code}>
                 <input
-                  defaultChecked={selectedVehicleTypes.has(item.id)}
+                  defaultChecked={selectedVehicleTypes.has(item.code)}
                   name="vehicles"
                   type="checkbox"
-                  value={item.id}
+                  value={item.code}
                 />
                 <span>{item.name}</span>
               </label>

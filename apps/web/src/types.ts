@@ -28,6 +28,7 @@ export interface VehicleRecord {
   readonly colour?: string | null;
   readonly vehicle_type_id: string;
   readonly vehicle_type_name?: string;
+  readonly vehicle_type_code: string;
   readonly make?: string | null;
   readonly model?: string | null;
   readonly manufacturing_year?: number | null;

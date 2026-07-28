@@ -41,7 +41,7 @@ describe("one-time bootstrap", () => {
       )
         .bind(payload.data.organizationId)
         .first("count"),
-    ).toBe(9);
+    ).toBe(3);
     expect(
       await env.DB.prepare(
         "SELECT COUNT(*) AS count FROM expense_categories WHERE organization_id = ?",

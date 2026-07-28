@@ -33,7 +33,7 @@ beforeEach(async () => {
       "INSERT OR IGNORE INTO customers (id, organization_id, home_branch_id, full_name, name_search, phone, phone_normalized, registered_at, created_at, updated_at) VALUES ('other-customer-ch', 'org-ch', 'branch-ch', 'Other Customer', 'other customer', '9876543111', '+919876543111', ?, ?, ?)",
     ).bind(timestamp, timestamp, timestamp),
     env.DB.prepare(
-      "INSERT OR IGNORE INTO vehicle_types (id, organization_id, code, name, created_at, updated_at) VALUES ('type-ch', 'org-ch', 'SEDAN', 'Sedan', ?, ?)",
+      "INSERT OR IGNORE INTO vehicle_types (id, organization_id, code, name, created_at, updated_at) VALUES ('type-ch', 'org-ch', 'FOUR_WHEELER', 'Four Wheeler', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
       "INSERT OR IGNORE INTO vehicles (id, organization_id, customer_id, vehicle_type_id, registration_number, registration_normalized, make, model, created_at, updated_at) VALUES ('vehicle-ch', 'org-ch', 'customer-ch', 'type-ch', 'KL 01 CH 0001', 'KL01CH0001', 'Toyota', 'Camry', ?, ?)",
@@ -66,7 +66,7 @@ function insertJob(
   return env.DB.prepare(
     `INSERT OR IGNORE INTO wash_jobs
      (id, organization_id, branch_id, job_reference, customer_id, vehicle_id, assigned_user_id, customer_name_snapshot, customer_phone_snapshot, vehicle_registration_snapshot, vehicle_type_name_snapshot, status, version, created_by_user_id, created_at, updated_at)
-     VALUES (?, 'org-ch', 'branch-ch', ?, ?, ?, 'admin-ch', ?, ?, ?, 'Sedan', ?, 1, 'admin-ch', ?, ?)`,
+     VALUES (?, 'org-ch', 'branch-ch', ?, ?, ?, 'admin-ch', ?, ?, ?, 'Four Wheeler', ?, 1, 'admin-ch', ?, ?)`,
   ).bind(id, `WJ-TEST-${id}`, customerId, vehicleId, nameSnapshot, phoneSnapshot, regSnapshot, status, createdAt, createdAt);
 }
 

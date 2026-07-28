@@ -32,7 +32,7 @@ beforeEach(async () => {
     env.DB.prepare(
       `INSERT OR IGNORE INTO vehicle_types (
         id, organization_id, code, name, created_at, updated_at
-      ) VALUES ('vehicle-type-cv', 'org-cv', 'SEDAN', 'Sedan', ?, ?)`,
+      ) VALUES ('vehicle-type-cv', 'org-cv', 'FOUR_WHEELER', 'Four Wheeler', ?, ?)`,
     ).bind(timestamp, timestamp),
   ]);
 });
@@ -128,7 +128,7 @@ describe("customer and vehicle management", () => {
           customerId: customerBody.data.id,
           make: "Honda",
           registrationNumber: "kl-07 ab 1234",
-          vehicleTypeId: "vehicle-type-cv",
+          vehicleTypeCode: "FOUR_WHEELER",
         }),
         headers: requestHeaders,
         method: "POST",
@@ -167,7 +167,7 @@ describe("customer and vehicle management", () => {
         body: JSON.stringify({
           customerId: customerBody.data.id,
           registrationNumber: "KL07AB1234",
-          vehicleTypeId: "vehicle-type-cv",
+          vehicleTypeCode: "FOUR_WHEELER",
         }),
         headers: requestHeaders,
         method: "POST",

@@ -1,4 +1,4 @@
-import { vehicleInputSchema } from "@washpro/contracts";
+import { vehicleInputSchema, vehicleTypeCodeSchema } from "@washpro/contracts";
 import { normalizeRegistration } from "@washpro/domain";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -8,6 +8,10 @@ import { requirePermission } from "../middleware/auth";
 import { auditStatement } from "../services/audit";
 import type { AppBindings } from "../types";
 
+const vehicleTypeCodeOptional = z.object({
+  vehicleTypeCode: vehicleTypeCodeSchema.optional(),
+});
+
 const vehiclePatchSchema = vehicleInputSchema.partial().extend({
   colour: z.string().trim().max(40).nullable().optional(),
   fuelType: z.string().trim().max(40).nullable().optional(),
@@ -16,7 +20,7 @@ const vehiclePatchSchema = vehicleInputSchema.partial().extend({
   model: z.string().trim().max(80).nullable().optional(),
   notes: z.string().trim().max(2_000).nullable().optional(),
   version: z.number().int().positive(),
-});
+}).and(vehicleTypeCodeOptional);
 const statusSchema = z.object({
   reason: z.string().trim().min(3).max(500),
   version: z.number().int().positive(),
@@ -35,7 +39,7 @@ vehicleRoutes.get("/", requirePermission("vehicles.read"), async (c) => {
   const query = c.req.query("search")?.trim() ?? "";
   const search = `%${query.toUpperCase().replace(/[^A-Z0-9]/gu, "")}%`;
   const result = await c.env.DB.prepare(
-    `SELECT v.*, vt.name AS vehicle_type_name, c.full_name AS customer_name,
+    `SELECT v.*, vt.code AS vehicle_type_code, vt.name AS vehicle_type_name, c.full_name AS customer_name,
       c.phone AS customer_phone
      FROM vehicles v
      INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id
@@ -55,24 +59,29 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
   if (!parsed.success)
     throw new ApiError(422, "VALIDATION_ERROR", "Check the vehicle details.");
   const auth = c.get("auth");
-  const related = await c.env.DB.prepare(
-    `SELECT c.id AS customer_id, vt.id AS vehicle_type_id
-     FROM customers c CROSS JOIN vehicle_types vt
-     WHERE c.id = ? AND c.organization_id = ? AND c.status = 'ACTIVE'
-       AND vt.id = ? AND vt.organization_id = ? AND vt.is_active = 1`,
+  const vt = await c.env.DB.prepare(
+    "SELECT id FROM vehicle_types WHERE organization_id = ? AND code = ? AND is_active = 1",
   )
-    .bind(
-      parsed.data.customerId,
-      auth.organizationId,
-      parsed.data.vehicleTypeId,
-      auth.organizationId,
-    )
-    .first();
-  if (related === null) {
+    .bind(auth.organizationId, parsed.data.vehicleTypeCode)
+    .first<{ id: string }>();
+  if (vt === null) {
     throw new ApiError(
       422,
       "VALIDATION_ERROR",
-      "Select an active customer and vehicle type.",
+      "Select an active vehicle type.",
+    );
+  }
+  const vehicleTypeId = vt.id;
+  const customer = await c.env.DB.prepare(
+    "SELECT id FROM customers WHERE id = ? AND organization_id = ? AND status = 'ACTIVE'",
+  )
+    .bind(parsed.data.customerId, auth.organizationId)
+    .first<{ id: string }>();
+  if (customer === null) {
+    throw new ApiError(
+      422,
+      "VALIDATION_ERROR",
+      "Select an active customer.",
     );
   }
   let registration: ReturnType<typeof normalizeRegistration>;
@@ -92,7 +101,8 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
     id,
     registrationNumber: registration.display,
     registrationNormalized: registration.search,
-    vehicleTypeId: parsed.data.vehicleTypeId,
+    vehicleTypeCode: parsed.data.vehicleTypeCode,
+    vehicleTypeId,
   };
   try {
     await c.env.DB.batch([
@@ -106,7 +116,7 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
         id,
         auth.organizationId,
         parsed.data.customerId,
-        parsed.data.vehicleTypeId,
+        vehicleTypeId,
         registration.display,
         registration.search,
         parsed.data.make ?? null,
@@ -140,7 +150,9 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
     throw error;
   }
   const created = await c.env.DB.prepare(
-    "SELECT * FROM vehicles WHERE id = ? AND organization_id = ?",
+    `SELECT v.*, vt.code AS vehicle_type_code, vt.name AS vehicle_type_name
+     FROM vehicles v INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id
+     WHERE v.id = ? AND v.organization_id = ?`,
   )
     .bind(id, auth.organizationId)
     .first();
@@ -150,7 +162,7 @@ vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
 vehicleRoutes.get("/:id", requirePermission("vehicles.read"), async (c) => {
   const auth = c.get("auth");
   const vehicle = await c.env.DB.prepare(
-    `SELECT v.*, vt.name AS vehicle_type_name, c.full_name AS customer_name,
+    `SELECT v.*, vt.code AS vehicle_type_code, vt.name AS vehicle_type_name, c.full_name AS customer_name,
       c.phone AS customer_phone
      FROM vehicles v INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id
      INNER JOIN customers c ON c.id = v.customer_id
@@ -177,6 +189,17 @@ vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
     .first<Record<string, unknown>>();
   if (previous === null)
     throw new ApiError(404, "RESOURCE_NOT_FOUND", "Vehicle not found.");
+  let vehicleTypeId: string | null = null;
+  if (parsed.data.vehicleTypeCode !== undefined) {
+    const vt = await c.env.DB.prepare(
+      "SELECT id FROM vehicle_types WHERE organization_id = ? AND code = ? AND is_active = 1",
+    )
+      .bind(auth.organizationId, parsed.data.vehicleTypeCode)
+      .first<{ id: string }>();
+    if (vt === null)
+      throw new ApiError(422, "VALIDATION_ERROR", "Select an active vehicle type.");
+    vehicleTypeId = vt.id;
+  }
   const registration =
     parsed.data.registrationNumber === undefined
       ? undefined
@@ -199,7 +222,7 @@ vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
     )
       .bind(
         parsed.data.customerId ?? null,
-        parsed.data.vehicleTypeId ?? null,
+        vehicleTypeId,
         registration?.display ?? null,
         registration?.search ?? null,
         parsed.data.make === undefined ? 0 : 1,
@@ -237,7 +260,9 @@ vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
       );
     throw error;
   }
-  const updated = await c.env.DB.prepare("SELECT * FROM vehicles WHERE id = ?")
+  const updated = await c.env.DB.prepare(
+    "SELECT v.*, vt.code AS vehicle_type_code, vt.name AS vehicle_type_name FROM vehicles v INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id WHERE v.id = ?",
+  )
     .bind(c.req.param("id"))
     .first();
   await auditStatement(c.env, {

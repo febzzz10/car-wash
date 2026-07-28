@@ -38,7 +38,7 @@ const pdf = await buildInvoicePdf({
     "Payment records and refunds are retained as append-only transactions.",
   thankYouMessage: "Thank you for choosing WashPro.",
   totalMinor: 35800,
-  vehicle: "KL 01 AA 1000 - SUV - Tata Nexon",
+  vehicle: "KL 01 AA 1000 - Four Wheeler - Tata Nexon",
   washCompletedAt: "2026-07-23T10:30:00.000Z",
   washDurationSeconds: 1800,
   washStartedAt: "2026-07-23T10:00:00.000Z",

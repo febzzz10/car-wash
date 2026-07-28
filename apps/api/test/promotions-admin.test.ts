@@ -23,7 +23,7 @@ beforeEach(async () => {
       "INSERT OR IGNORE INTO user_sessions (id, organization_id, user_id, token_hash, status, created_at, last_seen_at, expires_at) VALUES ('session-promo', 'org-promo', 'admin-promo', ?, 'ACTIVE', ?, ?, '2099-01-01T00:00:00.000Z')",
     ).bind(tokenHash, now, now),
     env.DB.prepare(
-      "INSERT OR IGNORE INTO vehicle_types (id, organization_id, code, name, created_at, updated_at) VALUES ('vehicle-type-promo', 'org-promo', 'SEDAN', 'Sedan', ?, ?)",
+      "INSERT OR IGNORE INTO vehicle_types (id, organization_id, code, name, created_at, updated_at) VALUES ('vehicle-type-promo', 'org-promo', 'FOUR_WHEELER', 'Four Wheeler', ?, ?)",
     ).bind(now, now),
     env.DB.prepare(
       "INSERT OR IGNORE INTO services (id, organization_id, code, name, service_kind, base_price_minor, created_by_user_id, created_at, updated_at) VALUES ('service-promo', 'org-promo', 'BASIC', 'Basic wash', 'PRIMARY', 50000, 'admin-promo', ?, ?)",
@@ -48,7 +48,7 @@ describe("promotion administration", () => {
       discountType: "PERCENTAGE",
       discountValue: 2500,
       eligibleServiceIds: ["service-promo"],
-      eligibleVehicleTypeIds: ["vehicle-type-promo"],
+      eligibleVehicleTypeCodes: ["FOUR_WHEELER"],
       expiresAt: "2027-01-31T23:59:59.000Z",
       maximumDiscountMinor: 15000,
       minimumBillMinor: 50000,

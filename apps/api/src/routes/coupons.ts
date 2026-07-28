@@ -1,3 +1,4 @@
+import { vehicleTypeCodeSchema } from "@washpro/contracts";
 import { normalizeCode } from "@washpro/domain";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -13,8 +14,8 @@ const couponSchema = z.object({
   discountType: z.enum(["FIXED", "PERCENTAGE"]),
   discountValue: z.number().int().positive(),
   eligibleServiceIds: z.array(z.string().min(8).max(64)).max(100).default([]),
-  eligibleVehicleTypeIds: z
-    .array(z.string().min(8).max(64))
+  eligibleVehicleTypeCodes: z
+    .array(vehicleTypeCodeSchema)
     .max(100)
     .default([]),
   expiresAt: z.iso.datetime({ offset: true }),
@@ -29,14 +30,34 @@ const couponPatchSchema = couponSchema
   .partial()
   .extend({ version: z.number().int().positive() });
 
+async function resolveVehicleTypeIds(
+  env: Env,
+  organizationId: string,
+  codes: readonly string[],
+): Promise<string[]> {
+  if (codes.length === 0) return [];
+  const uniqueCodes = [...new Set(codes)];
+  const placeholders = uniqueCodes.map(() => "?").join(",");
+  const rows = await env.DB.prepare(
+    `SELECT id FROM vehicle_types WHERE organization_id = ? AND code IN (${placeholders}) AND is_active = 1`,
+  )
+    .bind(organizationId, ...uniqueCodes)
+    .all<{ id: string }>();
+  if (rows.results.length !== uniqueCodes.length)
+    throw new ApiError(
+      422,
+      "COUPON_NOT_ELIGIBLE",
+      "Select valid eligible vehicle types.",
+    );
+  return rows.results.map((r) => r.id);
+}
+
 async function assertEligibility(
   env: Env,
   organizationId: string,
   serviceIds: readonly string[],
-  vehicleTypeIds: readonly string[],
 ): Promise<void> {
   const uniqueServices = [...new Set(serviceIds)];
-  const uniqueVehicleTypes = [...new Set(vehicleTypeIds)];
   if (uniqueServices.length > 0) {
     const placeholders = uniqueServices.map(() => "?").join(",");
     const count =
@@ -50,21 +71,6 @@ async function assertEligibility(
         422,
         "COUPON_NOT_ELIGIBLE",
         "Select valid eligible services.",
-      );
-  }
-  if (uniqueVehicleTypes.length > 0) {
-    const placeholders = uniqueVehicleTypes.map(() => "?").join(",");
-    const count =
-      (await env.DB.prepare(
-        `SELECT COUNT(*) AS count FROM vehicle_types WHERE organization_id = ? AND id IN (${placeholders})`,
-      )
-        .bind(organizationId, ...uniqueVehicleTypes)
-        .first<number>("count")) ?? 0;
-    if (count !== uniqueVehicleTypes.length)
-      throw new ApiError(
-        422,
-        "COUPON_NOT_ELIGIBLE",
-        "Select valid eligible vehicle types.",
       );
   }
 }
@@ -101,11 +107,13 @@ couponRoutes.post("/", async (c) => {
     );
   }
   const auth = c.get("auth");
+  const eligibleVehicleTypeIds = await resolveVehicleTypeIds(
+    c.env, auth.organizationId, parsed.data.eligibleVehicleTypeCodes,
+  );
   await assertEligibility(
     c.env,
     auth.organizationId,
     parsed.data.eligibleServiceIds,
-    parsed.data.eligibleVehicleTypeIds,
   );
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -143,7 +151,7 @@ couponRoutes.post("/", async (c) => {
         "INSERT INTO coupon_eligible_services (coupon_id, service_id) VALUES (?, ?)",
       ).bind(id, serviceId),
     ),
-    ...parsed.data.eligibleVehicleTypeIds.map((vehicleTypeId) =>
+    ...eligibleVehicleTypeIds.map((vehicleTypeId) =>
       c.env.DB.prepare(
         "INSERT INTO coupon_eligible_vehicle_types (coupon_id, vehicle_type_id) VALUES (?, ?)",
       ).bind(id, vehicleTypeId),
@@ -239,12 +247,14 @@ couponRoutes.patch("/:id", async (c) => {
   if (previous === null)
     throw new ApiError(404, "RESOURCE_NOT_FOUND", "Coupon not found.");
   const serviceIds = parsed.data.eligibleServiceIds;
-  const vehicleTypeIds = parsed.data.eligibleVehicleTypeIds;
+  const vehicleTypeCodes = parsed.data.eligibleVehicleTypeCodes;
+  const vehicleTypeIds = vehicleTypeCodes === undefined ? undefined : await resolveVehicleTypeIds(
+    c.env, auth.organizationId, vehicleTypeCodes,
+  );
   await assertEligibility(
     c.env,
     auth.organizationId,
     serviceIds ?? [],
-    vehicleTypeIds ?? [],
   );
   const now = new Date().toISOString();
   const result = await c.env.DB.prepare(

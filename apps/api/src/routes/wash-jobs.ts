@@ -255,9 +255,9 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
   const services = await c.env.DB.prepare(
     `SELECT s.id, s.code, s.name, s.description, s.service_kind,
       s.estimated_duration_minutes, s.is_taxable,
-      COALESCE(sp.price_minor, s.base_price_minor) AS price_minor
+      sp.price_minor
      FROM services s
-     LEFT JOIN service_prices sp ON sp.service_id = s.id
+     INNER JOIN service_prices sp ON sp.service_id = s.id
        AND sp.vehicle_type_id = ? AND sp.is_active = 1 AND sp.effective_to IS NULL
      WHERE s.organization_id = ? AND s.is_active = 1
        AND (s.id = ? OR s.id IN (SELECT value FROM json_each(?)))`,
@@ -285,8 +285,8 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
   ) {
     throw new ApiError(
       422,
-      "SERVICE_NOT_AVAILABLE",
-      "One or more selected services are unavailable.",
+      "PRICE_NOT_CONFIGURED",
+      "Price is not configured for this vehicle type.",
     );
   }
   const selectedServices = [

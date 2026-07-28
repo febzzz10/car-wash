@@ -11,6 +11,7 @@ import {
   TIMER_EVENTS,
   USER_ROLES,
   USER_STATUSES,
+  VEHICLE_TYPES,
   WASH_JOB_STATUSES,
 } from "./enums";
 
@@ -32,6 +33,7 @@ export const discountTypeSchema = z.enum(DISCOUNT_TYPES);
 export const serviceKindSchema = z.enum(SERVICE_KINDS);
 export const permissionSchema = z.enum(PERMISSIONS);
 export const errorCodeSchema = z.enum(ERROR_CODES);
+export const vehicleTypeCodeSchema = z.enum(VEHICLE_TYPES);
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -68,7 +70,7 @@ export const customerInputSchema = z.object({
 
 export const vehicleInputSchema = z.object({
   customerId: identifierSchema,
-  vehicleTypeId: identifierSchema,
+  vehicleTypeCode: vehicleTypeCodeSchema,
   registrationNumber: z.string().trim().min(3).max(24),
   make: z.string().trim().max(80).optional(),
   model: z.string().trim().max(80).optional(),

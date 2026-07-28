@@ -25,6 +25,7 @@ import {
   SearchField,
   SkeletonRows,
 } from "../components/ui";
+import VehicleTypeSelect from "../components/vehicle-type-select";
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
 import { api, jsonBody } from "../lib/api";
@@ -726,7 +727,6 @@ export default function NewWashPage() {
           vehicles.reload();
         }}
         open={vehicleDialog}
-        vehicleTypes={services.data?.vehicleTypes ?? []}
       />
     </>
   );
@@ -1204,18 +1204,23 @@ export function NewVehicleDialog({
   onClose,
   onCreated,
   open,
-  vehicleTypes,
 }: {
   readonly customerId: string;
   readonly onClose: () => void;
   readonly onCreated: (vehicle: VehicleRecord) => void;
   readonly open: boolean;
-  readonly vehicleTypes: readonly VehicleTypeRecord[];
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [vehicleTypeCode, setVehicleTypeCode] = useState("");
+  const [fieldError, setFieldError] = useState<string | null>(null);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (vehicleTypeCode === "") {
+      setFieldError("Select a vehicle type.");
+      return;
+    }
+    setFieldError(null);
     setBusy(true);
     setError(null);
     const data = new FormData(event.currentTarget);
@@ -1227,7 +1232,7 @@ export function NewVehicleDialog({
           make: data.get("make") || undefined,
           model: data.get("model") || undefined,
           registrationNumber: data.get("registrationNumber"),
-          vehicleTypeId: data.get("vehicleTypeId"),
+          vehicleTypeCode,
         }),
         method: "POST",
       });
@@ -1254,14 +1259,14 @@ export function NewVehicleDialog({
         </label>
         <label>
           <span>Vehicle type</span>
-          <select name="vehicleTypeId" required>
-            <option value="">Select type</option>
-            {vehicleTypes.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
+          <VehicleTypeSelect
+            {...(fieldError !== null ? { error: fieldError } : {})}
+            onChange={(code) => {
+              setVehicleTypeCode(code);
+              setFieldError(null);
+            }}
+            value={vehicleTypeCode}
+          />
         </label>
         <div className="form-grid">
           <label>

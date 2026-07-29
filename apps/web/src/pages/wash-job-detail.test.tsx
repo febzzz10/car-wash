@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../lib/api";
-import { liveTimer, AssignDialog, TimerCorrectionDialog } from "./wash-job-detail";
+import { liveTimer, TimerCorrectionDialog } from "./wash-job-detail";
 
 vi.mock("../lib/api", () => ({
   api: vi.fn(),
@@ -92,239 +92,6 @@ describe("liveTimer", () => {
     );
     expect(result.active).toBe(1200);
     expect(result.paused).toBe(0);
-  });
-});
-
-describe("AssignDialog", () => {
-  const onClose = vi.fn();
-  const onDone = vi.fn();
-  const defaultProps = {
-    assigneeId: "usr-2",
-    assigneeName: "Bob Staff",
-    id: "job-1",
-    onClose,
-    onDone,
-    open: true,
-    version: 5,
-  };
-
-  function reasonInput() {
-    return screen.getByRole("textbox", { name: /reason/i });
-  }
-
-  function dialog() {
-    return screen.getByRole("dialog");
-  }
-
-  function form() {
-    return dialog().querySelector("form")!;
-  }
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    cleanup();
-  });
-
-  it("renders when open", () => {
-    render(<AssignDialog {...defaultProps} />);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: /reassign job/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("does not render when closed", () => {
-    render(<AssignDialog {...defaultProps} open={false} />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  it("displays the target assignee name", () => {
-    render(<AssignDialog {...defaultProps} />);
-    expect(screen.getByText(/bob staff/i)).toBeInTheDocument();
-  });
-
-  it("displays the reason field", () => {
-    render(<AssignDialog {...defaultProps} />);
-    expect(reasonInput()).toBeInTheDocument();
-  });
-
-  it("displays Cancel and Save buttons", () => {
-    render(<AssignDialog {...defaultProps} />);
-    expect(
-      screen.getByRole("button", { name: /cancel/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /save assignment/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("calls onClose when Cancel is clicked", async () => {
-    const user = userEvent.setup();
-    render(<AssignDialog {...defaultProps} />);
-    await user.click(screen.getByRole("button", { name: /cancel/i }));
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("calls onClose when close X is clicked", async () => {
-    const user = userEvent.setup();
-    render(<AssignDialog {...defaultProps} />);
-    await user.click(screen.getByLabelText("Close"));
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("sends no request for empty reason", () => {
-    render(<AssignDialog {...defaultProps} />);
-    fireEvent.submit(form());
-    expect(api).not.toHaveBeenCalled();
-  });
-
-  it("sends no request for whitespace-only reason", () => {
-    render(<AssignDialog {...defaultProps} />);
-    const reason = reasonInput();
-    fireEvent.change(reason, { target: { value: "     " } });
-    fireEvent.submit(form());
-    expect(api).not.toHaveBeenCalled();
-  });
-
-  it("rejects reason that is too short after trimming", () => {
-    render(<AssignDialog {...defaultProps} />);
-    const reason = reasonInput();
-    fireEvent.change(reason, { target: { value: "  ab  " } });
-    fireEvent.submit(form());
-    expect(api).not.toHaveBeenCalled();
-  });
-
-  it("rejects reason that exceeds 500 characters", () => {
-    render(<AssignDialog {...defaultProps} />);
-    const reason = reasonInput();
-    fireEvent.change(reason, { target: { value: "x".repeat(501) } });
-    fireEvent.submit(form());
-    expect(api).not.toHaveBeenCalled();
-  });
-
-  it("sends no API request for invalid input", () => {
-    render(<AssignDialog {...defaultProps} />);
-    fireEvent.submit(form());
-    expect(api).not.toHaveBeenCalled();
-  });
-
-  it("sends trimmed reason and correct assignee ID on valid submission", async () => {
-    vi.mocked(api).mockResolvedValue({ success: true, data: {} });
-    render(<AssignDialog {...defaultProps} />);
-    const reason = reasonInput();
-    fireEvent.change(reason, {
-      target: { value: "  Staff reassigned due to shift change  " },
-    });
-    fireEvent.submit(form());
-    await waitFor(() => {
-      expect(api).toHaveBeenCalledTimes(1);
-      expect(api).toHaveBeenCalledWith("/wash-jobs/job-1/assignment", {
-        body: JSON.stringify({
-          assignedUserId: "usr-2",
-          reason: "Staff reassigned due to shift change",
-          version: 5,
-        }),
-        method: "PATCH",
-      });
-    });
-  });
-
-  it("includes the correct job version", async () => {
-    vi.mocked(api).mockResolvedValue({ success: true, data: {} });
-    render(<AssignDialog {...defaultProps} version={42} />);
-    const reason = reasonInput();
-    fireEvent.change(reason, { target: { value: "Shift change" } });
-    fireEvent.submit(form());
-    await waitFor(() => {
-      const body = JSON.parse(vi.mocked(api).mock.calls[0]![1]!.body as string);
-      expect(body.version).toBe(42);
-    });
-  });
-
-  it("calls onDone and not onClose after successful submission", async () => {
-    vi.mocked(api).mockResolvedValue({ success: true, data: {} });
-    render(<AssignDialog {...defaultProps} />);
-    const reason = reasonInput();
-    fireEvent.change(reason, { target: { value: "Valid reassignment" } });
-    fireEvent.submit(form());
-    await waitFor(() => {
-      expect(onDone).toHaveBeenCalledTimes(1);
-    });
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
-  it("prevents duplicate submissions via disabled button while busy", async () => {
-    let resolvePromise!: () => void;
-    let callCount = 0;
-    vi.mocked(api).mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          callCount++;
-          resolvePromise = () => resolve({ success: true, data: {} });
-        }),
-    );
-    render(<AssignDialog {...defaultProps} />);
-    const reason = reasonInput();
-    fireEvent.change(reason, { target: { value: "Reassigning staff" } });
-    fireEvent.submit(form());
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /save assignment/i }),
-      ).toBeDisabled();
-    });
-    expect(callCount).toBe(1);
-    resolvePromise!();
-  });
-
-  it("displays API error inside the dialog", async () => {
-    vi.mocked(api).mockRejectedValue(new Error("Assignment conflict."));
-    render(<AssignDialog {...defaultProps} />);
-    const reason = reasonInput();
-    fireEvent.change(reason, { target: { value: "Attempted reassign" } });
-    fireEvent.submit(form());
-    await waitFor(() => {
-      expect(screen.getByText("Assignment conflict.")).toBeInTheDocument();
-    });
-  });
-
-  it("remains open after API failure", async () => {
-    vi.mocked(api).mockRejectedValue(new Error("Server error"));
-    render(<AssignDialog {...defaultProps} />);
-    const reason = reasonInput();
-    fireEvent.change(reason, { target: { value: "Will fail" } });
-    fireEvent.submit(form());
-    await waitFor(() => {
-      expect(screen.getByText("Server error")).toBeInTheDocument();
-    });
-    expect(onClose).not.toHaveBeenCalled();
-    expect(onDone).not.toHaveBeenCalled();
-  });
-
-  it("clears error when resubmitting after failure", async () => {
-    vi.mocked(api).mockRejectedValueOnce(new Error("First failure"));
-    vi.mocked(api).mockResolvedValueOnce({ success: true, data: {} });
-    render(<AssignDialog {...defaultProps} />);
-    const reason = reasonInput();
-    fireEvent.change(reason, { target: { value: "Retry reason" } });
-    fireEvent.submit(form());
-    await waitFor(() => {
-      expect(screen.getByText("First failure")).toBeInTheDocument();
-    });
-    fireEvent.submit(form());
-    await waitFor(() => {
-      expect(screen.queryByText("First failure")).not.toBeInTheDocument();
-    });
-  });
-
-  it("has minLength and maxLength on the reason field", () => {
-    render(<AssignDialog {...defaultProps} />);
-    const textarea = reasonInput();
-    expect(textarea).toHaveAttribute("minLength", "5");
-    expect(textarea).toHaveAttribute("maxLength", "500");
-    expect(textarea).toHaveAttribute("required");
   });
 });
 
@@ -685,5 +452,177 @@ describe("TimerCorrectionDialog", () => {
   it("prefills duration input with current value", () => {
     render(<TimerCorrectionDialog {...defaultProps} currentActiveSeconds={2500} />);
     expect(durationInput()).toHaveValue(2500);
+  });
+});
+
+function mockJobData(
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  return {
+    id: "test-job-1",
+    organization_id: "org-1",
+    branch_id: "branch-1",
+    job_reference: "WJ-2026-000001",
+    customer_id: "customer-1",
+    customer_name_snapshot: "Test Customer",
+    customer_phone_snapshot: "+1234567890",
+    vehicle_registration_snapshot: "ABC-123",
+    primary_service_name_snapshot: "Full Wash",
+    vehicle_id: "vehicle-1",
+    assigned_user_id: "staff-1",
+    assigned_user_name_snapshot: "Arun Kumar",
+    assigned_user_full_name: "Arun Kumar",
+    status: "WAITING",
+    payment_status: "PENDING",
+    subtotal_minor: 5000,
+    total_amount_minor: 5000,
+    paid_amount_minor: 0,
+    balance_minor: 5000,
+    tax_rate_basis_points: 0,
+    total_active_seconds: 0,
+    version: 1,
+    created_at: "2026-07-28T10:00:00.000Z",
+    items: [],
+    locations: [],
+    photos: [],
+    ...overrides,
+  };
+}
+
+function mockPageData(job: Record<string, unknown>) {
+  vi.mocked(api).mockImplementation((path: string) => {
+    if (path.startsWith("/wash-jobs/") && !path.includes("/timer")) {
+      return Promise.resolve(job);
+    }
+    if (path.includes("/timer")) {
+      return Promise.resolve({ events: [] });
+    }
+    if (path.includes("/payments/job")) {
+      return Promise.resolve({ payments: [], refunds: [] });
+    }
+    return Promise.resolve([]);
+  });
+}
+
+import WashJobDetailPage from "./wash-job-detail";
+
+vi.mock("react-router-dom", () => ({
+  useParams: () => ({ id: "test-job-1" }),
+  Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
+    <a href={to}>{children}</a>
+  ),
+}));
+
+vi.mock("../auth", () => ({
+  useAuth: () => ({
+    user: { id: "admin-1", role: "ADMIN", permissions: [] as string[] },
+  }),
+}));
+
+vi.mock("../components/toast", () => ({
+  useToast: () => ({ success: vi.fn(), error: vi.fn() }),
+}));
+
+describe("WashJobDetailPage — read-only assignment display", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("renders assigned staff name", async () => {
+    mockPageData(mockJobData());
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Arun Kumar")).toBeInTheDocument();
+    });
+  });
+
+  it("displays 'Washed by' for completed jobs", async () => {
+    mockPageData(mockJobData({ status: "COMPLETED" }));
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Washed by")).toBeInTheDocument();
+    });
+  });
+
+  it("displays 'Assigned staff' for waiting jobs", async () => {
+    mockPageData(mockJobData({ status: "WAITING" }));
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Assigned staff")).toBeInTheDocument();
+    });
+  });
+
+  it("displays 'Assigned staff' for in-progress jobs", async () => {
+    mockPageData(mockJobData({ status: "IN_PROGRESS" }));
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Assigned staff")).toBeInTheDocument();
+    });
+  });
+
+  it("displays 'Assigned staff' for paused jobs", async () => {
+    mockPageData(mockJobData({ status: "PAUSED" }));
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Assigned staff")).toBeInTheDocument();
+    });
+  });
+
+  it("displays assigned staff for cancelled jobs", async () => {
+    mockPageData(mockJobData({ status: "CANCELLED" }));
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Assigned staff")).toBeInTheDocument();
+    });
+  });
+
+  it("displays 'Assigned staff not recorded' when name is null", async () => {
+    mockPageData(
+      mockJobData({ assigned_user_full_name: null, assigned_user_id: null }),
+    );
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Assigned staff not recorded")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show 'Reassign to' label", async () => {
+    mockPageData(mockJobData());
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(screen.queryByText(/reassign/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not show assignment dropdown", async () => {
+    mockPageData(mockJobData());
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not show 'Save assignment' button", async () => {
+    mockPageData(mockJobData());
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /save assignment/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("displays snapshot-based name from detail endpoint", async () => {
+    mockPageData(
+      mockJobData({
+        assigned_user_name_snapshot: "Historical Name",
+        assigned_user_full_name: "Historical Name",
+      }),
+    );
+    render(<WashJobDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Historical Name")).toBeInTheDocument();
+    });
   });
 });

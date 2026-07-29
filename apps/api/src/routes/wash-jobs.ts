@@ -74,14 +74,10 @@ const timerAdjustmentSchema = z.object({
   reason: z.string().trim().min(5).max(500),
   version: z.number().int().positive(),
 });
-const assignmentSchema = z.object({
-  assignedUserId: idSchema,
-  reason: z.string().trim().min(5).max(500).optional(),
-  version: z.number().int().positive(),
-});
 
 interface RelatedRow {
   readonly assigned_status: string;
+  readonly assigned_user_name: string;
   readonly branch_accuracy: number;
   readonly branch_latitude: number | null;
   readonly branch_longitude: number | null;
@@ -228,6 +224,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       v.registration_number AS vehicle_registration, v.make AS vehicle_make,
       v.model AS vehicle_model, v.status AS vehicle_status, v.vehicle_type_id,
       vt.name AS vehicle_type_name, u.status AS assigned_status,
+      u.full_name AS assigned_user_name,
       b.latitude AS branch_latitude, b.longitude AS branch_longitude,
       b.allowed_radius_meters AS branch_radius,
       b.minimum_gps_accuracy_meters AS branch_accuracy
@@ -603,7 +600,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       nextSequence - 1,
     ),
     c.env.DB.prepare(
-      `INSERT INTO wash_jobs (id, organization_id, branch_id, job_reference, customer_id, vehicle_id, assigned_user_id, customer_name_snapshot, customer_phone_snapshot, vehicle_registration_snapshot, vehicle_type_name_snapshot, vehicle_make_snapshot, vehicle_model_snapshot, status, subtotal_minor, coupon_discount_minor, referral_discount_minor, reward_discount_minor, manual_discount_minor, total_discount_minor, taxable_amount_minor, tax_minor, rounding_minor, total_amount_minor, balance_minor, tax_rate_basis_points, started_at, mandatory_photo_verified, mandatory_location_verified, location_place, location_captured_at, notes, manual_discount_reason, created_by_user_id, updated_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO wash_jobs (id, organization_id, branch_id, job_reference, customer_id, vehicle_id, assigned_user_id, assigned_user_name_snapshot, customer_name_snapshot, customer_phone_snapshot, vehicle_registration_snapshot, vehicle_type_name_snapshot, vehicle_make_snapshot, vehicle_model_snapshot, status, subtotal_minor, coupon_discount_minor, referral_discount_minor, reward_discount_minor, manual_discount_minor, total_discount_minor, taxable_amount_minor, tax_minor, rounding_minor, total_amount_minor, balance_minor, tax_rate_basis_points, started_at, mandatory_photo_verified, mandatory_location_verified, location_place, location_captured_at, notes, manual_discount_reason, created_by_user_id, updated_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       jobId,
       auth.organizationId,
@@ -612,6 +609,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       parsed.data.customerId,
       parsed.data.vehicleId,
       parsed.data.assignedUserId,
+      related.assigned_user_name,
       related.customer_name,
       related.customer_phone,
       related.vehicle_registration,
@@ -816,7 +814,10 @@ washJobRoutes.get(
 washJobRoutes.get("/:id", requirePermission("wash_jobs.read"), async (c) => {
   const auth = c.get("auth");
   const job = await c.env.DB.prepare(
-    "SELECT * FROM wash_jobs WHERE id = ? AND organization_id = ?",
+    `SELECT w.*, COALESCE(NULLIF(TRIM(w.assigned_user_name_snapshot), ''), u.full_name) AS assigned_user_full_name
+     FROM wash_jobs w
+     LEFT JOIN users u ON u.id = w.assigned_user_id
+     WHERE w.id = ? AND w.organization_id = ?`,
   )
     .bind(c.req.param("id"), auth.organizationId)
     .first();
@@ -853,85 +854,12 @@ washJobRoutes.get("/:id", requirePermission("wash_jobs.read"), async (c) => {
 washJobRoutes.patch(
   "/:id/assignment",
   requirePermission("wash_jobs.assign"),
-  async (c) => {
-    const parsed = assignmentSchema.safeParse(
-      await c.req.json().catch(() => null),
+  async (_c) => {
+    throw new ApiError(
+      409,
+      "ASSIGNMENT_LOCKED",
+      "Wash-job assignment is permanent and cannot be changed after creation.",
     );
-    if (!parsed.success)
-      throw new ApiError(
-        422,
-        "VALIDATION_ERROR",
-        "Select an active Staff member and current job version.",
-      );
-    const auth = c.get("auth");
-    const previous = await c.env.DB.prepare(
-      "SELECT id, assigned_user_id, status, version FROM wash_jobs WHERE id = ? AND organization_id = ? AND branch_id = ?",
-    )
-      .bind(c.req.param("id"), auth.organizationId, auth.branchId)
-      .first<{
-        assigned_user_id: string;
-        id: string;
-        status: string;
-        version: number;
-      }>();
-    if (previous === null)
-      throw new ApiError(404, "RESOURCE_NOT_FOUND", "Wash job not found.");
-    if (["COMPLETED", "CANCELLED"].includes(previous.status))
-      throw new ApiError(
-        409,
-        "INVALID_JOB_STATUS",
-        "Completed and cancelled jobs are locked from normal editing.",
-      );
-    const assignee = await c.env.DB.prepare(
-      "SELECT id, full_name FROM users WHERE id = ? AND organization_id = ? AND default_branch_id = ? AND status = 'ACTIVE' AND role = 'STAFF'",
-    )
-      .bind(parsed.data.assignedUserId, auth.organizationId, auth.branchId)
-      .first<{ full_name: string; id: string }>();
-    if (assignee === null)
-      throw new ApiError(
-        422,
-        "VALIDATION_ERROR",
-        "Select an active user at this branch.",
-      );
-    const now = new Date().toISOString();
-    const result = await c.env.DB.prepare(
-      "UPDATE wash_jobs SET assigned_user_id = ?, updated_by_user_id = ?, updated_at = ?, version = version + 1 WHERE id = ? AND organization_id = ? AND version = ? AND status NOT IN ('COMPLETED', 'CANCELLED')",
-    )
-      .bind(
-        assignee.id,
-        auth.userId,
-        now,
-        previous.id,
-        auth.organizationId,
-        parsed.data.version,
-      )
-      .run();
-    if (result.meta.changes === 0)
-      throw new ApiError(
-        409,
-        "RESOURCE_CONFLICT",
-        "The job changed on another device.",
-      );
-    await auditStatement(c.env, {
-      action: "WASH_JOB_ASSIGNED",
-      auth,
-      next: {
-        assignedUserId: assignee.id,
-        assignedUserName: assignee.full_name,
-      },
-      previous: { assignedUserId: previous.assigned_user_id },
-      reason: parsed.data.reason ?? null,
-      recordId: previous.id,
-      recordType: "WASH_JOB",
-      requestId: c.get("requestId"),
-      severity: "WARNING",
-    }).run();
-    return c.json({
-      data: await c.env.DB.prepare("SELECT * FROM wash_jobs WHERE id = ?")
-        .bind(previous.id)
-        .first(),
-      success: true,
-    });
   },
 );
 

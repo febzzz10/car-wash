@@ -55,6 +55,7 @@ export interface WashJobRecord {
   readonly paused_at?: string | null;
   readonly completed_at?: string | null;
   readonly assigned_user_name_snapshot?: string | null;
+  readonly assigned_user_full_name?: string | null;
   readonly created_at: string;
   readonly version: number;
 }

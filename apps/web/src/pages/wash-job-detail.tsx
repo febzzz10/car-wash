@@ -54,6 +54,7 @@ interface PhotoEvidence {
 }
 interface JobDetail extends WashJobRecord {
   readonly assigned_user_id?: string | null;
+  readonly assigned_user_full_name?: string | null;
   readonly items: readonly JobItem[];
   readonly locations: readonly LocationEvidence[];
   readonly photos: readonly PhotoEvidence[];
@@ -110,28 +111,17 @@ export function liveTimer(
 export default function WashJobDetailPage() {
   const { id = "" } = useParams();
   const { user } = useAuth();
-  const canAssign =
-    user?.role === "ADMIN" || user?.permissions.includes("wash_jobs.assign");
   const job = useApiData<JobDetail>(`/wash-jobs/${id}`, id !== "");
   const timer = useApiData<TimerPayload>(`/wash-jobs/${id}/timer`, id !== "");
   const payments = useApiData<{
     readonly payments: readonly Record<string, unknown>[];
     readonly refunds: readonly Record<string, unknown>[];
   }>(`/payments/job/${id}/all`, id !== "");
-  const assignable = useApiData<
-    readonly {
-      readonly full_name: string;
-      readonly id: string;
-      readonly role: string;
-    }[]
-  >("/wash-jobs/assignable-users", canAssign === true);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
-  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [timerCorrectionOpen, setTimerCorrectionOpen] = useState(false);
-  const [assigneeId, setAssigneeId] = useState("");
   const toast = useToast();
   useEffect(() => {
     const handle = window.setInterval(() => setNow(Date.now()), 1000);
@@ -165,10 +155,6 @@ export default function WashJobDetailPage() {
       }
     };
   }, [id, job, timer]);
-  const selectedAssigneeName = useMemo(() => {
-    if (assigneeId === "") return "";
-    return assignable.data?.find((p) => p.id === assigneeId)?.full_name ?? "";
-  }, [assigneeId, assignable.data]);
   const elapsed = useMemo(
     () => liveTimer(timer.data?.events ?? [], now),
     [now, timer.data],
@@ -201,10 +187,6 @@ export default function WashJobDetailPage() {
     } finally {
       setBusy(false);
     }
-  }
-  function assign() {
-    if (job.data === null || assigneeId === "") return;
-    setAssignDialogOpen(true);
   }
   async function generateInvoice() {
     setBusy(true);
@@ -456,46 +438,25 @@ export default function WashJobDetailPage() {
             </div>
           </Card>
           <Card>
-            <p className="eyebrow">Assignment</p>
-            <strong>
-              {record.assigned_user_name_snapshot ?? "Unassigned"}
-            </strong>
+            <p className="eyebrow">
+              {record.status === "COMPLETED"
+                ? "Washed by"
+                : "Assigned staff"}
+            </p>
+            {record.assigned_user_full_name !== null &&
+            record.assigned_user_full_name !== undefined ? (
+              <>
+                <strong>{record.assigned_user_full_name}</strong>
+                <p className="muted">Staff member</p>
+              </>
+            ) : (
+              <strong>Assigned staff not recorded</strong>
+            )}
             <p className="muted">Created {dateTime(record.created_at)}</p>
             {record.completed_at === null ||
             record.completed_at === undefined ? null : (
               <p className="muted">Completed {dateTime(record.completed_at)}</p>
             )}
-            {canAssign === true &&
-            !["COMPLETED", "CANCELLED"].includes(record.status) ? (
-              <div className="stacked-actions assignment-control">
-                <label>
-                  <span>Reassign to</span>
-                  <select
-                    onChange={(event) => setAssigneeId(event.target.value)}
-                    value={assigneeId}
-                  >
-                    <option value="">Select active Staff</option>
-                    {(assignable.data ?? [])
-                      .filter((p) => p.role === "STAFF")
-                      .map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.full_name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Button
-                  busy={busy}
-                  disabled={
-                    assigneeId === "" || assigneeId === record.assigned_user_id
-                  }
-                  onClick={() => void assign()}
-                  tone="secondary"
-                >
-                  Save assignment
-                </Button>
-              </div>
-            ) : null}
           </Card>
         </aside>
       </div>
@@ -508,19 +469,6 @@ export default function WashJobDetailPage() {
           timer.reload();
         }}
         open={cancelOpen}
-        version={record.version}
-      />
-      <AssignDialog
-        assigneeId={assigneeId}
-        assigneeName={selectedAssigneeName}
-        id={id}
-        onClose={() => setAssignDialogOpen(false)}
-        onDone={() => {
-          setAssignDialogOpen(false);
-          setAssigneeId("");
-          job.reload();
-        }}
-        open={assignDialogOpen}
         version={record.version}
       />
       <PaymentDialog
@@ -603,77 +551,6 @@ function CancelDialog({
           </Button>
           <Button busy={busy} tone="danger" type="submit">
             Cancel job
-          </Button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
-export function AssignDialog({
-  assigneeId,
-  assigneeName,
-  id,
-  onClose,
-  onDone,
-  open,
-  version,
-}: {
-  readonly assigneeId: string;
-  readonly assigneeName: string;
-  readonly id: string;
-  readonly onClose: () => void;
-  readonly onDone: () => void;
-  readonly open: boolean;
-  readonly version: number;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const reason = String(
-      new FormData(event.currentTarget).get("reason") ?? "",
-    ).trim();
-    if (reason.length < 5) {
-      setError("Enter a reason for the assignment change (at least 5 characters).");
-      return;
-    }
-    if (reason.length > 500) {
-      setError("Reason must be at most 500 characters.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await api(`/wash-jobs/${id}/assignment`, {
-        ...jsonBody({ assignedUserId: assigneeId, reason, version }),
-        method: "PATCH",
-      });
-      onDone();
-    } catch (failure) {
-      setError(
-        failure instanceof Error ? failure.message : "Assignment failed.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Dialog onClose={onClose} open={open} title="Reassign job">
-      <form className="dialog-form" onSubmit={(event) => void submit(event)}>
-        <p>
-          Assigning to <strong>{assigneeName}</strong>.
-        </p>
-        {error === null ? null : <div className="form-alert">{error}</div>}
-        <label>
-          <span>Reason for changing the assignment</span>
-          <textarea minLength={5} maxLength={500} name="reason" required />
-        </label>
-        <div className="dialog-actions">
-          <Button onClick={onClose} tone="secondary" type="button">
-            Cancel
-          </Button>
-          <Button busy={busy} type="submit">
-            Save assignment
           </Button>
         </div>
       </form>

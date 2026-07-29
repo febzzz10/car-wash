@@ -132,6 +132,13 @@ export default function NewWashPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  useEffect(() => {
+    if (assignedUserId === "") return;
+    const eligible = (staff.data ?? []).filter((p) => p.role === "STAFF");
+    if (!eligible.some((p) => p.id === assignedUserId)) {
+      setAssignedUserId("");
+    }
+  }, [staff.data, assignedUserId]);
   const canApplyManualDiscount =
     user?.role === "ADMIN" || user?.permissions.includes("payments.adjust");
 
@@ -395,7 +402,7 @@ export default function NewWashPage() {
           {step === 2 ? (
             <SelectionStep
               heading="Assign the wash"
-              intro="Only active users at this branch are available."
+              intro="Only active staff members at this branch are available."
             >
               {staff.loading ? (
                 <SkeletonRows />
@@ -403,19 +410,26 @@ export default function NewWashPage() {
                 <ErrorState message={staff.error} onRetry={staff.reload} />
               ) : (
                 <div className="choice-grid">
-                  {staff.data?.map((person) => (
-                    <Choice
-                      active={person.id === assignedUserId}
-                      key={person.id}
-                      onClick={() => setAssignedUserId(person.id)}
-                      primary={person.full_name}
-                      secondary={
-                        person.role === "ADMIN"
-                          ? "Administrator"
-                          : "Staff member"
-                      }
+                  {(staff.data ?? []).filter((p) => p.role === "STAFF")
+                    .length === 0 ? (
+                    <EmptyState
+                      icon={MapPin}
+                      message="No active staff members are available for assignment."
+                      title="No staff available"
                     />
-                  ))}
+                  ) : (
+                    (staff.data ?? [])
+                      .filter((p) => p.role === "STAFF")
+                      .map((person) => (
+                        <Choice
+                          active={person.id === assignedUserId}
+                          key={person.id}
+                          onClick={() => setAssignedUserId(person.id)}
+                          primary={person.full_name}
+                          secondary="Staff member"
+                        />
+                      ))
+                  )}
                 </div>
               )}
               <label className="toggle-row">

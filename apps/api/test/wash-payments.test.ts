@@ -20,6 +20,9 @@ beforeEach(async () => {
       "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, created_at, updated_at) VALUES ('admin-wash', 'org-wash', 'branch-wash', 'Wash Admin', 'wash-admin', 'wash-admin', 'unused', 'ADMIN', 'ACTIVE', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
+      "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, permissions_json, created_at, updated_at) VALUES ('staff-wash', 'org-wash', 'branch-wash', 'Wash Staff', 'wash-staff', 'wash-staff', 'unused', 'STAFF', 'ACTIVE', '[\"wash_jobs.create\"]', ?, ?)",
+    ).bind(timestamp, timestamp),
+    env.DB.prepare(
       "INSERT OR IGNORE INTO user_sessions (id, organization_id, user_id, token_hash, status, created_at, last_seen_at, expires_at) VALUES ('session-wash', 'org-wash', 'admin-wash', ?, 'ACTIVE', ?, ?, '2099-01-01T00:00:00.000Z')",
     ).bind(tokenHash, timestamp, timestamp),
     env.DB.prepare(
@@ -116,7 +119,7 @@ describe("wash, timer, payment, and refund workflow", () => {
       "/api/v1/wash-jobs",
       {
         body: JSON.stringify({
-          assignedUserId: "admin-wash",
+          assignedUserId: "staff-wash",
           customerId: "customer-referral-wash",
           idempotencyKey: "referral-wash-create-0001",
           initialStatus: "WAITING",
@@ -196,7 +199,7 @@ describe("wash, timer, payment, and refund workflow", () => {
       {
         body: JSON.stringify({
           addOnServiceIds: ["service-addon-1"],
-          assignedUserId: "admin-wash",
+          assignedUserId: "staff-wash",
           couponCode: " welcome-10 ",
           customerId: "customer-wash",
           idempotencyKey: "wash-create-key-0001",

@@ -475,9 +475,11 @@ export default function WashJobDetailPage() {
                     value={assigneeId}
                   >
                     <option value="">Select active Staff</option>
-                    {assignable.data?.map((person) => (
+                    {(assignable.data ?? [])
+                      .filter((p) => p.role === "STAFF")
+                      .map((person) => (
                       <option key={person.id} value={person.id}>
-                        {person.full_name} · {titleCase(person.role)}
+                        {person.full_name}
                       </option>
                     ))}
                   </select>

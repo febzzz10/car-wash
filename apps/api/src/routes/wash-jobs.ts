@@ -234,11 +234,12 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
      FROM customers c
      INNER JOIN vehicles v ON v.customer_id = c.id AND v.organization_id = c.organization_id
      INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id AND vt.organization_id = c.organization_id
-     INNER JOIN users u ON u.organization_id = c.organization_id
+     INNER JOIN users u ON u.organization_id = c.organization_id AND u.default_branch_id = ? AND u.role = 'STAFF'
      INNER JOIN branches b ON b.id = ? AND b.organization_id = c.organization_id
      WHERE c.id = ? AND v.id = ? AND u.id = ? AND c.organization_id = ?`,
   )
     .bind(
+      auth.branchId,
       auth.branchId,
       parsed.data.customerId,
       parsed.data.vehicleId,
@@ -803,7 +804,7 @@ washJobRoutes.get(
     const result = await c.env.DB.prepare(
       `SELECT id, full_name, role
        FROM users
-       WHERE organization_id = ? AND default_branch_id = ? AND status = 'ACTIVE'
+       WHERE organization_id = ? AND default_branch_id = ? AND status = 'ACTIVE' AND role = 'STAFF'
        ORDER BY full_name`,
     )
       .bind(auth.organizationId, auth.branchId)
@@ -882,7 +883,7 @@ washJobRoutes.patch(
         "Completed and cancelled jobs are locked from normal editing.",
       );
     const assignee = await c.env.DB.prepare(
-      "SELECT id, full_name FROM users WHERE id = ? AND organization_id = ? AND default_branch_id = ? AND status = 'ACTIVE'",
+      "SELECT id, full_name FROM users WHERE id = ? AND organization_id = ? AND default_branch_id = ? AND status = 'ACTIVE' AND role = 'STAFF'",
     )
       .bind(parsed.data.assignedUserId, auth.organizationId, auth.branchId)
       .first<{ full_name: string; id: string }>();

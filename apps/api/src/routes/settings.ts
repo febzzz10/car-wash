@@ -53,7 +53,7 @@ const settingGroups = {
     "referral.new_customers_only",
     "referral.eligible_service_ids",
     "referral.eligible_vehicle_type_ids",
-    "coupon.allow_referral_stacking",
+
   ]),
   security: new Set([
     "security.session_timeout_minutes",

@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api } from "../lib/api";
+import { api, ApiError } from "../lib/api";
 import { liveTimer, PaymentDialog, TimerCorrectionDialog } from "./wash-job-detail";
 
 vi.mock("../lib/api", () => {
@@ -1076,5 +1076,252 @@ describe("PaymentDialog — benefits regression", () => {
       />,
     );
     expect(screen.getByText("Available reward")).toBeTruthy();
+  });
+
+  it("both coupon and referral fields can be filled simultaneously", async () => {
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    const referralInput = screen.getAllByPlaceholderText("Optional")[1] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().type(referralInput, "RAVI500");
+    expect(couponInput).toHaveValue("WELCOME10");
+    expect(referralInput).toHaveValue("RAVI500");
+  });
+
+  it("no stacking-disabled warning rendered", async () => {
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    expect(screen.queryByText("Coupon and referral stacking is disabled.")).toBeNull();
+  });
+
+  it("verify benefits sends both codes", async () => {
+    let verifyPayload: unknown = null;
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        verifyPayload = _init?.body ? JSON.parse(_init.body as string) : null;
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 1000, totalDiscountMinor: 2000, totalAmountMinor: 48000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: { code: "RAVI500", discountMinor: 1000 }, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    const referralInput = screen.getAllByPlaceholderText("Optional")[1] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().type(referralInput, "RAVI500");
+    const verifyBtn = screen.getByRole("button", { name: /verify benefits/i });
+    await userEvent.setup().click(verifyBtn);
+    await waitFor(() => {
+      expect(verifyPayload).not.toBeNull();
+    });
+    const benefits = (verifyPayload as any).benefits;
+    expect(benefits.couponCode).toBe("WELCOME10");
+    expect(benefits.referralCode).toBe("RAVI500");
+  });
+
+  it("both verified discounts appear in preview", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 1000, totalDiscountMinor: 2000, totalAmountMinor: 48000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: { code: "RAVI500", discountMinor: 1000 }, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    const referralInput = screen.getAllByPlaceholderText("Optional")[1] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().type(referralInput, "RAVI500");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Coupon discount/i)).toBeTruthy();
+      expect(screen.getByText(/Referral discount/i)).toBeTruthy();
+    });
+  });
+
+  it("editing either code marks verification stale", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 1000, totalDiscountMinor: 2000, totalAmountMinor: 48000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: { code: "RAVI500", discountMinor: 1000 }, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    const referralInput = screen.getAllByPlaceholderText("Optional")[1] as HTMLInputElement;
+    // Verify both codes
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().type(referralInput, "RAVI500");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/coupon discount/i)).toBeTruthy();
+    });
+    // Edit coupon code
+    await userEvent.setup().clear(couponInput);
+    await userEvent.setup().type(couponInput, "NEWCODE");
+    await waitFor(() => {
+      expect(screen.getByText(/Changed — verify again/i)).toBeTruthy();
+    });
+  });
+
+  it("coupon-only verification still succeeds", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 0, totalDiscountMinor: 1000, totalAmountMinor: 49000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Coupon discount/i)).toBeTruthy();
+    });
+  });
+
+  it("referral-only verification still succeeds", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { referralCode: "RAVI500", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 0, referralDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000 },
+          applied: { coupon: null, referral: { code: "RAVI500", discountMinor: 1000 }, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { referralCode: "RAVI500", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    const referralInput = screen.getAllByPlaceholderText("Optional")[1] as HTMLInputElement;
+    await userEvent.setup().type(referralInput, "RAVI500");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Referral discount/i)).toBeTruthy();
+    });
+  });
+
+  it("field-specific coupon error renders", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        throw new ApiError(422, "COUPON_INVALID", "The coupon is not eligible.", { "benefits.couponCode": "The coupon code is invalid." });
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "INVALID");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/The coupon code is invalid/)).toBeTruthy();
+    });
+  });
+
+  it("field-specific referral error renders", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        throw new ApiError(422, "REFERRAL_INVALID", "The referral is not eligible.", { "benefits.referralCode": "The referral code is invalid." });
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    const referralInput = screen.getAllByPlaceholderText("Optional")[1] as HTMLInputElement;
+    await userEvent.setup().type(referralInput, "INVALID");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/The referral code is invalid/)).toBeTruthy();
+    });
   });
 });

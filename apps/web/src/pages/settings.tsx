@@ -62,7 +62,7 @@ const groups = {
     "referral.reward_maximum_minor",
     "referral.reward_expiry_days",
     "referral.new_customers_only",
-    "coupon.allow_referral_stacking",
+
   ],
   security: [
     "security.session_timeout_minutes",
@@ -97,7 +97,6 @@ const booleanKeys = new Set([
   "tax.enabled",
   "referral.enabled",
   "referral.new_customers_only",
-  "coupon.allow_referral_stacking",
 ]);
 export default function SettingsPage() {
   const state = useApiData<SettingsPayload>("/settings");

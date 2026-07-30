@@ -586,9 +586,6 @@ washJobRoutes.post("/:id/verify-benefits", requirePermission("payments.create"),
   let newReferral: { codeId: string; code: string; discountMinor: number; referrerCustomerId: string } | null = null;
   const referralCodeStr = benefits.referralCode;
   if (referralCodeStr !== undefined && referralCodeStr.trim() !== "") {
-    if (couponDiscountMinor > 0 && !booleanSetting(settings, "coupon.allow_referral_stacking", false))
-      throw new ApiError(422, "REFERRAL_STACKING_NOT_ALLOWED", "Coupon and referral stacking is disabled.", { "benefits.referralCode": "Coupon and referral stacking is disabled." } as Record<string, string>);
-
     const code = await c.env.DB.prepare(
       "SELECT * FROM referral_codes WHERE organization_id = ? AND code_normalized = ?"
     ).bind(auth.organizationId, normalizeCode(referralCodeStr)).first<Record<string, unknown>>();

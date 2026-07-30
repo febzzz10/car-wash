@@ -873,10 +873,10 @@ export function PaymentDialog({
             {preview ? (
               <div className="bill-preview" style={{ marginTop: "0.75rem" }}>
                 <p className="eyebrow">Revised billing preview</p>
-                {preview.requested?.couponDiscountMinor > 0 ? <span>Coupon discount <strong>−{money(preview.requested.couponDiscountMinor)}</strong></span> : null}
-                {preview.requested?.referralDiscountMinor > 0 ? <span>Referral discount <strong>−{money(preview.requested.referralDiscountMinor)}</strong></span> : null}
-                {preview.requested?.rewardDiscountMinor > 0 ? <span>Reward <strong>−{money(preview.requested.rewardDiscountMinor)}</strong></span> : null}
-                {preview.requested?.manualDiscountMinor > 0 ? <span>Manual discount <strong>−{money(preview.requested.manualDiscountMinor)}</strong></span> : null}
+                {preview.revised?.couponDiscountMinor > 0 ? <span>Coupon discount <strong>−{money(preview.revised.couponDiscountMinor)}</strong></span> : null}
+                {preview.revised?.referralDiscountMinor > 0 ? <span>Referral discount <strong>−{money(preview.revised.referralDiscountMinor)}</strong></span> : null}
+                {preview.revised?.rewardDiscountMinor > 0 ? <span>Reward <strong>−{money(preview.revised.rewardDiscountMinor)}</strong></span> : null}
+                {preview.revised?.manualDiscountMinor > 0 ? <span>Manual discount <strong>−{money(preview.revised.manualDiscountMinor)}</strong></span> : null}
                 {preview.revised?.totalAmountMinor === 0 ? <div style={{ marginTop: "0.5rem" }}><p>These benefits fully cover the remaining bill. No payment transaction will be created.</p></div> : null}
               </div>
             ) : null}

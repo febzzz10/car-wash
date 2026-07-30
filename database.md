@@ -746,7 +746,6 @@ tax.enabled
 tax.rate_basis_points
 billing.rounding_mode
 payment.default_method
-coupon.allow_referral_stacking
 referral.enabled
 referral.friend_discount_type
 referral.friend_discount_value

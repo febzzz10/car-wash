@@ -144,7 +144,6 @@ bootstrapRoutes.post("/", async (c) => {
     ["referral.reward_type", "STRING", "FIXED"],
     ["referral.reward_value", "INTEGER", "0"],
     ["referral.new_customers_only", "BOOLEAN", "true"],
-    ["coupon.allow_referral_stacking", "BOOLEAN", "false"],
     ["payment.default_method", "STRING", "CASH"],
     ["security.session_timeout_minutes", "INTEGER", "480"],
     ["privacy.photo_retention_days", "INTEGER", "365"],

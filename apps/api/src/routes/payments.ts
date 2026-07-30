@@ -269,9 +269,6 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
     // Referral validation
     const referralCodeStr = benefits.referralCode;
     if (referralCodeStr !== undefined && referralCodeStr.trim() !== "") {
-      if (couponDiscountMinor > 0 && !booleanSetting(settings, "coupon.allow_referral_stacking", false))
-        throw new ApiError(422, "REFERRAL_STACKING_NOT_ALLOWED", "Coupon and referral stacking is disabled.", { "benefits.referralCode": "Coupon and referral stacking is disabled." });
-
       const code = await c.env.DB.prepare(
         "SELECT * FROM referral_codes WHERE organization_id = ? AND code_normalized = ?"
       ).bind(auth.organizationId, normalizeCode(referralCodeStr)).first<Record<string, unknown>>();

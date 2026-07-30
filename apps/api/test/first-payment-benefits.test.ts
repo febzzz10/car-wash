@@ -113,7 +113,10 @@ beforeEach(async () => {
       "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-referral-friend', 'org-wash', 'referral.friend_discount_value', 'INTEGER', '1000', ?)",
     ).bind(timestamp),
     env.DB.prepare(
-      "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-referral-reward', 'org-wash', 'referral.reward_value', 'INTEGER', '500', ?)",
+      "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-referral-reward', 'org-wash', 'referral.reward_value', 'INTEGER', '500', ?)"
+    ).bind(timestamp),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-referral-new-customers', 'org-wash', 'referral.new_customers_only', 'BOOLEAN', 'false', ?)"
     ).bind(timestamp),
     ...photoAssets,
   ]);
@@ -663,7 +666,128 @@ describe("benefit validation during commit", () => {
     expect(body.error.code).toBe("REFERRAL_SELF_USE");
   });
 
-  it("referral stacking rejected when disabled", async () => {
+  it("coupon and referral stacking succeeds with combined discount", async () => {
+    const headers = await mutationHeaders();
+    const job = await createWashJob();
+    const v = await startAndComplete(job.id, job.version);
+
+    const res = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 8000,
+          benefits: {
+            replaceExisting: true,
+            couponCode: "REPEAT10",
+            referralCode: "RAVI500",
+          },
+          expectedVersion: v,
+          idempotencyKey: `benefits-stacking-ok-${idemSuffix()}`,
+          method: "UPI",
+          washJobId: job.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json<{
+      data: {
+        revisedBilling: {
+          couponDiscountMinor: number;
+          referralDiscountMinor: number;
+          totalDiscountMinor: number;
+          totalAmountMinor: number;
+        };
+        appliedBenefits: {
+          coupon: { code: string; discountMinor: number } | null;
+          referral: { code: string; discountMinor: number } | null;
+        };
+      };
+    }>();
+
+    // Both discounts applied separately
+    expect(body.data.revisedBilling.couponDiscountMinor).toBe(1000);
+    expect(body.data.revisedBilling.referralDiscountMinor).toBe(1000);
+    expect(body.data.revisedBilling.totalDiscountMinor).toBe(2000);
+
+    // Both benefits recorded
+    expect(body.data.appliedBenefits.coupon).not.toBeNull();
+    expect(body.data.appliedBenefits.coupon!.code).toBe("REPEAT10");
+    expect(body.data.appliedBenefits.coupon!.discountMinor).toBe(1000);
+    expect(body.data.appliedBenefits.referral).not.toBeNull();
+    expect(body.data.appliedBenefits.referral!.code).toBe("RAVI500");
+    expect(body.data.appliedBenefits.referral!.discountMinor).toBe(1000);
+
+    // Combined discount reflected in final amount (tax decreases with lower taxable amount)
+    expect(body.data.revisedBilling.totalAmountMinor).toBe(9440);
+
+    // Both persisted separately in DB
+    const dbJob = await env.DB.prepare(
+      "SELECT coupon_discount_minor, referral_discount_minor FROM wash_jobs WHERE id = ?"
+    ).bind(job.id).first<{ coupon_discount_minor: number; referral_discount_minor: number }>();
+    expect(dbJob!.coupon_discount_minor).toBe(1000);
+    expect(dbJob!.referral_discount_minor).toBe(1000);
+
+    // Coupon redemption recorded
+    const cr = await env.DB.prepare(
+      "SELECT status, discount_amount_minor FROM coupon_redemptions WHERE wash_job_id = ?"
+    ).bind(job.id).first<{ status: string; discount_amount_minor: number }>();
+    expect(cr!.status).toBe("RESERVED");
+    expect(cr!.discount_amount_minor).toBe(1000);
+
+    // Referral redemption recorded
+    const rr = await env.DB.prepare(
+      `SELECT rr.status, rr.friend_discount_minor
+       FROM referral_redemptions rr WHERE rr.referred_wash_job_id = ?`
+    ).bind(job.id).first<{ status: string; friend_discount_minor: number }>();
+    expect(rr!.status).toBe("PENDING");
+    expect(rr!.friend_discount_minor).toBe(1000);
+  });
+
+  it("invalid coupon prevents both coupon and referral from persisting", async () => {
+    const headers = await mutationHeaders();
+    const job = await createWashJob();
+    const v = await startAndComplete(job.id, job.version);
+
+    const res = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 5000,
+          benefits: {
+            replaceExisting: true,
+            couponCode: "INVALIDCOUPON",
+            referralCode: "RAVI500",
+          },
+          expectedVersion: v,
+          idempotencyKey: `benefits-invalid-coupon-${idemSuffix()}`,
+          method: "UPI",
+          washJobId: job.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(res.status).toBe(422);
+    const body = await res.json<{ error: { code: string; fields?: Record<string, string> } }>();
+    expect(body.error.code).toBe("COUPON_INVALID");
+
+    // Neither benefit persisted
+    const cr = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM coupon_redemptions WHERE wash_job_id = ?"
+    ).bind(job.id).first<number>("count");
+    expect(cr ?? 0).toBe(0);
+
+    const rr = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM referral_redemptions WHERE referred_wash_job_id = ?"
+    ).bind(job.id).first<number>("count");
+    expect(rr ?? 0).toBe(0);
+  });
+
+  it("invalid referral prevents both coupon and referral from persisting", async () => {
     const headers = await mutationHeaders();
     const job = await createWashJob();
     const v = await startAndComplete(job.id, job.version);
@@ -676,10 +800,10 @@ describe("benefit validation during commit", () => {
           benefits: {
             replaceExisting: true,
             couponCode: "REPEAT10",
-            referralCode: "RAVI500",
+            referralCode: "INVALIDREF",
           },
           expectedVersion: v,
-          idempotencyKey: `benefits-stacking-${idemSuffix()}`,
+          idempotencyKey: `benefits-invalid-ref-${idemSuffix()}`,
           method: "UPI",
           washJobId: job.id,
         }),
@@ -689,8 +813,59 @@ describe("benefit validation during commit", () => {
       env,
     );
     expect(res.status).toBe(422);
-    const body = await res.json<{ error: { code: string } }>();
-    expect(body.error.code).toBe("REFERRAL_STACKING_NOT_ALLOWED");
+    const body = await res.json<{ error: { code: string; fields?: Record<string, string> } }>();
+    expect(body.error.code).toBe("REFERRAL_INVALID");
+
+    // Neither benefit persisted
+    const cr = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM coupon_redemptions WHERE wash_job_id = ?"
+    ).bind(job.id).first<number>("count");
+    expect(cr ?? 0).toBe(0);
+
+    const rr = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM referral_redemptions WHERE referred_wash_job_id = ?"
+    ).bind(job.id).first<number>("count");
+    expect(rr ?? 0).toBe(0);
+  });
+
+  it("combined discount does not reduce total below zero", async () => {
+    const headers = await mutationHeaders();
+    const job = await createWashJob({
+      primaryServiceId: "service-primary",
+      customerId: "customer-referral-wash",
+      vehicleId: "vehicle-referral-wash",
+    });
+    const v = await startAndComplete(job.id, job.version);
+
+    const res = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 8000,
+          benefits: {
+            replaceExisting: true,
+            couponCode: "REPEAT10",
+            referralCode: "RAVI500",
+          },
+          expectedVersion: v,
+          idempotencyKey: `benefits-negative-guard-${idemSuffix()}`,
+          method: "UPI",
+          washJobId: job.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json<{
+      data: {
+        revisedBilling: { totalAmountMinor: number; totalDiscountMinor: number };
+      };
+    }>();
+    // Total must never be negative
+    expect(body.data.revisedBilling.totalAmountMinor).toBeGreaterThanOrEqual(0);
+    expect(body.data.revisedBilling.totalAmountMinor).toBe(9440);
   });
 
   it("unavailable reward rejected", async () => {
@@ -932,10 +1107,14 @@ describe("guard rollback - forced failures", () => {
     const now = new Date().toISOString();
     const rrId = `rr-reward-test-${idemSuffix()}`;
     const rewardId = `reward-test-dynamic-${idemSuffix()}`;
+    const referredCustomerId = `customer-reward-test-${idemSuffix()}`;
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO referral_redemptions (id, organization_id, referral_code_id, referring_customer_id, referred_customer_id, referred_wash_job_id, status, friend_discount_type_snapshot, friend_discount_value_snapshot, friend_discount_minor, reward_type_snapshot, reward_value_snapshot, reward_amount_minor, created_at, qualified_at, created_by_user_id) VALUES (?, 'org-wash', 'refcode-wash', 'referrer-wash', 'customer-wash', ?, 'REWARD_ISSUED', 'FIXED', 0, 0, 'FIXED', 100, 100, ?, ?, 'admin-wash')",
-      ).bind(rrId, dummyJob.id, now, now),
+        "INSERT INTO customers (id, organization_id, home_branch_id, full_name, name_search, phone, phone_normalized, registered_at, created_at, updated_at) VALUES (?, 'org-wash', 'branch-wash', 'Reward Test', 'reward test', '0000000000', '+910000000000', ?, ?, ?)"
+      ).bind(referredCustomerId, now, now, now),
+      env.DB.prepare(
+        "INSERT INTO referral_redemptions (id, organization_id, referral_code_id, referring_customer_id, referred_customer_id, referred_wash_job_id, status, friend_discount_type_snapshot, friend_discount_value_snapshot, friend_discount_minor, reward_type_snapshot, reward_value_snapshot, reward_amount_minor, created_at, qualified_at, created_by_user_id) VALUES (?, 'org-wash', 'refcode-wash', 'referrer-wash', ?, ?, 'REWARD_ISSUED', 'FIXED', 0, 0, 'FIXED', 100, 100, ?, ?, 'admin-wash')",
+      ).bind(rrId, referredCustomerId, dummyJob.id, now, now),
       env.DB.prepare(
         "INSERT INTO referral_rewards (id, organization_id, customer_id, referral_redemption_id, status, original_amount_minor, remaining_amount_minor, earned_at, available_from, expires_at, created_at, updated_at, version) VALUES (?, 'org-wash', 'customer-wash', ?, 'AVAILABLE', 100, 100, ?, ?, '2099-01-01T00:00:00.000Z', ?, ?, 1)",
       ).bind(rewardId, rrId, now, now, now, now),

@@ -51,6 +51,7 @@ const groups = {
     "business.date_format",
     "business.number_format",
     "payment.default_method",
+    "payment.allow_refunds",
   ],
   invoice: [
     "invoice.prefix",
@@ -101,6 +102,7 @@ const booleanKeys = new Set([
   "tax.enabled",
   "referral.enabled",
   "referral.new_customers_only",
+  "payment.allow_refunds",
 ]);
 export default function SettingsPage() {
   const state = useApiData<SettingsPayload>("/settings");
@@ -223,6 +225,12 @@ export default function SettingsPage() {
                           {titleCase(key.split(".").at(-1) ?? key)}
                         </strong>
                         <small>{key}</small>
+                        {key === "payment.allow_refunds" && (
+                          <span className="muted" style={{ display: "block", marginTop: "0.25rem" }}>
+                            Enables or disables payment refunds across the organization. When disabled, refund buttons
+                            are hidden and refund API requests are rejected.
+                          </span>
+                        )}
                       </span>
                     </label>
                   ) : key === "business.currency" ? (

@@ -22,6 +22,7 @@ const settingGroups = {
     "business.timezone",
     "business.date_format",
     "business.number_format",
+    "payment.allow_refunds",
     "payment.default_method",
   ]),
   invoice: new Set([

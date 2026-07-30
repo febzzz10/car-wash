@@ -72,10 +72,6 @@ const timerAdjustmentSchema = z.object({
 interface RelatedRow {
   readonly assigned_status: string;
   readonly assigned_user_name: string;
-  readonly branch_accuracy: number;
-  readonly branch_latitude: number | null;
-  readonly branch_longitude: number | null;
-  readonly branch_radius: number;
   readonly customer_name: string;
   readonly customer_phone: string;
   readonly customer_status: string;
@@ -190,10 +186,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       v.registration_number AS vehicle_registration, v.make AS vehicle_make,
       v.model AS vehicle_model, v.status AS vehicle_status, v.vehicle_type_id,
       vt.name AS vehicle_type_name, u.status AS assigned_status,
-      u.full_name AS assigned_user_name,
-      b.latitude AS branch_latitude, b.longitude AS branch_longitude,
-      b.allowed_radius_meters AS branch_radius,
-      b.minimum_gps_accuracy_meters AS branch_accuracy
+      u.full_name AS assigned_user_name
      FROM customers c
      INNER JOIN vehicles v ON v.customer_id = c.id AND v.organization_id = c.organization_id
      INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id AND vt.organization_id = c.organization_id

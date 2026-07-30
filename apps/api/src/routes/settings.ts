@@ -35,12 +35,6 @@ const settingGroups = {
     "tax.rate_basis_points",
     "billing.rounding_mode",
   ]),
-  location: new Set([
-    "location.latitude",
-    "location.longitude",
-    "location.allowed_radius_meters",
-    "location.minimum_gps_accuracy_meters",
-  ]),
   referral: new Set([
     "referral.enabled",
     "referral.friend_discount_type",
@@ -235,43 +229,6 @@ for (const group of Object.keys(
             typeof phone === "string" ? phone : null,
             typeof whatsapp === "string" ? whatsapp : null,
             typeof email === "string" ? email : null,
-            now,
-            auth.branchId,
-            auth.organizationId,
-          ),
-        );
-      }
-      if (group === "location") {
-        const latitude = parsed.data.settings["location.latitude"];
-        const longitude = parsed.data.settings["location.longitude"];
-        const radius = parsed.data.settings["location.allowed_radius_meters"];
-        const accuracy =
-          parsed.data.settings["location.minimum_gps_accuracy_meters"];
-        const numeric = [latitude, longitude, radius, accuracy].every(
-          (value) => value === undefined || typeof value === "number",
-        );
-        if (
-          !numeric ||
-          (typeof latitude === "number" && (latitude < -90 || latitude > 90)) ||
-          (typeof longitude === "number" &&
-            (longitude < -180 || longitude > 180)) ||
-          (typeof radius === "number" && radius <= 0) ||
-          (typeof accuracy === "number" && accuracy <= 0)
-        ) {
-          throw new ApiError(
-            422,
-            "VALIDATION_ERROR",
-            "Enter valid GPS coordinates, radius, and accuracy.",
-          );
-        }
-        statements.push(
-          c.env.DB.prepare(
-            "UPDATE branches SET latitude = COALESCE(?, latitude), longitude = COALESCE(?, longitude), allowed_radius_meters = COALESCE(?, allowed_radius_meters), minimum_gps_accuracy_meters = COALESCE(?, minimum_gps_accuracy_meters), updated_at = ?, version = version + 1 WHERE id = ? AND organization_id = ?",
-          ).bind(
-            latitude ?? null,
-            longitude ?? null,
-            radius ?? null,
-            accuracy ?? null,
             now,
             auth.branchId,
             auth.organizationId,

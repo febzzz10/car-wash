@@ -21,7 +21,6 @@ const bootstrapSchema = z.object({
     .min(3)
     .max(80)
     .regex(/^[A-Za-z0-9._-]+$/u),
-  allowedRadiusMeters: z.number().positive().max(10_000),
   branchCode: z
     .string()
     .trim()
@@ -30,9 +29,6 @@ const bootstrapSchema = z.object({
     .regex(/^[A-Za-z0-9_-]+$/u),
   branchName: z.string().trim().min(2).max(120),
   businessName: z.string().trim().min(2).max(160),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
-  minimumGpsAccuracyMeters: z.number().positive().max(5_000),
   timezone: z.string().trim().min(3).max(80),
 });
 
@@ -164,17 +160,13 @@ bootstrapRoutes.post("/", async (c) => {
       now,
     ),
     c.env.DB.prepare(
-      "INSERT INTO branches (id, organization_id, code, name, address_line_1, latitude, longitude, allowed_radius_meters, minimum_gps_accuracy_meters, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO branches (id, organization_id, code, name, address_line_1, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ).bind(
       branchId,
       organizationId,
       parsed.data.branchCode.toUpperCase(),
       parsed.data.branchName,
       parsed.data.address ?? null,
-      parsed.data.latitude,
-      parsed.data.longitude,
-      parsed.data.allowedRadiusMeters,
-      parsed.data.minimumGpsAccuracyMeters,
       now,
       now,
     ),

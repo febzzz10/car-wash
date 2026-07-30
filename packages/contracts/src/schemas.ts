@@ -3,7 +3,6 @@ import { z } from "zod";
 import {
   DISCOUNT_TYPES,
   ERROR_CODES,
-  LOCATION_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
   PERMISSIONS,
@@ -28,7 +27,6 @@ export const washJobStatusSchema = z.enum(WASH_JOB_STATUSES);
 export const paymentStatusSchema = z.enum(PAYMENT_STATUSES);
 export const paymentMethodSchema = z.enum(PAYMENT_METHODS);
 export const timerEventSchema = z.enum(TIMER_EVENTS);
-export const locationStatusSchema = z.enum(LOCATION_STATUSES);
 export const discountTypeSchema = z.enum(DISCOUNT_TYPES);
 export const serviceKindSchema = z.enum(SERVICE_KINDS);
 export const permissionSchema = z.enum(PERMISSIONS);

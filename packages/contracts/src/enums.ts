@@ -35,15 +35,6 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export const TIMER_EVENTS = ["START", "PAUSE", "RESUME", "END"] as const;
 export type TimerEventType = (typeof TIMER_EVENTS)[number];
 
-export const LOCATION_STATUSES = [
-  "AT_BUSINESS_LOCATION",
-  "OUTSIDE_BUSINESS_LOCATION",
-  "POOR_ACCURACY",
-  "COULD_NOT_VERIFY",
-  "OVERRIDDEN",
-] as const;
-export type LocationStatus = (typeof LOCATION_STATUSES)[number];
-
 export const DISCOUNT_TYPES = ["FIXED", "PERCENTAGE"] as const;
 export type DiscountType = (typeof DISCOUNT_TYPES)[number];
 

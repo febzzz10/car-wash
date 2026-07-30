@@ -59,12 +59,6 @@ const groups = {
     "invoice.terms",
   ],
   tax: ["tax.enabled", "tax.rate_basis_points", "billing.rounding_mode"],
-  location: [
-    "location.latitude",
-    "location.longitude",
-    "location.allowed_radius_meters",
-    "location.minimum_gps_accuracy_meters",
-  ],
   referral: [
     "referral.enabled",
     "referral.friend_discount_type",
@@ -90,10 +84,6 @@ const groups = {
 type Group = keyof typeof groups;
 const numericKeys = new Set([
   "tax.rate_basis_points",
-  "location.latitude",
-  "location.longitude",
-  "location.allowed_radius_meters",
-  "location.minimum_gps_accuracy_meters",
   "referral.friend_discount_value",
   "referral.reward_value",
   "referral.minimum_bill_minor",
@@ -272,11 +262,7 @@ export default function SettingsPage() {
                       <input
                         defaultValue={values.get(key) ?? ""}
                         name={key}
-                        step={
-                          key.includes("latitude") || key.includes("longitude")
-                            ? "any"
-                            : "1"
-                        }
+                        step="1"
                         type={
                           numericKeys.has(key)
                             ? "number"

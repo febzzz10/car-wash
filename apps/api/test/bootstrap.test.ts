@@ -9,13 +9,9 @@ describe("one-time bootstrap", () => {
       adminFullName: "Initial Administrator",
       adminPassword: "SecureBootstrap!234",
       adminUsername: "admin",
-      allowedRadiusMeters: 150,
       branchCode: "MAIN",
       branchName: "Main Branch",
       businessName: "Clean Cars",
-      latitude: 9.9816,
-      longitude: 76.2999,
-      minimumGpsAccuracyMeters: 50,
       timezone: "Asia/Kolkata",
     };
     const response = await app.request(

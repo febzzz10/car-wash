@@ -83,6 +83,30 @@ beforeEach(async () => {
       }),
     ),
     env.DB.prepare(
+      "INSERT OR IGNORE INTO file_assets (id, organization_id, branch_id, bucket_name, object_key, mime_type, size_bytes, asset_type, access_level, upload_status, uploaded_by_user_id, created_at, ready_at, metadata_json) VALUES ('asset-live-wash-2', 'org-wash', 'branch-wash', 'UPLOADS', 'org-wash/live2.jpg', 'image/jpeg', 4, 'VEHICLE_LIVE_PHOTO', 'PRIVATE', 'READY', 'admin-wash', ?, ?, ?)",
+    ).bind(
+      timestamp,
+      timestamp,
+      JSON.stringify({
+        captureSource: "CAMERA",
+        capturedAt: new Date().toISOString(),
+        height: 480,
+        width: 640,
+      }),
+    ),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO file_assets (id, organization_id, branch_id, bucket_name, object_key, mime_type, size_bytes, asset_type, access_level, upload_status, uploaded_by_user_id, created_at, ready_at, metadata_json) VALUES ('asset-live-wash-3', 'org-wash', 'branch-wash', 'UPLOADS', 'org-wash/live3.jpg', 'image/jpeg', 4, 'VEHICLE_LIVE_PHOTO', 'PRIVATE', 'READY', 'admin-wash', ?, ?, ?)",
+    ).bind(
+      timestamp,
+      timestamp,
+      JSON.stringify({
+        captureSource: "CAMERA",
+        capturedAt: new Date().toISOString(),
+        height: 480,
+        width: 640,
+      }),
+    ),
+    env.DB.prepare(
       "INSERT OR IGNORE INTO coupons (id, organization_id, code, code_normalized, discount_type, discount_value, minimum_bill_minor, start_at, expires_at, total_usage_limit, usage_limit_per_customer, created_by_user_id, created_at, updated_at) VALUES ('coupon-wash', 'org-wash', 'WELCOME10', 'WELCOME10', 'FIXED', 1000, 5000, '2026-01-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 10, 1, 'admin-wash', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
@@ -396,5 +420,163 @@ describe("wash, timer, payment, and refund workflow", () => {
         .bind(created.data.id)
         .first("count"),
     ).toBe(1);
+  });
+
+  it("blocks refund when payment.allow_refunds is false", async () => {
+    const headers = await mutationHeaders();
+    const create = await app.request(
+      "/api/v1/wash-jobs",
+      {
+        body: JSON.stringify({
+          assignedUserId: "staff-wash",
+          customerId: "customer-wash",
+          idempotencyKey: "refund-false-create-001",
+          initialStatus: "WAITING",
+          location: {
+            place: "Test Location, Kochi",
+            capturedAt: new Date().toISOString(),
+          },
+          photoAssetId: "asset-live-wash-2",
+          primaryServiceId: "service-primary",
+          vehicleId: "vehicle-wash",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    if (create.status !== 201) {
+      const errText = await create.clone().text();
+      throw new Error(`Wash job creation returned ${create.status}: ${errText}`);
+    }
+    const created = await create.json<{ data: { id: string; version: number } }>();
+
+    let version = created.data.version;
+    for (const action of ["start", "complete"] as const) {
+      const r = await app.request(
+        `/api/v1/wash-jobs/${created.data.id}/${action}`,
+        { body: JSON.stringify({ version }), headers, method: "POST" },
+        env,
+      );
+      expect(r.status).toBe(200);
+      version = (await r.json<{ data: { version: number } }>()).data.version;
+    }
+
+    const paymentR = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 10000,
+          idempotencyKey: "refund-false-pay-001",
+          method: "CASH",
+          washJobId: created.data.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(paymentR.status).toBe(201);
+    const paymentData = await paymentR.json<{ data: { id: string } }>();
+
+    await env.DB.prepare(
+      "UPDATE business_settings SET value_text = 'false' WHERE organization_id = 'org-wash' AND setting_key = 'payment.allow_refunds'",
+    ).run();
+
+    const refund = await app.request(
+      `/api/v1/payments/${paymentData.data.id}/refund`,
+      {
+        body: JSON.stringify({
+          amountMinor: 1000,
+          idempotencyKey: "refund-false-001",
+          reason: "Should be blocked",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(refund.status).toBe(403);
+    const body = await refund.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("REFUNDS_DISABLED");
+  });
+
+  it("blocks refund when payment.allow_refunds is absent", async () => {
+    const headers = await mutationHeaders();
+    const create = await app.request(
+      "/api/v1/wash-jobs",
+      {
+        body: JSON.stringify({
+          assignedUserId: "staff-wash",
+          customerId: "customer-wash",
+          idempotencyKey: "refund-absent-create-001",
+          initialStatus: "WAITING",
+          location: {
+            place: "Test Location, Kochi",
+            capturedAt: new Date().toISOString(),
+          },
+          photoAssetId: "asset-live-wash-3",
+          primaryServiceId: "service-primary",
+          vehicleId: "vehicle-wash",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    if (create.status !== 201) {
+      const errText = await create.clone().text();
+      throw new Error(`Wash job creation returned ${create.status}: ${errText}`);
+    }
+    const created = await create.json<{ data: { id: string; version: number } }>();
+
+    let version = created.data.version;
+    for (const action of ["start", "complete"] as const) {
+      const r = await app.request(
+        `/api/v1/wash-jobs/${created.data.id}/${action}`,
+        { body: JSON.stringify({ version }), headers, method: "POST" },
+        env,
+      );
+      expect(r.status).toBe(200);
+      version = (await r.json<{ data: { version: number } }>()).data.version;
+    }
+
+    const paymentR = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 10000,
+          idempotencyKey: "refund-absent-pay-001",
+          method: "CASH",
+          washJobId: created.data.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(paymentR.status).toBe(201);
+    const paymentData = await paymentR.json<{ data: { id: string } }>();
+
+    await env.DB.prepare(
+      "DELETE FROM business_settings WHERE organization_id = 'org-wash' AND setting_key = 'payment.allow_refunds'",
+    ).run();
+
+    const refund = await app.request(
+      `/api/v1/payments/${paymentData.data.id}/refund`,
+      {
+        body: JSON.stringify({
+          amountMinor: 1000,
+          idempotencyKey: "refund-absent-001",
+          reason: "Should be blocked — setting absent",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(refund.status).toBe(403);
+    const body = await refund.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("REFUNDS_DISABLED");
   });
 });

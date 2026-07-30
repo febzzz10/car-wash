@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { Component, lazy, Suspense, type ReactNode } from "react";
 import {
   Navigate,
   Outlet,
@@ -9,7 +9,38 @@ import {
 
 import { useAuth } from "./auth";
 import { AppShell } from "./components/app-shell";
-import { ErrorState, SkeletonRows } from "./components/ui";
+import { Button, ErrorState, SkeletonRows } from "./components/ui";
+
+export class RouteErrorBoundary extends Component<
+  { readonly children: ReactNode },
+  { readonly error: Error | null }
+> {
+  constructor(props: { readonly children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    console.error("Route rendering error:", error, errorInfo);
+  }
+  override render() {
+    if (this.state.error === null) return this.props.children;
+    const hideMessage = !import.meta.env.DEV;
+    return (
+      <div className="route-error">
+        <h1>Something went wrong while loading this page.</h1>
+        {hideMessage ? null : <p>{this.state.error.message}</p>}
+        <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
+          <Button onClick={() => window.location.reload()}>Reload</Button>
+          <a className="button button--secondary" href="/dashboard">Dashboard</a>
+          <a className="button button--secondary" href="/login">Login</a>
+        </div>
+      </div>
+    );
+  }
+}
 
 const Login = lazy(() => import("./pages/login"));
 const Dashboard = lazy(() => import("./pages/dashboard"));
@@ -85,7 +116,11 @@ const router = createBrowserRouter([
     element: <Protected />,
     children: [
       {
-        element: <AppShell />,
+        element: (
+          <RouteErrorBoundary>
+            <AppShell />
+          </RouteErrorBoundary>
+        ),
         children: [
           { index: true, element: <Navigate replace to="/dashboard" /> },
           {

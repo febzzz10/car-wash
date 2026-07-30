@@ -44,13 +44,31 @@ function dateLocale(): string {
   return "en-GB";
 }
 
+function validCurrency(currency: string): string {
+  try {
+    new Intl.NumberFormat("en", { style: "currency", currency: currency.trim().toUpperCase() });
+    return currency.trim().toUpperCase();
+  } catch {
+    return defaults.currency;
+  }
+}
+
 export function money(minor: number, currency?: string): string {
   return new Intl.NumberFormat(validLocale(activePreferences.locale), {
-    currency: currency ?? activePreferences.currency,
+    currency: validCurrency(currency ?? activePreferences.currency),
     maximumFractionDigits: 2,
     minimumFractionDigits: 2,
     style: "currency",
   }).format(minor / 100);
+}
+
+export function formatCurrencyCode(code: string): string {
+  const safe = validCurrency(code);
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency: safe, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(1234);
+  } catch {
+    return `${safe} 1,234`;
+  }
 }
 
 export function dateTime(value: string | null | undefined): string {

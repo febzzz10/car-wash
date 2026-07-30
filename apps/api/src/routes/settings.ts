@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { validateCurrencyCode } from "@washpro/domain";
 import { ApiError } from "../http/errors";
 import { requireAdmin, requirePermission } from "../middleware/auth";
 import { auditStatement } from "../services/audit";
@@ -148,6 +149,15 @@ for (const group of Object.keys(
       const auth = c.get("auth");
       if (auth.branchId === null)
         throw new ApiError(422, "VALIDATION_ERROR", "Select a branch first.");
+
+      const rawCurrency = parsed.data.settings["business.currency"];
+      if (rawCurrency !== undefined) {
+        const result = validateCurrencyCode(String(rawCurrency));
+        if (!result.valid)
+          throw new ApiError(422, "VALIDATION_ERROR", result.reason, { "currency": result.reason });
+        parsed.data.settings["business.currency"] = result.currency;
+      }
+
       const previousRows = await c.env.DB.prepare(
         "SELECT setting_key, value_type, value_text, version FROM business_settings WHERE organization_id = ? AND (branch_id IS NULL OR branch_id = ?)",
       )

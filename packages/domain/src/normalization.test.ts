@@ -8,6 +8,7 @@ import {
   normalizeRegistration,
   normalizeVehicleMake,
   normalizeVehicleModel,
+  validateCurrencyCode,
 } from "./normalization";
 
 describe("normalization", () => {
@@ -93,5 +94,81 @@ describe("normalization", () => {
       name: "C-Class",
       normalizedName: "c-class",
     });
+  });
+});
+
+describe("validateCurrencyCode", () => {
+  it("accepts INR", () => {
+    const result = validateCurrencyCode("INR");
+    expect(result.valid).toBe(true);
+    if (result.valid) expect(result.currency).toBe("INR");
+  });
+
+  it("normalizes lowercase inr to INR", () => {
+    const result = validateCurrencyCode("inr");
+    expect(result.valid).toBe(true);
+    if (result.valid) expect(result.currency).toBe("INR");
+  });
+
+  it("trims whitespace around INR", () => {
+    const result = validateCurrencyCode("  INR  ");
+    expect(result.valid).toBe(true);
+    if (result.valid) expect(result.currency).toBe("INR");
+  });
+
+  it("accepts USD", () => {
+    const result = validateCurrencyCode("USD");
+    expect(result.valid).toBe(true);
+    if (result.valid) expect(result.currency).toBe("USD");
+  });
+
+  it("accepts EUR", () => {
+    const result = validateCurrencyCode("EUR");
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts GBP", () => {
+    const result = validateCurrencyCode("GBP");
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts AED", () => {
+    const result = validateCurrencyCode("AED");
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts SAR", () => {
+    const result = validateCurrencyCode("SAR");
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects ₹ (rupee sign)", () => {
+    const result = validateCurrencyCode("₹");
+    expect(result.valid).toBe(false);
+  });
+
+  it("rejects $ (dollar sign)", () => {
+    const result = validateCurrencyCode("$");
+    expect(result.valid).toBe(false);
+  });
+
+  it("rejects 'Rupees' (word, not code)", () => {
+    const result = validateCurrencyCode("Rupees");
+    expect(result.valid).toBe(false);
+  });
+
+  it("rejects 'inr123' (too long)", () => {
+    const result = validateCurrencyCode("inr123");
+    expect(result.valid).toBe(false);
+  });
+
+  it("rejects empty string", () => {
+    const result = validateCurrencyCode("");
+    expect(result.valid).toBe(false);
+  });
+
+  it("rejects 'XYZ' (unsupported three-letter code)", () => {
+    const result = validateCurrencyCode("XYZ");
+    expect(result.valid).toBe(false);
   });
 });

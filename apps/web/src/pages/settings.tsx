@@ -10,7 +10,21 @@ import {
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
 import { api, jsonBody } from "../lib/api";
-import { titleCase } from "../lib/format";
+import { formatCurrencyCode, titleCase } from "../lib/format";
+
+const supportedCurrencies = new Set(
+  typeof Intl !== "undefined" && typeof Intl.supportedValuesOf === "function"
+    ? Intl.supportedValuesOf("currency")
+    : ["AED","AFN","ALL","AMD","ANG","AOA","ARS","AUD","AWG","AZN","BAM","BBD","BDT","BGN","BHD","BIF","BMD","BND","BOB","BRL","BSD","BTN","BWP","BYN","BZD","CAD","CDF","CHF","CLP","CNY","COP","CRC","CUP","CVE","CZK","DJF","DKK","DOP","DZD","EGP","ERN","ETB","EUR","FJD","FKP","FOK","GBP","GEL","GGP","GHS","GIP","GMD","GNF","GTQ","GYD","HKD","HNL","HRK","HTG","HUF","IDR","ILS","IMP","INR","IQD","IRR","ISK","JEP","JMD","JOD","JPY","KES","KGS","KHR","KID","KMF","KRW","KWD","KYD","KZT","LAK","LBP","LKR","LRD","LSL","LYD","MAD","MDL","MGA","MKD","MMK","MNT","MOP","MRU","MUR","MVR","MWK","MXN","MYR","MZN","NAD","NGN","NIO","NOK","NPR","NZD","OMR","PAB","PEN","PGK","PHP","PKR","PLN","PYG","QAR","RON","RSD","RUB","RWF","SAR","SBD","SCR","SDG","SEK","SGD","SHP","SLE","SLL","SOS","SRD","SSP","STN","SYP","SZL","THB","TJS","TMT","TND","TOP","TRY","TTD","TVD","TWD","TZS","UAH","UGX","USD","UYU","UZS","VES","VND","VUV","WST","XAF","XCD","XOF","XPF","YER","ZAR","ZMW","ZWG"],
+);
+
+function isValidCurrency(code: string): string | null {
+  const trimmed = code.trim().toUpperCase();
+  if (trimmed.length === 0) return "Enter a currency code.";
+  if (!/^[A-Z]{3}$/.test(trimmed)) return "Enter a valid three-letter currency code, for example INR.";
+  if (!supportedCurrencies.has(trimmed)) return `"${trimmed}" is not a supported currency code.`;
+  return null;
+}
 
 interface SettingRow {
   readonly setting_key: string;
@@ -102,6 +116,8 @@ export default function SettingsPage() {
   const state = useApiData<SettingsPayload>("/settings");
   const [group, setGroup] = useState<Group>("business");
   const toast = useToast();
+  const [currencyError, setCurrencyError] = useState<string | null>(null);
+  const [currencyInput, setCurrencyInput] = useState<string>("");
   const values = useMemo(
     () =>
       new Map(
@@ -112,15 +128,21 @@ export default function SettingsPage() {
       ),
     [state.data],
   );
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const settings: Record<string, string | number | boolean> = {};
     for (const key of groups[group]) {
-      const raw = form.get(key);
-      if (booleanKeys.has(key)) settings[key] = raw === "on";
-      else if (numericKeys.has(key)) settings[key] = Number(raw);
-      else settings[key] = String(raw ?? "");
+      const formValue = form.get(key);
+      if (key === "business.currency") {
+        const raw = String(formValue ?? "");
+        const error = isValidCurrency(raw);
+        if (error !== null) { setCurrencyError(error); return; }
+        settings[key] = raw.trim().toUpperCase();
+      } else if (booleanKeys.has(key)) settings[key] = formValue === "on";
+      else if (numericKeys.has(key)) settings[key] = Number(formValue);
+      else settings[key] = String(formValue ?? "");
     }
     try {
       if (group === "business") {
@@ -140,6 +162,8 @@ export default function SettingsPage() {
         ...jsonBody({ settings }),
         method: "PATCH",
       });
+      setCurrencyError(null);
+      setCurrencyInput("");
       toast.success(`${titleCase(group)} settings saved and audited.`);
       state.reload();
     } catch (failure) {
@@ -211,6 +235,37 @@ export default function SettingsPage() {
                         <small>{key}</small>
                       </span>
                     </label>
+                  ) : key === "business.currency" ? (
+                    <div className="field-group" key={key}>
+                      <label>
+                        <span>Currency code</span>
+                        <input
+                          defaultValue={values.get(key) ?? ""}
+                          maxLength={3}
+                          name={key}
+                          onChange={(e) => {
+                            const upper = e.target.value.toUpperCase();
+                            e.target.value = upper;
+                            setCurrencyInput(upper);
+                            const err = isValidCurrency(upper);
+                            setCurrencyError(err);
+                          }}
+                          placeholder="INR"
+                          type="text"
+                        />
+                        {currencyError ? <span className="field-error">{currencyError}{currencyError.includes("₹") ? " Use INR for Indian Rupees." : ""}</span> : null}
+                      </label>
+                      <p className="muted" style={{ margin: "0.25rem 0 0" }}>Use a three-letter currency code such as INR, USD, AED, or EUR.</p>
+                      {(() => {
+                        const live = currencyInput || (values.get(key) ?? "");
+                        const err = isValidCurrency(live);
+                        if (err === null) {
+                          return <p className="muted" style={{ margin: "0.25rem 0 0" }}>Currency preview: {formatCurrencyCode(live)}</p>;
+                        }
+                        if (live !== "" && live !== "₹") return <p className="muted" style={{ margin: "0.25rem 0 0" }}>Preview unavailable — invalid code.</p>;
+                        return null;
+                      })()}
+                    </div>
                   ) : (
                     <label key={key}>
                       <span>{titleCase(key.split(".").at(-1) ?? key)}</span>

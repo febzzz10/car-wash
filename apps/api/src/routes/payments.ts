@@ -880,6 +880,9 @@ paymentRoutes.post(
         "A valid refund amount, reason, and idempotency key are required.",
       );
     const auth = c.get("auth");
+    const settings = await loadSettings(c.env, auth.organizationId, null);
+    if (!booleanSetting(settings, "payment.allow_refunds", false))
+      throw new ApiError(403, "REFUNDS_DISABLED", "Payment refunds are disabled in Business Settings.");
     const replay = await c.env.DB.prepare(
       "SELECT r.*, w.payment_status, w.balance_minor FROM refunds r INNER JOIN wash_jobs w ON w.id = r.wash_job_id WHERE r.organization_id = ? AND r.idempotency_key = ?",
     )

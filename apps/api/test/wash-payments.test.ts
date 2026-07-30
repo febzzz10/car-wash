@@ -98,6 +98,9 @@ beforeEach(async () => {
       "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-referral-friend', 'org-wash', 'referral.friend_discount_value', 'INTEGER', '1000', ?)",
     ).bind(timestamp),
     env.DB.prepare(
+      "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-allow-refunds', 'org-wash', 'payment.allow_refunds', 'BOOLEAN', 'true', ?)",
+    ).bind(timestamp),
+    env.DB.prepare(
       "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-referral-reward', 'org-wash', 'referral.reward_value', 'INTEGER', '500', ?)",
     ).bind(timestamp),
     env.DB.prepare(

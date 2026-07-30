@@ -18,6 +18,7 @@ export interface InvoicePdfSnapshot {
   readonly businessAddress: string;
   readonly businessContact: string;
   readonly businessName: string;
+  readonly couponDiscountMinor?: number;
   readonly currencyCode: string;
   readonly customerName: string;
   readonly customerPhone: string;
@@ -26,9 +27,13 @@ export interface InvoicePdfSnapshot {
   readonly invoiceNumber: string;
   readonly issuedAt: string;
   readonly items: readonly InvoicePdfItem[];
+  readonly manualDiscountMinor?: number;
   readonly paidMinor: number;
   readonly paymentStatus: string;
   readonly referralCode: string | null;
+  readonly referralDiscountMinor?: number;
+  readonly rewardDiscountMinor?: number;
+  readonly roundingMinor?: number;
   readonly staffName: string;
   readonly subtotalMinor: number;
   readonly taxMinor: number;
@@ -253,12 +258,19 @@ export async function buildInvoicePdf(
   }
 
   y -= 8;
-  const totalsX = 370;
-  const valueX = 480;
+  const totalsX = 325;
+  const valueX = 470;
+  const discountRows: [string, number][] = [];
+  if ((snapshot.couponDiscountMinor ?? 0) > 0) discountRows.push(["Coupon", -snapshot.couponDiscountMinor!]);
+  if ((snapshot.referralDiscountMinor ?? 0) > 0) discountRows.push(["Referral", -snapshot.referralDiscountMinor!]);
+  if ((snapshot.rewardDiscountMinor ?? 0) > 0) discountRows.push(["Reward", -snapshot.rewardDiscountMinor!]);
+  if ((snapshot.manualDiscountMinor ?? 0) > 0) discountRows.push(["Manual discount", -snapshot.manualDiscountMinor!]);
   for (const [label, value, strong] of [
     ["Subtotal", snapshot.subtotalMinor, false],
-    ["Discounts", -snapshot.discountMinor, false],
+    ...discountRows,
+    ...(discountRows.length === 0 ? [["Discount", -snapshot.discountMinor] as [string, number]] : []),
     ["Tax", snapshot.taxMinor, false],
+    ...((snapshot.roundingMinor ?? 0) !== 0 ? [["Rounding", snapshot.roundingMinor] as [string, number]] : []),
     ["Total", snapshot.totalMinor, true],
     ["Paid", snapshot.paidMinor, false],
     ["Balance", snapshot.balanceMinor, true],

@@ -229,6 +229,17 @@ invoiceJobRoutes.post(
         "INVALID_JOB_STATUS",
         "Complete the wash before issuing its invoice.",
       );
+    const discountSum =
+      job.coupon_discount_minor +
+      job.referral_discount_minor +
+      job.reward_discount_minor +
+      job.manual_discount_minor;
+    if (job.total_discount_minor !== discountSum)
+      throw new ApiError(
+        500,
+        "DISCOUNT_RECONCILIATION_FAILED",
+        "The wash job discount totals are inconsistent. Contact support.",
+      );
     const [itemsResult, paymentsResult, settings] = await Promise.all([
       c.env.DB.prepare(
         "SELECT * FROM wash_job_items WHERE wash_job_id = ? ORDER BY display_order",
@@ -306,6 +317,7 @@ invoiceJobRoutes.post(
       businessAddress: address,
       businessContact: contact,
       businessName: stringSetting(settings, "business.name", job.business_name),
+      couponDiscountMinor: job.coupon_discount_minor,
       currencyCode: job.currency_code,
       customerName: job.customer_name_snapshot,
       customerPhone: job.customer_phone_snapshot,
@@ -324,10 +336,14 @@ invoiceJobRoutes.post(
         unitPriceMinor: item.unit_price_minor,
       })),
       jobReference: job.job_reference,
+      manualDiscountMinor: job.manual_discount_minor,
       paidMinor: job.paid_amount_minor - job.refunded_amount_minor,
       paymentStatus: job.payment_status,
       payments: paymentsResult.results,
       referralCode: job.referral_code,
+      referralDiscountMinor: job.referral_discount_minor,
+      rewardDiscountMinor: job.reward_discount_minor,
+      roundingMinor: job.rounding_minor,
       staffName: job.staff_name,
       subtotalMinor: job.subtotal_minor,
       taxMinor: job.tax_minor,
@@ -422,7 +438,7 @@ invoiceJobRoutes.post(
           now.toISOString(),
         ),
         c.env.DB.prepare(
-          `INSERT INTO invoices (id, organization_id, branch_id, wash_job_id, invoice_number, revision_number, invoice_status, business_name_snapshot, business_logo_asset_id, business_address_snapshot, business_phone_snapshot, business_whatsapp_snapshot, business_email_snapshot, tax_registration_snapshot, customer_name_snapshot, customer_phone_snapshot, customer_email_snapshot, customer_address_snapshot, vehicle_registration_snapshot, vehicle_type_snapshot, vehicle_make_snapshot, vehicle_model_snapshot, wash_started_at_snapshot, wash_completed_at_snapshot, wash_duration_seconds_snapshot, staff_name_snapshot, subtotal_minor, discount_minor, taxable_amount_minor, tax_minor, rounding_minor, total_minor, paid_minor, balance_minor, currency_code, coupon_code_snapshot, referral_code_snapshot, referral_message_snapshot, payment_method_summary, payment_status_snapshot, thank_you_message_snapshot, terms_snapshot, footer_snapshot, invoice_snapshot_json, pdf_asset_id, public_access_token_hash, public_access_expires_at, issued_at, issued_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, 0, 'ISSUED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO invoices (id, organization_id, branch_id, wash_job_id, invoice_number, revision_number, invoice_status, business_name_snapshot, business_logo_asset_id, business_address_snapshot, business_phone_snapshot, business_whatsapp_snapshot, business_email_snapshot, tax_registration_snapshot, customer_name_snapshot, customer_phone_snapshot, customer_email_snapshot, customer_address_snapshot, vehicle_registration_snapshot, vehicle_type_snapshot, vehicle_make_snapshot, vehicle_model_snapshot, wash_started_at_snapshot, wash_completed_at_snapshot, wash_duration_seconds_snapshot, staff_name_snapshot, subtotal_minor, discount_minor, taxable_amount_minor, tax_minor, rounding_minor, total_minor, paid_minor, balance_minor, currency_code, coupon_code_snapshot, referral_code_snapshot, referral_message_snapshot, payment_method_summary, payment_status_snapshot, thank_you_message_snapshot, terms_snapshot, footer_snapshot, invoice_snapshot_json, pdf_asset_id, public_access_token_hash, public_access_expires_at, issued_at, issued_by_user_id, created_at, coupon_discount_minor, referral_discount_minor, reward_discount_minor, manual_discount_minor) VALUES (?, ?, ?, ?, ?, 0, 'ISSUED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           invoiceId,
           auth.organizationId,
@@ -473,6 +489,10 @@ invoiceJobRoutes.post(
           now.toISOString(),
           auth.userId,
           now.toISOString(),
+          job.coupon_discount_minor,
+          job.referral_discount_minor,
+          job.reward_discount_minor,
+          job.manual_discount_minor,
         ),
         ...itemsResult.results.map((item) =>
           c.env.DB.prepare(
@@ -717,7 +737,8 @@ invoiceRoutes.post(
         referral_message_snapshot, payment_method_summary, payment_status_snapshot,
         thank_you_message_snapshot, terms_snapshot, footer_snapshot, invoice_snapshot_json,
         pdf_asset_id, public_access_token_hash, public_access_expires_at, issued_at,
-        issued_by_user_id, revised_from_invoice_id, created_at
+        issued_by_user_id, revised_from_invoice_id, created_at,
+        coupon_discount_minor, referral_discount_minor, reward_discount_minor, manual_discount_minor
       ) SELECT ?, organization_id, branch_id, wash_job_id, invoice_number, ?,
         'ISSUED', business_name_snapshot, business_logo_asset_id,
         business_address_snapshot, business_phone_snapshot, business_whatsapp_snapshot,
@@ -732,7 +753,8 @@ invoiceRoutes.post(
         balance_minor, currency_code, coupon_code_snapshot, referral_code_snapshot,
         referral_message_snapshot, payment_method_summary, payment_status_snapshot,
         COALESCE(?, thank_you_message_snapshot), COALESCE(?, terms_snapshot),
-        COALESCE(?, footer_snapshot), ?, ?, ?, ?, ?, ?, id, ?
+        COALESCE(?, footer_snapshot), ?, ?, ?, ?, ?, ?, id, ?,
+        coupon_discount_minor, referral_discount_minor, reward_discount_minor, manual_discount_minor
       FROM invoices WHERE id = ? AND organization_id = ?`,
         ).bind(
           invoiceId,
@@ -834,15 +856,47 @@ invoiceRoutes.post(
   },
 );
 
+function isValidMinorAmount(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && Number.isInteger(value);
+}
+
 invoiceRoutes.get("/:id", requirePermission("invoices.generate"), async (c) => {
   const auth = c.get("auth");
   const invoice = await c.env.DB.prepare(
     "SELECT * FROM invoices WHERE id = ? AND organization_id = ?",
   )
     .bind(c.req.param("id"), auth.organizationId)
-    .first();
+    .first<Record<string, unknown>>();
   if (invoice === null)
     throw new ApiError(404, "RESOURCE_NOT_FOUND", "Invoice not found.");
+  const hasCategorizedDiscounts =
+    (Number(invoice.coupon_discount_minor) ?? 0) > 0 ||
+    (Number(invoice.referral_discount_minor) ?? 0) > 0 ||
+    (Number(invoice.reward_discount_minor) ?? 0) > 0 ||
+    (Number(invoice.manual_discount_minor) ?? 0) > 0;
+  if (!hasCategorizedDiscounts && (Number(invoice.discount_minor) ?? 0) > 0) {
+    if (typeof invoice.invoice_snapshot_json === "string") {
+      try {
+        const snap = JSON.parse(invoice.invoice_snapshot_json) as Record<string, unknown>;
+        const coupon = snap.couponDiscountMinor;
+        const referral = snap.referralDiscountMinor;
+        const reward = snap.rewardDiscountMinor;
+        const manual = snap.manualDiscountMinor;
+        if (
+          isValidMinorAmount(coupon) &&
+          isValidMinorAmount(referral) &&
+          isValidMinorAmount(reward) &&
+          isValidMinorAmount(manual) &&
+          coupon + referral + reward + manual === Number(invoice.discount_minor)
+        ) {
+          invoice.coupon_discount_minor = coupon;
+          invoice.referral_discount_minor = referral;
+          invoice.reward_discount_minor = reward;
+          invoice.manual_discount_minor = manual;
+        }
+      } catch { /* skip invalid JSON */ }
+    }
+  }
   const items = await c.env.DB.prepare(
     "SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY display_order",
   )
@@ -910,14 +964,32 @@ invoiceRoutes.post(
     );
     const secureLink = new URL(`/invoice/${token}`, c.req.url).toString();
     const snapshot = JSON.parse(invoice.invoice_snapshot_json) as {
+      couponDiscountMinor?: number;
       items?: { name?: string }[];
+      manualDiscountMinor?: number;
+      referralDiscountMinor?: number;
+      rewardDiscountMinor?: number;
+      subtotalMinor?: number;
     };
     const service = snapshot.items?.[0]?.name ?? "Car wash";
+    const discountLines: string[] = [];
+    if ((snapshot.couponDiscountMinor ?? 0) > 0)
+      discountLines.push(`Coupon discount: −${invoice.currency_code} ${((snapshot.couponDiscountMinor ?? 0) / 100).toFixed(2)}`);
+    if ((snapshot.referralDiscountMinor ?? 0) > 0)
+      discountLines.push(`Referral discount: −${invoice.currency_code} ${((snapshot.referralDiscountMinor ?? 0) / 100).toFixed(2)}`);
+    if ((snapshot.rewardDiscountMinor ?? 0) > 0)
+      discountLines.push(`Reward discount: −${invoice.currency_code} ${((snapshot.rewardDiscountMinor ?? 0) / 100).toFixed(2)}`);
+    if ((snapshot.manualDiscountMinor ?? 0) > 0)
+      discountLines.push(`Manual discount: −${invoice.currency_code} ${((snapshot.manualDiscountMinor ?? 0) / 100).toFixed(2)}`);
     const message = [
       `Hi ${invoice.customer_name_snapshot},`,
       `Your WashPro invoice ${invoice.invoice_number} is ready.`,
       `Vehicle: ${invoice.vehicle_registration_snapshot}`,
       `Service: ${service}`,
+      ...(discountLines.length > 0
+        ? [`Subtotal: ${invoice.currency_code} ${((snapshot.subtotalMinor ?? invoice.total_minor) / 100).toFixed(2)}`]
+        : []),
+      ...discountLines,
       `Amount: ${invoice.currency_code} ${(invoice.total_minor / 100).toFixed(2)}`,
       `Payment status: ${invoice.payment_status_snapshot}`,
       ...(invoice.referral_code_snapshot === null

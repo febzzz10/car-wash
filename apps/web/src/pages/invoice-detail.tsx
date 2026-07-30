@@ -40,6 +40,7 @@ interface InvoiceDetail {
   readonly currency_code: string;
   readonly customer_name_snapshot: string;
   readonly customer_phone_snapshot: string;
+  readonly discount_minor: number;
   readonly id: string;
   readonly invoice_number: string;
   readonly invoice_status: string;
@@ -50,6 +51,7 @@ interface InvoiceDetail {
   readonly payment_status_snapshot: string;
   readonly referral_discount_minor: number;
   readonly reward_discount_minor: number;
+  readonly rounding_minor: number;
   readonly subtotal_minor: number;
   readonly tax_minor: number;
   readonly total_minor: number;
@@ -234,11 +236,27 @@ export default function InvoiceDetailPage() {
                 </strong>
               </span>
             ) : null}
+            {item.coupon_discount_minor === 0 &&
+            item.referral_discount_minor === 0 &&
+            item.reward_discount_minor === 0 &&
+            item.manual_discount_minor === 0 &&
+            item.discount_minor > 0 ? (
+              <span>
+                Discount{" "}
+                <strong>
+                  −{money(item.discount_minor, item.currency_code)}
+                </strong>
+              </span>
+            ) : null}
             <span>
               Tax <strong>{money(item.tax_minor, item.currency_code)}</strong>
             </span>
+            <span>
+              Rounding{" "}
+              <strong>{money(item.rounding_minor, item.currency_code)}</strong>
+            </span>
             <span className="invoice-grand">
-              Total{" "}
+              Final amount{" "}
               <strong>{money(item.total_minor, item.currency_code)}</strong>
             </span>
           </div>

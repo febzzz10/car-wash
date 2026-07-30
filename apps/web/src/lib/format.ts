@@ -53,13 +53,19 @@ function validCurrency(currency: string): string {
   }
 }
 
-export function money(minor: number, currency?: string): string {
+export function isFiniteMinorAmount(value: number): boolean {
+  return Number.isFinite(value);
+}
+
+export function money(minor: number | null | undefined, currency?: string): string {
+  if (!isFiniteMinorAmount(minor ?? NaN)) return "—";
+  const safeMinor = minor as number;
   return new Intl.NumberFormat(validLocale(activePreferences.locale), {
     currency: validCurrency(currency ?? activePreferences.currency),
     maximumFractionDigits: 2,
     minimumFractionDigits: 2,
     style: "currency",
-  }).format(minor / 100);
+  }).format(safeMinor / 100);
 }
 
 export function formatCurrencyCode(code: string): string {

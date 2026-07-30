@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { configureFormatting, dateTime, formatCurrencyCode, money, parseDecimalToMinor } from "./format";
+import { configureFormatting, dateTime, formatCurrencyCode, isFiniteMinorAmount, money, parseDecimalToMinor } from "./format";
 
 describe("business formatting preferences", () => {
   afterEach(() => configureFormatting(null));
@@ -101,5 +101,56 @@ describe("safe currency formatter", () => {
   it("configuring with valid INR does not throw during dashboard render", () => {
     configureFormatting({ currency: "INR", locale: "en-IN" });
     expect(money(50000)).toBe("₹500.00");
+  });
+});
+
+describe("isFiniteMinorAmount", () => {
+  it("returns true for a normal integer", () => {
+    expect(isFiniteMinorAmount(1234)).toBe(true);
+  });
+
+  it("returns true for zero", () => {
+    expect(isFiniteMinorAmount(0)).toBe(true);
+  });
+
+  it("returns false for NaN", () => {
+    expect(isFiniteMinorAmount(NaN)).toBe(false);
+  });
+
+  it("returns false for Infinity", () => {
+    expect(isFiniteMinorAmount(Infinity)).toBe(false);
+  });
+
+  it("returns false for -Infinity", () => {
+    expect(isFiniteMinorAmount(-Infinity)).toBe(false);
+  });
+});
+
+describe("money defensive guards", () => {
+  afterEach(() => configureFormatting(null));
+
+  it("returns — for NaN", () => {
+    configureFormatting({ currency: "INR", locale: "en-IN" });
+    expect(money(NaN)).toBe("—");
+  });
+
+  it("returns — for undefined", () => {
+    configureFormatting({ currency: "INR", locale: "en-IN" });
+    expect(money(undefined)).toBe("—");
+  });
+
+  it("returns — for null", () => {
+    configureFormatting({ currency: "INR", locale: "en-IN" });
+    expect(money(null)).toBe("—");
+  });
+
+  it("returns — for Infinity", () => {
+    configureFormatting({ currency: "INR", locale: "en-IN" });
+    expect(money(Infinity)).toBe("—");
+  });
+
+  it("still formats normal valid numbers correctly", () => {
+    configureFormatting({ currency: "INR", locale: "en-IN" });
+    expect(money(80000)).toBe("₹800.00");
   });
 });

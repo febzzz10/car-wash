@@ -26,10 +26,10 @@ import { dateTime, money } from "../lib/format";
 
 interface InvoiceItem {
   readonly id: string;
-  readonly description_snapshot?: string | null;
-  readonly line_total_minor: number;
+  readonly description?: string | null;
+  readonly total_minor: number;
   readonly quantity: number;
-  readonly service_name_snapshot: string;
+  readonly item_name: string;
   readonly unit_price_minor: number;
 }
 interface InvoiceDetail {
@@ -185,14 +185,14 @@ export default function InvoiceDetailPage() {
             {item.items.map((line) => (
               <div key={line.id}>
                 <span>
-                  <strong>{line.service_name_snapshot}</strong>
+                  <strong>{line.item_name}</strong>
                   <small>
                     {line.quantity} ×{" "}
                     {money(line.unit_price_minor, item.currency_code)}
                   </small>
                 </span>
                 <strong>
-                  {money(line.line_total_minor, item.currency_code)}
+                  {money(line.total_minor, item.currency_code)}
                 </strong>
               </div>
             ))}

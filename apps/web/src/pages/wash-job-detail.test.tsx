@@ -1114,7 +1114,7 @@ describe("PaymentDialog — benefits regression", () => {
         verifyPayload = _init?.body ? JSON.parse(_init.body as string) : null;
         return Promise.resolve({
           requested: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
-          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 1000, totalDiscountMinor: 2000, totalAmountMinor: 48000 },
+          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 1000, totalDiscountMinor: 2000, totalAmountMinor: 48000, revisedRemainingBalanceMinor: 48000 },
           applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: { code: "RAVI500", discountMinor: 1000 }, reward: null, manualDiscount: null },
           original: {},
           normalizedBenefits: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
@@ -1150,7 +1150,7 @@ describe("PaymentDialog — benefits regression", () => {
       if (typeof path === "string" && path.includes("/verify-benefits")) {
         return Promise.resolve({
           requested: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
-          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 1000, totalDiscountMinor: 2000, totalAmountMinor: 48000 },
+          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 1000, totalDiscountMinor: 2000, totalAmountMinor: 48000, revisedRemainingBalanceMinor: 48000 },
           applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: { code: "RAVI500", discountMinor: 1000 }, reward: null, manualDiscount: null },
           original: {},
           normalizedBenefits: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
@@ -1176,6 +1176,9 @@ describe("PaymentDialog — benefits regression", () => {
       expect(screen.getByText(/Coupon discount/i)).toBeTruthy();
       expect(screen.getByText(/Referral discount/i)).toBeTruthy();
     });
+    await waitFor(() => {
+      expect(screen.getByText(/Remaining balance/i).nextElementSibling?.textContent).toBe("₹480.00");
+    });
   });
 
   it("editing either code marks verification stale", async () => {
@@ -1183,7 +1186,7 @@ describe("PaymentDialog — benefits regression", () => {
       if (typeof path === "string" && path.includes("/verify-benefits")) {
         return Promise.resolve({
           requested: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
-          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 1000, totalDiscountMinor: 2000, totalAmountMinor: 48000 },
+          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 1000, totalDiscountMinor: 2000, totalAmountMinor: 48000, revisedRemainingBalanceMinor: 48000 },
           applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: { code: "RAVI500", discountMinor: 1000 }, reward: null, manualDiscount: null },
           original: {},
           normalizedBenefits: { couponCode: "WELCOME10", referralCode: "RAVI500", manualDiscountMinor: 0 },
@@ -1222,7 +1225,7 @@ describe("PaymentDialog — benefits regression", () => {
       if (typeof path === "string" && path.includes("/verify-benefits")) {
         return Promise.resolve({
           requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
-          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 0, totalDiscountMinor: 1000, totalAmountMinor: 49000 },
+          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 0, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
           applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
           original: {},
           normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
@@ -1252,7 +1255,7 @@ describe("PaymentDialog — benefits regression", () => {
       if (typeof path === "string" && path.includes("/verify-benefits")) {
         return Promise.resolve({
           requested: { referralCode: "RAVI500", manualDiscountMinor: 0 },
-          revised: { couponDiscountMinor: 0, referralDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000 },
+          revised: { couponDiscountMinor: 0, referralDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
           applied: { coupon: null, referral: { code: "RAVI500", discountMinor: 1000 }, reward: null, manualDiscount: null },
           original: {},
           normalizedBenefits: { referralCode: "RAVI500", manualDiscountMinor: 0 },
@@ -1323,5 +1326,282 @@ describe("PaymentDialog — benefits regression", () => {
     await waitFor(() => {
       expect(screen.getByText(/The referral code is invalid/)).toBeTruthy();
     });
+  });
+
+  it("verifying a coupon updates remaining balance and amount", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, referralDiscountMinor: 0, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    expect(screen.getByText("₹500.00")).toBeInTheDocument();
+    expect(document.querySelector('input[name="amount"]')).toHaveValue(500);
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹490.00");
+      expect(document.querySelector('input[name="amount"]')).toHaveValue(490);
+    });
+  });
+
+  it("amount greater than revised balance is rejected on submit", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹490.00");
+    });
+    const amountInp = document.querySelector('input[name="amount"]') as HTMLInputElement;
+    await userEvent.setup().clear(amountInp);
+    await userEvent.setup().type(amountInp, "500");
+    const form = document.querySelector("form")!;
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(screen.getByText(/Amount cannot exceed ₹490\.00/)).toBeInTheDocument();
+    });
+  });
+
+  it("changing coupon after verification restores original balance and invalidates", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹490.00");
+    });
+    await userEvent.setup().clear(couponInput);
+    await userEvent.setup().type(couponInput, "NEWCODE");
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹500.00");
+      expect(document.querySelector('input[name="amount"]')).toHaveValue(500);
+      expect(screen.getByText(/Changed — verify again/i)).toBeTruthy();
+    });
+  });
+
+  it("changing referral after verification invalidates and restores balance", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { referralCode: "RAVI500", manualDiscountMinor: 0 },
+          revised: { referralDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
+          applied: { coupon: null, referral: { code: "RAVI500", discountMinor: 1000 }, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { referralCode: "RAVI500", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />,
+    );
+    const referralInput = screen.getAllByPlaceholderText("Optional")[1] as HTMLInputElement;
+    await userEvent.setup().type(referralInput, "RAVI500");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹490.00");
+    });
+    await userEvent.setup().clear(referralInput);
+    await userEvent.setup().type(referralInput, "NEWREF");
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹500.00");
+      expect(screen.getByText(/Changed — verify again/i)).toBeTruthy();
+    });
+  });
+
+  it("stale benefits submission is blocked", async () => {
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹490.00");
+    });
+    await userEvent.setup().clear(couponInput);
+    await userEvent.setup().type(couponInput, "NEWCODE");
+    const form = document.querySelector("form")!;
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(screen.getByText(/Benefits have changed/i)).toBeInTheDocument();
+    });
+  });
+
+  it("re-verifying updates both fields with the new balance", async () => {
+    let verifyCount = 0;
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        verifyCount++;
+        if (verifyCount === 1) {
+          return Promise.resolve({
+            requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+            revised: { couponDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
+            applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
+            original: {},
+            normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+          } as any);
+        }
+        return Promise.resolve({
+          requested: { couponCode: "SUMMER20", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 2000, totalDiscountMinor: 2000, totalAmountMinor: 48000, revisedRemainingBalanceMinor: 48000 },
+          applied: { coupon: { code: "SUMMER20", discountMinor: 2000 }, referral: null, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "SUMMER20", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹490.00");
+    });
+    await userEvent.setup().clear(couponInput);
+    await userEvent.setup().type(couponInput, "SUMMER20");
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹500.00");
+    });
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹480.00");
+      expect(document.querySelector('input[name="amount"]')).toHaveValue(480);
+    });
+  });
+
+  it("payment request sends correct amountMinor after verification", async () => {
+    let payPayload: unknown = null;
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/payments")) {
+        payPayload = _init?.body ? JSON.parse(_init.body as string) : null;
+        return Promise.resolve({ success: true, data: {} });
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(document.querySelector('.payment-due')?.textContent).toContain("₹490.00");
+    });
+    const form = document.querySelector("form")!;
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(payPayload).not.toBeNull();
+    });
+    expect((payPayload as any).amountMinor).toBe(49000);
+  });
+
+  it("amount remains editable for partial payment after verification", async () => {
+    let payPayload: unknown = null;
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/payments")) {
+        payPayload = _init?.body ? JSON.parse(_init.body as string) : null;
+        return Promise.resolve({ success: true, data: {} });
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(
+      <PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />,
+    );
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    await userEvent.setup().type(couponInput, "WELCOME10");
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => {
+      expect(document.querySelector('input[name="amount"]')).toHaveValue(490);
+    });
+    const amountInp = document.querySelector('input[name="amount"]') as HTMLInputElement;
+    await userEvent.setup().clear(amountInp);
+    await userEvent.setup().type(amountInp, "200");
+    const form = document.querySelector("form")!;
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(payPayload).not.toBeNull();
+    });
+    expect((payPayload as any).amountMinor).toBe(20000);
   });
 });

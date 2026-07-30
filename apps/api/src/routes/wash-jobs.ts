@@ -673,6 +673,8 @@ washJobRoutes.post("/:id/verify-benefits", requirePermission("payments.create"),
     manualDiscountReason: benefits.manualDiscountReason ?? null,
   };
 
+  const revisedRemainingBalanceMinor = Math.max(0, bill.totalAmountMinor - (job.paid_amount_minor as number));
+
   const revised = {
     couponDiscountMinor: bill.couponDiscountMinor,
     referralDiscountMinor: bill.referralDiscountMinor,
@@ -683,6 +685,7 @@ washJobRoutes.post("/:id/verify-benefits", requirePermission("payments.create"),
     taxMinor: bill.taxMinor,
     roundingMinor: bill.roundingMinor,
     totalAmountMinor: bill.totalAmountMinor,
+    revisedRemainingBalanceMinor,
   };
 
   const applied = {

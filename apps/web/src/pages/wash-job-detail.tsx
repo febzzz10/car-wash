@@ -710,11 +710,12 @@ export function PaymentDialog({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewSeq = useRef(0);
 
+  const [verifiedBalanceMinor, setVerifiedBalanceMinor] = useState<number | null>(null);
   const [amountEdited, setAmountEdited] = useState(false);
 
   const lastAttempt = useRef<{ canonicalPayload: string; idempotencyKey: string } | null>(null);
 
-  const effectiveBalanceMinor = preview?.revised?.balanceMinor ?? record.balance_minor;
+  const effectiveBalanceMinor = verifiedBalanceMinor ?? record.balance_minor;
 
   useEffect(() => {
     const justOpened = open && !wasOpen.current;
@@ -733,7 +734,7 @@ export function PaymentDialog({
       setCouponCode(""); setReferralCode(""); setRewardId(""); setRewardAmount("");
       setManualDiscount("0"); setManualDiscountReason("");
       setPreview(null); setPreviewDirty(false); setPreviewError(null);
-      setFieldErrors({}); setError(null); setAmountEdited(false);
+      setVerifiedBalanceMinor(null); setFieldErrors({}); setError(null); setAmountEdited(false);
       lastAttempt.current = null;
     }
     wasOpen.current = open;
@@ -765,6 +766,8 @@ export function PaymentDialog({
       });
       if (seq !== previewSeq.current) return;
       setPreview(r); setPreviewDirty(false); setPreviewError(null); setFieldErrors({});
+      setVerifiedBalanceMinor(r.revised.revisedRemainingBalanceMinor != null ? (r.revised.revisedRemainingBalanceMinor as number) : null);
+      setAmountEdited(false);
     } catch (e) {
       if (seq !== previewSeq.current) return;
       if (e instanceof ApiError) { setPreviewError(e.message); if (e.fields) setFieldErrors(e.fields); }
@@ -788,6 +791,15 @@ export function PaymentDialog({
       Math.abs(Math.round(parseFloat(manualDiscount || "0") * 100) - (record.appliedBenefits?.manualDiscount?.amountMinor ?? 0)) > 0 ||
       manualDiscountReason.trim() !== (record.appliedBenefits?.manualDiscount?.reason ?? "")
     );
+
+    if (benefitsChanged && previewDirty && preview !== null) {
+      setError("Benefits have changed. Please verify benefits again.");
+      setBusy(false); return;
+    }
+    if (amountMinor > effectiveBalanceMinor) {
+      setError(`Amount cannot exceed ${money(effectiveBalanceMinor)}.`);
+      setBusy(false); return;
+    }
 
     const payload: Record<string, unknown> = {
       washJobId: record.id, amountMinor, method: form.get("method"),
@@ -844,24 +856,24 @@ export function PaymentDialog({
         ) : (
           <div>
             <p className="eyebrow">Benefits and rewards</p>
-            <div className="form-grid">
-              <label><span>Coupon code</span><input autoCapitalize="characters" onChange={e => { setCouponCode(e.target.value.toUpperCase()); clearField("benefits.couponCode"); setPreviewDirty(true); }} placeholder="Optional" value={couponCode} />{fieldErrors["benefits.couponCode"] ? <span className="field-error">{fieldErrors["benefits.couponCode"]}</span> : null}</label>
-              <label><span>Referral code</span><input autoCapitalize="characters" onChange={e => { setReferralCode(e.target.value.toUpperCase()); clearField("benefits.referralCode"); setPreviewDirty(true); }} placeholder="Optional" value={referralCode} />{fieldErrors["benefits.referralCode"] ? <span className="field-error">{fieldErrors["benefits.referralCode"]}</span> : null}</label>
+              <div className="form-grid">
+              <label><span>Coupon code</span><input autoCapitalize="characters" onChange={e => { setCouponCode(e.target.value.toUpperCase()); clearField("benefits.couponCode"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} placeholder="Optional" value={couponCode} />{fieldErrors["benefits.couponCode"] ? <span className="field-error">{fieldErrors["benefits.couponCode"]}</span> : null}</label>
+              <label><span>Referral code</span><input autoCapitalize="characters" onChange={e => { setReferralCode(e.target.value.toUpperCase()); clearField("benefits.referralCode"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} placeholder="Optional" value={referralCode} />{fieldErrors["benefits.referralCode"] ? <span className="field-error">{fieldErrors["benefits.referralCode"]}</span> : null}</label>
               <label><span>Available reward</span>
                 {rewardsLoading ? <span className="muted">Loading...</span> : (
-                  <select onChange={e => { const r = rewards.find(rw => rw.id === e.target.value); setRewardId(e.target.value); setRewardAmount(r ? (r.remaining_amount_minor / 100).toString() : ""); clearField("benefits.rewardId"); setPreviewDirty(true); }} value={rewardId}>
+                  <select onChange={e => { const r = rewards.find(rw => rw.id === e.target.value); setRewardId(e.target.value); setRewardAmount(r ? (r.remaining_amount_minor / 100).toString() : ""); clearField("benefits.rewardId"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} value={rewardId}>
                     <option value="">Do not redeem a reward</option>
                     {rewards.map(r => <option key={r.id} value={r.id}>{money(r.remaining_amount_minor)}{r.expires_at ? ` · expires ${new Date(r.expires_at).toLocaleDateString()}` : ""}</option>)}
                   </select>
                 )}
                 {fieldErrors["benefits.rewardId"] ? <span className="field-error">{fieldErrors["benefits.rewardId"]}</span> : null}
               </label>
-              <label><span>Reward amount</span><input disabled={rewardId === ""} max={(() => { const r = rewards.find(rw => rw.id === rewardId); return r ? (r.remaining_amount_minor / 100).toString() : "0"; })()} min="0" onChange={e => { setRewardAmount(e.target.value); clearField("benefits.rewardAmountMinor"); setPreviewDirty(true); }} step="0.01" type="number" value={rewardAmount} />{fieldErrors["benefits.rewardAmountMinor"] ? <span className="field-error">{fieldErrors["benefits.rewardAmountMinor"]}</span> : null}</label>
+              <label><span>Reward amount</span><input disabled={rewardId === ""} max={(() => { const r = rewards.find(rw => rw.id === rewardId); return r ? (r.remaining_amount_minor / 100).toString() : "0"; })()} min="0" onChange={e => { setRewardAmount(e.target.value); clearField("benefits.rewardAmountMinor"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} step="0.01" type="number" value={rewardAmount} />{fieldErrors["benefits.rewardAmountMinor"] ? <span className="field-error">{fieldErrors["benefits.rewardAmountMinor"]}</span> : null}</label>
             </div>
             {canApplyManualDiscount ? (
               <div className="form-grid benefit-admin-fields">
-                <label><span>Manual discount</span><input min="0" onChange={e => { setManualDiscount(e.target.value); clearField("benefits.manualDiscountMinor"); setPreviewDirty(true); }} step="0.01" type="number" value={manualDiscount} />{fieldErrors["benefits.manualDiscountMinor"] ? <span className="field-error">{fieldErrors["benefits.manualDiscountMinor"]}</span> : null}</label>
-                <label><span>Manual discount reason</span><input disabled={parseFloat(manualDiscount || "0") === 0} minLength={5} onChange={e => { setManualDiscountReason(e.target.value); clearField("benefits.manualDiscountReason"); setPreviewDirty(true); }} required={parseFloat(manualDiscount || "0") > 0} value={manualDiscountReason} />{fieldErrors["benefits.manualDiscountReason"] ? <span className="field-error">{fieldErrors["benefits.manualDiscountReason"]}</span> : null}</label>
+                <label><span>Manual discount</span><input min="0" onChange={e => { setManualDiscount(e.target.value); clearField("benefits.manualDiscountMinor"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} step="0.01" type="number" value={manualDiscount} />{fieldErrors["benefits.manualDiscountMinor"] ? <span className="field-error">{fieldErrors["benefits.manualDiscountMinor"]}</span> : null}</label>
+                <label><span>Manual discount reason</span><input disabled={parseFloat(manualDiscount || "0") === 0} minLength={5} onChange={e => { setManualDiscountReason(e.target.value); clearField("benefits.manualDiscountReason"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} required={parseFloat(manualDiscount || "0") > 0} value={manualDiscountReason} />{fieldErrors["benefits.manualDiscountReason"] ? <span className="field-error">{fieldErrors["benefits.manualDiscountReason"]}</span> : null}</label>
               </div>
             ) : null}
             <div style={{ marginTop: "0.75rem" }}>

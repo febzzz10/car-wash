@@ -32,9 +32,20 @@ interface PaymentRecord {
   readonly status: string;
   readonly vehicle_registration_snapshot: string;
 }
+interface SettingRow {
+  readonly setting_key: string;
+  readonly value_text: string;
+}
 export default function PaymentsPage() {
   const state = useApiData<readonly PaymentRecord[]>("/payments");
+  const settingsState = useApiData<{
+    readonly settings: readonly SettingRow[];
+  }>("/settings");
   const { user } = useAuth();
+  const refundsEnabled =
+    settingsState.data?.settings.find(
+      (s) => s.setting_key === "payment.allow_refunds",
+    )?.value_text === "true";
   const [refund, setRefund] = useState<PaymentRecord | null>(null);
   return (
     <>
@@ -61,7 +72,7 @@ export default function PaymentsPage() {
                   <th>Paid at</th>
                   <th>Status</th>
                   <th className="align-right">Amount</th>
-                  {user?.role === "ADMIN" ? <th>Action</th> : null}
+                  {user?.role === "ADMIN" && refundsEnabled ? <th>Action</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -89,7 +100,7 @@ export default function PaymentsPage() {
                     <td className="align-right">
                       <strong>{money(payment.amount_minor)}</strong>
                     </td>
-                    {user?.role === "ADMIN" ? (
+                    {user?.role === "ADMIN" && refundsEnabled ? (
                       <td>
                         <Button onClick={() => setRefund(payment)} tone="quiet">
                           <RotateCcw size={16} /> Refund

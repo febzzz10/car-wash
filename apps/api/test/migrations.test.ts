@@ -14,6 +14,7 @@ const expectedTables = [
   "expense_categories",
   "expenses",
   "file_assets",
+  "financial_operation_guards",
   "idempotency_keys",
   "invoice_items",
   "invoices",
@@ -59,13 +60,15 @@ describe("D1 migrations", () => {
 
   it("creates the required lookup and reconciliation indexes", async () => {
     const result = await env.DB.prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'ix_%'",
+      "SELECT name FROM sqlite_master WHERE type = 'index' AND (name LIKE 'ix_%' OR name LIKE 'ux_%')",
     ).all<{ name: string }>();
     const names = new Set(result.results.map(({ name }) => name));
 
     for (const requiredIndex of [
       "ix_audit_record",
       "ix_coupon_redemptions_coupon",
+      "ix_coupon_redemptions_customer",
+      "ux_coupon_redemption_active",
       "ix_customers_org_phone",
       "ix_expenses_date_category",
       "ix_invoices_number",

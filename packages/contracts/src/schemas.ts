@@ -85,14 +85,109 @@ export const vehicleModelSuggestQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).default(10),
 });
 
-export const paymentInputSchema = z.object({
+// ---- Shared benefit schemas ----
+
+const optionalBenefitCodeSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? undefined : trimmed;
+  },
+  z.string().max(40).optional(),
+);
+
+export const benefitSelectionShape = {
+  couponCode: optionalBenefitCodeSchema,
+  referralCode: optionalBenefitCodeSchema,
+  rewardId: identifierSchema.optional(),
+  rewardAmountMinor: positiveMoneyMinorSchema.optional(),
+  manualDiscountMinor: moneyMinorSchema.default(0),
+  manualDiscountReason: z.string().trim().min(5).max(500).optional(),
+};
+
+export function validateBenefitsInput(
+  data: {
+    rewardId?: string | undefined;
+    rewardAmountMinor?: number | undefined;
+    manualDiscountMinor?: number | undefined;
+    manualDiscountReason?: string | undefined;
+  },
+  ctx: z.RefinementCtx,
+) {
+  const hasRewardId = data.rewardId !== undefined;
+  const hasRewardAmount = data.rewardAmountMinor !== undefined;
+  if (hasRewardId !== hasRewardAmount) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "rewardId and rewardAmountMinor must be provided together.",
+      path: hasRewardId ? ["rewardAmountMinor"] : ["rewardId"],
+    });
+  }
+  const d = data.manualDiscountMinor ?? 0;
+  if (d > 0 && data.manualDiscountReason === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Manual discount reason is required.",
+      path: ["manualDiscountReason"],
+    });
+  }
+  if (d === 0 && data.manualDiscountReason !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Manual discount reason cannot be provided without a discount.",
+      path: ["manualDiscountReason"],
+    });
+  }
+}
+
+export const benefitsInputSchema = z
+  .object({
+    replaceExisting: z.literal(true),
+    ...benefitSelectionShape,
+  })
+  .strict()
+  .superRefine(validateBenefitsInput);
+
+export type BenefitsInput = z.infer<typeof benefitsInputSchema>;
+
+export function isBenefitReplacementRequest(
+  b: BenefitsInput | undefined,
+): b is BenefitsInput {
+  return b?.replaceExisting === true;
+}
+
+const paymentBaseSchema = z.object({
   washJobId: identifierSchema,
-  amountMinor: positiveMoneyMinorSchema,
   method: paymentMethodSchema,
   transactionReference: z.string().trim().max(120).optional(),
   notes: z.string().trim().max(1_000).optional(),
   idempotencyKey: z.string().trim().min(16).max(128),
 });
+
+export const paymentInputSchema = paymentBaseSchema
+  .extend({
+    amountMinor: moneyMinorSchema,
+    benefits: benefitsInputSchema.optional(),
+    expectedVersion: z.number().int().positive().safe().optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    const hasReplacement = isBenefitReplacementRequest(data.benefits);
+    if (data.amountMinor === 0 && !hasReplacement) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Payment amount must be positive when no benefits are applied.",
+        path: ["amountMinor"],
+      });
+    }
+    if (hasReplacement && data.expectedVersion === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "expectedVersion is required with benefit replacement.",
+        path: ["expectedVersion"],
+      });
+    }
+  });
 
 export interface ApiSuccess<T> {
   readonly success: true;
@@ -117,3 +212,25 @@ export interface ApiFailure {
     readonly requestId: string;
   };
 }
+
+export const verifyBenefitsRequestSchema = z.object({
+  expectedVersion: z.number().int().positive().safe(),
+  benefits: benefitsInputSchema,
+}).strict();
+
+export const appliedBenefitsSchema = z.object({
+  coupon: z.object({
+    id: z.string(), code: z.string(), discountMinor: z.number(),
+  }).nullable(),
+  referral: z.object({
+    redemptionId: z.string(), code: z.string(), discountMinor: z.number(),
+  }).nullable(),
+  reward: z.object({
+    id: z.string(), amountMinor: z.number(),
+  }).nullable(),
+  manualDiscount: z.object({
+    amountMinor: z.number(), reason: z.string(),
+  }).nullable(),
+});
+
+export type AppliedBenefits = z.infer<typeof appliedBenefitsSchema>;

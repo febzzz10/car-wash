@@ -2,6 +2,7 @@ export interface ApiFailureBody {
   readonly error?: {
     readonly code?: string;
     readonly message?: string;
+    readonly fields?: Readonly<Record<string, string>>;
   };
 }
 
@@ -10,6 +11,7 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
+    public readonly fields?: Readonly<Record<string, string>>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -55,6 +57,7 @@ async function apiFetch(path: string, init: RequestInit): Promise<Response> {
       response.status,
       body.error?.code ?? "REQUEST_FAILED",
       body.error?.message ?? "The request could not be completed.",
+      (body.error as { fields?: Record<string, string> } | undefined)?.fields,
     );
   }
   return response;

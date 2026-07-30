@@ -2,6 +2,7 @@ import type {
   DiscountType,
   WashJobStatus,
 } from "@washpro/contracts";
+import { verifyBenefitsRequestSchema } from "@washpro/contracts";
 import {
   calculateBill,
   calculateTimer,
@@ -600,7 +601,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       nextSequence - 1,
     ),
     c.env.DB.prepare(
-      `INSERT INTO wash_jobs (id, organization_id, branch_id, job_reference, customer_id, vehicle_id, assigned_user_id, assigned_user_name_snapshot, customer_name_snapshot, customer_phone_snapshot, vehicle_registration_snapshot, vehicle_type_name_snapshot, vehicle_make_snapshot, vehicle_model_snapshot, status, subtotal_minor, coupon_discount_minor, referral_discount_minor, reward_discount_minor, manual_discount_minor, total_discount_minor, taxable_amount_minor, tax_minor, rounding_minor, total_amount_minor, balance_minor, tax_rate_basis_points, started_at, mandatory_photo_verified, mandatory_location_verified, location_place, location_captured_at, notes, manual_discount_reason, created_by_user_id, updated_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO wash_jobs (id, organization_id, branch_id, job_reference, customer_id, vehicle_id, assigned_user_id, assigned_user_name_snapshot, customer_name_snapshot, customer_phone_snapshot, vehicle_registration_snapshot, vehicle_type_name_snapshot, vehicle_make_snapshot, vehicle_model_snapshot, status, subtotal_minor, coupon_discount_minor, referral_discount_minor, reward_discount_minor, manual_discount_minor, total_discount_minor, taxable_amount_minor, tax_minor, rounding_minor, total_amount_minor, balance_minor, tax_rate_basis_points, started_at, mandatory_photo_verified, mandatory_location_verified, location_place, location_captured_at, notes, manual_discount_reason, rounding_mode, created_by_user_id, updated_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       jobId,
       auth.organizationId,
@@ -634,6 +635,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       parsed.data.location.capturedAt ?? null,
       parsed.data.notes ?? null,
       parsed.data.manualDiscountReason ?? null,
+      rounding,
       auth.userId,
       auth.userId,
       now.toISOString(),
@@ -810,6 +812,217 @@ washJobRoutes.get(
     return c.json({ data: result.results, success: true });
   },
 );
+
+washJobRoutes.post("/:id/verify-benefits", requirePermission("payments.create"), async (c) => {
+  const parsed = verifyBenefitsRequestSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) throw new ApiError(422, "VALIDATION_ERROR", "Check benefit details.");
+
+  const auth = c.get("auth");
+  const job = await c.env.DB.prepare(
+    `SELECT id, organization_id, branch_id, customer_id, subtotal_minor, payment_status, paid_amount_minor, billing_locked_at, rounding_mode, tax_rate_basis_points, version, coupon_discount_minor, referral_discount_minor, reward_discount_minor, manual_discount_minor, total_discount_minor, taxable_amount_minor, tax_minor, rounding_minor, total_amount_minor, manual_discount_reason FROM wash_jobs WHERE id = ? AND organization_id = ? AND branch_id = ?`
+  ).bind(c.req.param("id"), auth.organizationId, auth.branchId).first<Record<string, unknown>>();
+  if (job === null) throw new ApiError(404, "RESOURCE_NOT_FOUND", "Wash job not found.");
+
+  if (job.billing_locked_at !== null || (job.paid_amount_minor as number) > 0 || job.payment_status === "PAID")
+    throw new ApiError(409, "BENEFITS_LOCKED", "Benefits cannot be changed after payment.");
+  if ((job.version as number) !== parsed.data.expectedVersion)
+    throw new ApiError(409, "STALE_VERSION", "The job changed.");
+  if (job.rounding_mode === null)
+    throw new ApiError(422, "ROUNDING_MODE_UNKNOWN", "Legacy billing cannot be recalculated.");
+
+  const settings = await loadSettings(c.env, auth.organizationId, auth.branchId);
+  const items = await c.env.DB.prepare("SELECT service_id, unit_price_minor FROM wash_job_items WHERE wash_job_id = ? ORDER BY display_order").bind(job.id as string).all<{ service_id: string | null; unit_price_minor: number }>();
+  const serviceIds = items.results.map(i => i.service_id).filter((s): s is string => s !== null);
+  const billItems = items.results.map(i => ({ unitPriceMinor: i.unit_price_minor, quantity: 1 }));
+  const vehicleType = await c.env.DB.prepare("SELECT vehicle_type_id FROM vehicles WHERE id = (SELECT vehicle_id FROM wash_jobs WHERE id = ?)").bind(job.id as string).first<{ vehicle_type_id: string }>();
+  const visits = await c.env.DB.prepare("SELECT total_visits_cached FROM customers WHERE id = ?").bind(job.customer_id as string).first<number>("total_visits_cached") ?? 0;
+
+  const benefits = parsed.data.benefits;
+  const original = {
+    couponDiscountMinor: job.coupon_discount_minor as number,
+    referralDiscountMinor: job.referral_discount_minor as number,
+    rewardDiscountMinor: job.reward_discount_minor as number,
+    manualDiscountMinor: job.manual_discount_minor as number,
+    totalDiscountMinor: job.total_discount_minor as number,
+    taxableAmountMinor: job.taxable_amount_minor as number,
+    taxMinor: job.tax_minor as number,
+    roundingMinor: job.rounding_minor as number,
+    totalAmountMinor: job.total_amount_minor as number,
+  };
+
+  // Coupon validation
+  let couponDiscountMinor = 0;
+  let newCoupon: { id: string; code: string; discountType: string; discountValue: number } | null = null;
+  const couponCodeStr = benefits.couponCode;
+  if (couponCodeStr !== undefined && couponCodeStr.trim() !== "") {
+    const coupon = await c.env.DB.prepare(
+      "SELECT * FROM coupons WHERE organization_id = ? AND code_normalized = ?"
+    ).bind(auth.organizationId, normalizeCode(couponCodeStr)).first<Record<string, unknown>>();
+    if (coupon === null)
+      throw new ApiError(422, "COUPON_INVALID", "The coupon code is invalid.", { "benefits.couponCode": "The coupon code is invalid." } as Record<string, string>);
+
+    const [eligibleSvcs, eligibleVTypes, usageCount] = await Promise.all([
+      c.env.DB.prepare("SELECT service_id FROM coupon_eligible_services WHERE coupon_id = ?").bind(coupon.id as string).all<{ service_id: string }>(),
+      c.env.DB.prepare("SELECT vehicle_type_id FROM coupon_eligible_vehicle_types WHERE coupon_id = ?").bind(coupon.id as string).all<{ vehicle_type_id: string }>(),
+      c.env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM coupon_redemptions WHERE coupon_id = ? AND customer_id = ? AND status IN ('RESERVED','REDEEMED') AND wash_job_id <> ?"
+      ).bind(coupon.id as string, job.customer_id as string, job.id as string).first<number>("count"),
+    ]);
+
+    const v = validateCoupon({
+      active: (coupon.is_active as number) === 1,
+      code: coupon.code as string,
+      discountType: coupon.discount_type as "FIXED" | "PERCENTAGE",
+      discountValue: coupon.discount_value as number,
+      eligibleServiceIds: eligibleSvcs.results.map(r => r.service_id),
+      eligibleVehicleTypeIds: eligibleVTypes.results.map(r => r.vehicle_type_id),
+      expiresAt: coupon.expires_at as string,
+      maximumDiscountMinor: coupon.maximum_discount_minor as number | null,
+      minimumBillMinor: coupon.minimum_bill_minor as number,
+      newCustomersOnly: (coupon.new_customers_only as number) === 1,
+      perCustomerLimit: coupon.usage_limit_per_customer as number | null,
+      startsAt: coupon.start_at as string,
+      totalUsageLimit: coupon.total_usage_limit as number | null,
+    }, {
+      customerCompletedVisits: visits,
+      customerUsageCount: usageCount ?? 0,
+      now: new Date().toISOString(),
+      serviceIds,
+      subtotalMinor: job.subtotal_minor as number,
+      totalUsageCount: coupon.total_usage_count_cached as number,
+      vehicleTypeId: vehicleType?.vehicle_type_id ?? "",
+    });
+    if (!v.valid)
+      throw new ApiError(422, v.reason, "The coupon is not eligible.", { "benefits.couponCode": "The coupon is not eligible for this wash." } as Record<string, string>);
+    couponDiscountMinor = v.discountMinor;
+    newCoupon = { id: coupon.id as string, code: coupon.code as string, discountType: coupon.discount_type as string, discountValue: coupon.discount_value as number };
+  }
+
+  // Referral validation
+  let referralDiscountMinor = 0;
+  let newReferral: { codeId: string; code: string; discountMinor: number; referrerCustomerId: string } | null = null;
+  const referralCodeStr = benefits.referralCode;
+  if (referralCodeStr !== undefined && referralCodeStr.trim() !== "") {
+    if (couponDiscountMinor > 0 && !booleanSetting(settings, "coupon.allow_referral_stacking", false))
+      throw new ApiError(422, "REFERRAL_STACKING_NOT_ALLOWED", "Coupon and referral stacking is disabled.", { "benefits.referralCode": "Coupon and referral stacking is disabled." } as Record<string, string>);
+
+    const code = await c.env.DB.prepare(
+      "SELECT * FROM referral_codes WHERE organization_id = ? AND code_normalized = ?"
+    ).bind(auth.organizationId, normalizeCode(referralCodeStr)).first<Record<string, unknown>>();
+    if (code === null)
+      throw new ApiError(422, "REFERRAL_INVALID", "The referral code is invalid.", { "benefits.referralCode": "The referral code is invalid." } as Record<string, string>);
+
+    const alreadyUsed = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM referral_redemptions WHERE referred_customer_id = ? AND status IN ('PENDING','QUALIFIED','REWARD_ISSUED') AND referred_wash_job_id <> ?"
+    ).bind(job.customer_id as string, job.id as string).first<number>("count");
+
+    const friendType = stringSetting(settings, "referral.friend_discount_type", "FIXED") as "FIXED" | "PERCENTAGE";
+    const rv = validateReferral({
+      enabled: booleanSetting(settings, "referral.enabled", true),
+      status: code.status as "ACTIVE" | "DISABLED" | "EXPIRED",
+      referrerCustomerId: code.customer_id as string,
+      expiresAt: code.expires_at as string | null,
+      friendDiscountType: friendType,
+      friendDiscountValue: integerSetting(settings, "referral.friend_discount_value", 0),
+      minimumBillMinor: integerSetting(settings, "referral.minimum_bill_minor", 0),
+      maximumDiscountMinor: integerSetting(settings, "referral.maximum_discount_minor", 0) || null,
+      eligibleServiceIds: parseStringArray(stringSetting(settings, "referral.eligible_service_ids", "[]")),
+      eligibleVehicleTypeIds: parseStringArray(stringSetting(settings, "referral.eligible_vehicle_type_ids", "[]")),
+      newCustomersOnly: booleanSetting(settings, "referral.new_customers_only", true),
+    }, {
+      now: new Date().toISOString(),
+      referredCustomerId: job.customer_id as string,
+      subtotalMinor: job.subtotal_minor as number,
+      completedVisits: visits,
+      benefitAlreadyUsed: (alreadyUsed ?? 0) > 0,
+      serviceIds,
+      vehicleTypeId: vehicleType?.vehicle_type_id ?? "",
+    });
+    if (!rv.valid)
+      throw new ApiError(422, rv.reason, "The referral is not eligible.", { "benefits.referralCode": "The referral is not eligible." } as Record<string, string>);
+    referralDiscountMinor = rv.discountMinor;
+    newReferral = { codeId: code.id as string, code: code.code as string, discountMinor: rv.discountMinor, referrerCustomerId: code.customer_id as string };
+  }
+
+  // Reward validation
+  let rewardDiscountMinor = 0;
+  let newReward: { id: string; amountMinor: number; version: number } | null = null;
+  if (benefits.rewardId !== undefined) {
+    const reward = await c.env.DB.prepare(
+      "SELECT id, remaining_amount_minor, active_reservation_amount_minor, status, reserved_for_wash_job_id, version FROM referral_rewards WHERE id = ? AND organization_id = ? AND customer_id = ?"
+    ).bind(benefits.rewardId, auth.organizationId, job.customer_id as string).first<Record<string, unknown>>();
+    if (reward === null)
+      throw new ApiError(422, "REWARD_NOT_FOUND", "The selected reward is unavailable.", { "benefits.rewardId": "The selected reward is unavailable." } as Record<string, string>);
+
+    const isAvail = reward.status === "AVAILABLE" && reward.reserved_for_wash_job_id === null;
+    const isOwn = reward.status === "RESERVED" && reward.reserved_for_wash_job_id === job.id;
+    if (!isAvail && !isOwn)
+      throw new ApiError(422, "REWARD_UNAVAILABLE", "This reward is not available.", { "benefits.rewardId": "This reward is not available." } as Record<string, string>);
+
+    const effBalance = (reward.remaining_amount_minor as number) + (isOwn ? (reward.active_reservation_amount_minor as number) : 0);
+    const requested = benefits.rewardAmountMinor ?? effBalance;
+    if (requested > effBalance)
+      throw new ApiError(422, "REWARD_INSUFFICIENT", "The requested amount exceeds available reward.", { "benefits.rewardAmountMinor": "The requested amount exceeds available reward." } as Record<string, string>);
+    rewardDiscountMinor = Math.min(requested, (job.subtotal_minor as number) - couponDiscountMinor - referralDiscountMinor);
+    newReward = { id: reward.id as string, amountMinor: rewardDiscountMinor, version: reward.version as number };
+  }
+
+  // Manual discount validation
+  if (benefits.manualDiscountMinor > 0) {
+    const maxManual = (job.subtotal_minor as number) - couponDiscountMinor - referralDiscountMinor - rewardDiscountMinor;
+    if (benefits.manualDiscountMinor > maxManual)
+      throw new ApiError(422, "MANUAL_DISCOUNT_EXCEEDS_TOTAL", "The manual discount exceeds the remaining bill amount.", { "benefits.manualDiscountMinor": "The manual discount exceeds the remaining bill amount." } as Record<string, string>);
+  }
+
+  // Calculate bill
+  const taxRate = booleanSetting(settings, "tax.enabled", true) ? integerSetting(settings, "tax.rate_basis_points", 0) : 0;
+  const bill = calculateBill({
+    couponDiscountMinor, referralDiscountMinor, rewardDiscountMinor,
+    manualDiscountMinor: benefits.manualDiscountMinor,
+    items: billItems,
+    roundingMode: job.rounding_mode as "NONE" | "NEAREST_RUPEE",
+    taxRateBasisPoints: taxRate,
+  });
+
+  const requested = {
+    couponCode: benefits.couponCode ?? null,
+    referralCode: benefits.referralCode ?? null,
+    rewardId: benefits.rewardId ?? null,
+    rewardAmountMinor: benefits.rewardAmountMinor ?? null,
+    manualDiscountMinor: benefits.manualDiscountMinor,
+    manualDiscountReason: benefits.manualDiscountReason ?? null,
+  };
+
+  const revised = {
+    couponDiscountMinor: bill.couponDiscountMinor,
+    referralDiscountMinor: bill.referralDiscountMinor,
+    rewardDiscountMinor: bill.rewardDiscountMinor,
+    manualDiscountMinor: bill.manualDiscountMinor,
+    totalDiscountMinor: bill.totalDiscountMinor,
+    taxableAmountMinor: bill.taxableAmountMinor,
+    taxMinor: bill.taxMinor,
+    roundingMinor: bill.roundingMinor,
+    totalAmountMinor: bill.totalAmountMinor,
+  };
+
+  const applied = {
+    coupon: newCoupon ? { id: newCoupon.id, code: newCoupon.code, discountMinor: bill.couponDiscountMinor } : null,
+    referral: newReferral ? { code: newReferral.code, discountMinor: bill.referralDiscountMinor } : null,
+    reward: newReward ? { id: newReward.id, amountMinor: bill.rewardDiscountMinor } : null,
+    manualDiscount: bill.manualDiscountMinor > 0 ? { amountMinor: bill.manualDiscountMinor, reason: benefits.manualDiscountReason ?? "" } : null,
+  };
+
+  const normalizedBenefits = {
+    couponCode: newCoupon?.code ?? benefits.couponCode ?? null,
+    referralCode: newReferral?.code ?? benefits.referralCode ?? null,
+    rewardId: newReward?.id ?? benefits.rewardId ?? null,
+    rewardAmountMinor: newReward?.amountMinor ?? benefits.rewardAmountMinor ?? null,
+    manualDiscountMinor: benefits.manualDiscountMinor,
+    manualDiscountReason: benefits.manualDiscountReason ?? null,
+  };
+
+  return c.json({ data: { original, requested, revised, applied, normalizedBenefits }, success: true });
+});
 
 washJobRoutes.get("/:id", requirePermission("wash_jobs.read"), async (c) => {
   const auth = c.get("auth");

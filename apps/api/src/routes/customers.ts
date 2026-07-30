@@ -365,6 +365,7 @@ customerRoutes.get(
   requirePermission("wash_jobs.create"),
   async (c) => {
     const auth = c.get("auth");
+    const washJobId = c.req.query("washJobId");
     const customer = await c.env.DB.prepare(
       "SELECT 1 FROM customers WHERE id = ? AND organization_id = ? AND status = 'ACTIVE'",
     )
@@ -381,7 +382,11 @@ customerRoutes.get(
         expires_at, referral_redemption_id AS source_referral_redemption_id,
         version
        FROM referral_rewards
-       WHERE organization_id = ? AND customer_id = ? AND status = 'AVAILABLE'
+       WHERE organization_id = ? AND customer_id = ?
+         AND (
+           (status = 'AVAILABLE' AND reserved_for_wash_job_id IS NULL)
+           OR (status = 'RESERVED' AND reserved_for_wash_job_id = ?)
+         )
          AND remaining_amount_minor > 0
          AND (available_from IS NULL OR available_from <= ?)
          AND (expires_at IS NULL OR expires_at >= ?)
@@ -390,6 +395,7 @@ customerRoutes.get(
       .bind(
         auth.organizationId,
         c.req.param("id"),
+        washJobId ?? null,
         new Date().toISOString(),
         new Date().toISOString(),
       )

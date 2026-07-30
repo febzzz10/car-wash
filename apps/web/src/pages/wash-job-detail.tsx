@@ -3,6 +3,7 @@ import {
   Camera,
   Clock3,
   FileText,
+  Info,
   MapPin,
   Pause,
   Play,
@@ -28,7 +29,7 @@ import {
 } from "../components/ui";
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
-import { api, jsonBody } from "../lib/api";
+import { api, ApiError, jsonBody } from "../lib/api";
 import { dateTime, duration, money, titleCase } from "../lib/format";
 import type { WashJobRecord } from "../types";
 
@@ -53,6 +54,7 @@ interface PhotoEvidence {
   readonly size_bytes: number;
 }
 interface JobDetail extends WashJobRecord {
+  readonly customer_id: string;
   readonly assigned_user_id?: string | null;
   readonly assigned_user_full_name?: string | null;
   readonly items: readonly JobItem[];
@@ -68,6 +70,13 @@ interface JobDetail extends WashJobRecord {
   readonly manual_discount_reason?: string | null;
   readonly tax_minor: number;
   readonly rounding_minor: number;
+  readonly billing_locked_at?: string | null;
+  readonly appliedBenefits?: {
+    readonly coupon?: { readonly id: string; readonly code: string; readonly discountMinor: number } | null;
+    readonly referral?: { readonly redemptionId: string; readonly code: string; readonly discountMinor: number } | null;
+    readonly reward?: { readonly id: string; readonly amountMinor: number } | null;
+    readonly manualDiscount?: { readonly amountMinor: number; readonly reason: string } | null;
+  } | null;
 }
 interface TimerPayload {
   readonly events: readonly {
@@ -472,11 +481,11 @@ export default function WashJobDetailPage() {
         version={record.version}
       />
       <PaymentDialog
-        balanceMinor={record.balance_minor}
-        id={id}
+        record={record}
         onClose={() => setPaymentOpen(false)}
-        onDone={() => {
+        onDone={({ fullyDiscounted }) => {
           setPaymentOpen(false);
+          if (fullyDiscounted) toast.success("Benefits applied — no payment required.");
           job.reload();
           payments.reload();
         }}
@@ -660,90 +669,231 @@ export function TimerCorrectionDialog({
     </Dialog>
   );
 }
-function PaymentDialog({
-  balanceMinor,
-  id,
+export function PaymentDialog({
+  record,
   onClose,
   onDone,
   open,
 }: {
-  readonly balanceMinor: number;
-  readonly id: string;
+  readonly record: JobDetail;
   readonly onClose: () => void;
-  readonly onDone: () => void;
+  readonly onDone: (result: { fullyDiscounted: boolean }) => void;
   readonly open: boolean;
 }) {
+  const { user } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const values = new FormData(event.currentTarget);
-    setBusy(true);
-    setError(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const benefitsLocked = useMemo(() =>
+    Boolean(record.billing_locked_at) || record.paid_amount_minor > 0 || record.payment_status === "PAID",
+    [record.billing_locked_at, record.paid_amount_minor, record.payment_status]);
+
+  const canApplyManualDiscount = user?.role === "ADMIN" || (user?.permissions ?? []).includes("payments.adjust");
+
+  const [couponCode, setCouponCode] = useState("");
+  const [referralCode, setReferralCode] = useState("");
+  const [rewardId, setRewardId] = useState("");
+  const [rewardAmount, setRewardAmount] = useState("");
+  const [manualDiscount, setManualDiscount] = useState("0");
+  const [manualDiscountReason, setManualDiscountReason] = useState("");
+
+  const initializedFor = useRef<string | null>(null);
+  const wasOpen = useRef(false);
+
+  const [rewards, setRewards] = useState<readonly { id: string; remaining_amount_minor: number; expires_at?: string | null }[]>([]);
+  const [rewardsLoading, setRewardsLoading] = useState(false);
+
+  const [preview, setPreview] = useState<Record<string, any> | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewDirty, setPreviewDirty] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewSeq = useRef(0);
+
+  const [amountEdited, setAmountEdited] = useState(false);
+
+  const lastAttempt = useRef<{ canonicalPayload: string; idempotencyKey: string } | null>(null);
+
+  const effectiveBalanceMinor = preview?.revised?.balanceMinor ?? record.balance_minor;
+
+  useEffect(() => {
+    const justOpened = open && !wasOpen.current;
+    if ((justOpened || (open && initializedFor.current !== record.id)) && !benefitsLocked) {
+      const ab = record.appliedBenefits;
+      setCouponCode(ab?.coupon?.code ?? "");
+      setReferralCode(ab?.referral?.code ?? "");
+      setRewardId(ab?.reward?.id ?? "");
+      setRewardAmount(ab?.reward?.amountMinor != null ? (ab.reward.amountMinor / 100).toString() : "");
+      setManualDiscount(ab?.manualDiscount?.amountMinor != null ? (ab.manualDiscount.amountMinor / 100).toString() : "0");
+      setManualDiscountReason(ab?.manualDiscount?.reason ?? "");
+      initializedFor.current = record.id;
+    }
+    if (!open) {
+      initializedFor.current = null;
+      setCouponCode(""); setReferralCode(""); setRewardId(""); setRewardAmount("");
+      setManualDiscount("0"); setManualDiscountReason("");
+      setPreview(null); setPreviewDirty(false); setPreviewError(null);
+      setFieldErrors({}); setError(null); setAmountEdited(false);
+      lastAttempt.current = null;
+    }
+    wasOpen.current = open;
+  }, [open, record.id, benefitsLocked, record.appliedBenefits]);
+
+  useEffect(() => {
+    if (!open || benefitsLocked || !record.customer_id) return;
+    const controller = new AbortController();
+    setRewardsLoading(true);
+    api<readonly { id: string; remaining_amount_minor: number; expires_at?: string | null }[]>(
+      `/customers/${encodeURIComponent(record.customer_id)}/rewards?washJobId=${encodeURIComponent(record.id)}`,
+      { signal: controller.signal } as RequestInit,
+    ).then(r => { if (!controller.signal.aborted) setRewards(r); }).catch(() => {})
+     .finally(() => { if (!controller.signal.aborted) setRewardsLoading(false); });
+    return () => controller.abort();
+  }, [open, benefitsLocked, record.customer_id, record.id]);
+
+  function clearField(key: string) {
+    setFieldErrors(prev => { const n = { ...prev }; delete n[key]; return n; });
+  }
+
+  async function doVerify() {
+    setPreviewBusy(true); setPreviewError(null);
+    const seq = ++previewSeq.current;
     try {
-      await api("/payments", {
-        ...jsonBody({
-          amountMinor: Math.round(Number(values.get("amount")) * 100),
-          idempotencyKey: crypto.randomUUID(),
-          method: values.get("method"),
-          notes: values.get("notes") || undefined,
-          transactionReference: values.get("reference") || undefined,
-          washJobId: id,
-        }),
+      const r = await api<Record<string, any>>(`/wash-jobs/${encodeURIComponent(record.id)}/verify-benefits`, {
+        ...jsonBody({ expectedVersion: record.version, benefits: { replaceExisting: true, couponCode: couponCode.trim() || undefined, referralCode: referralCode.trim() || undefined, rewardId: rewardId || undefined, rewardAmountMinor: rewardId ? Math.round(parseFloat(rewardAmount || "0") * 100) : undefined, manualDiscountMinor: Math.round(parseFloat(manualDiscount || "0") * 100), manualDiscountReason: manualDiscountReason.trim() || undefined } }),
         method: "POST",
       });
-      onDone();
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Payment failed.");
-    } finally {
-      setBusy(false);
-    }
+      if (seq !== previewSeq.current) return;
+      setPreview(r); setPreviewDirty(false); setPreviewError(null); setFieldErrors({});
+    } catch (e) {
+      if (seq !== previewSeq.current) return;
+      if (e instanceof ApiError) { setPreviewError(e.message); if (e.fields) setFieldErrors(e.fields); }
+      else setPreviewError("Verification failed.");
+      setPreview(null);
+    } finally { if (seq === previewSeq.current) setPreviewBusy(false); }
   }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const amountText = (form.get("amount") as string || "0").trim();
+    const amountMinor = Math.round(parseFloat(amountText || "0") * 100);
+    setBusy(true); setError(null);
+
+    const benefitsChanged = !benefitsLocked && (
+      couponCode.trim().toUpperCase() !== (record.appliedBenefits?.coupon?.code ?? "").toUpperCase() ||
+      referralCode.trim().toUpperCase() !== (record.appliedBenefits?.referral?.code ?? "").toUpperCase() ||
+      rewardId !== (record.appliedBenefits?.reward?.id ?? "") ||
+      Math.abs(Math.round(parseFloat(rewardAmount || "0") * 100) - (record.appliedBenefits?.reward?.amountMinor ?? 0)) > 0 ||
+      Math.abs(Math.round(parseFloat(manualDiscount || "0") * 100) - (record.appliedBenefits?.manualDiscount?.amountMinor ?? 0)) > 0 ||
+      manualDiscountReason.trim() !== (record.appliedBenefits?.manualDiscount?.reason ?? "")
+    );
+
+    const payload: Record<string, unknown> = {
+      washJobId: record.id, amountMinor, method: form.get("method"),
+      transactionReference: (form.get("reference") as string) || undefined,
+      notes: (form.get("notes") as string) || undefined,
+      idempotencyKey: "",
+    };
+    if (benefitsChanged) {
+      payload.expectedVersion = record.version;
+      payload.benefits = { replaceExisting: true,
+        couponCode: couponCode.trim() || undefined,
+        referralCode: referralCode.trim() || undefined,
+        rewardId: rewardId || undefined,
+        rewardAmountMinor: rewardId ? Math.round(parseFloat(rewardAmount || "0") * 100) : undefined,
+        manualDiscountMinor: Math.round(parseFloat(manualDiscount || "0") * 100),
+        manualDiscountReason: manualDiscountReason.trim() || undefined,
+      };
+    }
+
+    const canonical = JSON.stringify({ washJobId: payload.washJobId, amountMinor: payload.amountMinor, method: payload.method, transactionReference: payload.transactionReference, notes: payload.notes, expectedVersion: payload.expectedVersion, benefits: payload.benefits });
+    payload.idempotencyKey = lastAttempt.current?.canonicalPayload === canonical ? lastAttempt.current.idempotencyKey : crypto.randomUUID();
+    if (lastAttempt.current?.canonicalPayload !== canonical) lastAttempt.current = { canonicalPayload: canonical, idempotencyKey: payload.idempotencyKey as string };
+
+    try {
+      await api("/payments", { ...jsonBody(payload), method: "POST" });
+      lastAttempt.current = null;
+      onDone({ fullyDiscounted: effectiveBalanceMinor === 0 && preview !== null });
+    } catch (e) {
+      if (e instanceof ApiError) { setError(e.message); if (e.fields) setFieldErrors(e.fields); }
+      else setError(e instanceof Error ? e.message : "Payment failed.");
+    } finally { setBusy(false); }
+  }
+
+  const showPayFields = effectiveBalanceMinor > 0 || !preview;
+
   return (
-    <Dialog onClose={onClose} open={open} title="Record payment">
-      <form className="dialog-form" onSubmit={(event) => void submit(event)}>
-        <div className="payment-due">
-          <Receipt size={20} />
-          <span>Remaining balance</span>
-          <strong>{money(balanceMinor)}</strong>
-        </div>
-        {error === null ? null : <div className="form-alert">{error}</div>}
-        <label>
-          <span>Amount</span>
-          <input
-            max={(balanceMinor / 100).toFixed(2)}
-            min="0.01"
-            name="amount"
-            required
-            step="0.01"
-            type="number"
-          />
-        </label>
-        <label>
-          <span>Method</span>
-          <select name="method" required>
-            <option value="CASH">Cash</option>
-            <option value="UPI">UPI</option>
-            <option value="CARD">Card</option>
-            <option value="BANK_TRANSFER">Bank transfer</option>
-            <option value="OTHER">Other</option>
-          </select>
-        </label>
-        <label>
-          <span>Transaction reference (optional)</span>
-          <input name="reference" />
-        </label>
-        <label>
-          <span>Notes</span>
-          <textarea name="notes" />
-        </label>
+    <Dialog onClose={busy ? () => {} : onClose} open={open}
+      title={effectiveBalanceMinor === 0 && preview ? "Apply benefits" : "Record payment"}>
+      <form className="dialog-form" onSubmit={e => void submit(e)}>
+        <div className="payment-due"><Receipt size={20} /><span>Remaining balance</span><strong>{money(effectiveBalanceMinor)}</strong></div>
+        {error ? <div className="form-alert">{error}</div> : null}
+
+        {/* Benefits section */}
+        {benefitsLocked ? (
+          <div>
+            <p className="eyebrow">Benefits and rewards</p>
+            {record.appliedBenefits?.coupon ? <div className="benefit-line"><span>Coupon ({record.appliedBenefits.coupon.code})</span><strong>−{money(record.appliedBenefits.coupon.discountMinor)}</strong></div> : null}
+            {record.appliedBenefits?.referral ? <div className="benefit-line"><span>Referral ({record.appliedBenefits.referral.code})</span><strong>−{money(record.appliedBenefits.referral.discountMinor)}</strong></div> : null}
+            {record.appliedBenefits?.reward ? <div className="benefit-line"><span>Reward</span><strong>−{money(record.appliedBenefits.reward.amountMinor)}</strong></div> : null}
+            {record.appliedBenefits?.manualDiscount ? <div className="benefit-line"><span>Manual discount{record.appliedBenefits.manualDiscount.reason ? ` (${record.appliedBenefits.manualDiscount.reason})` : ""}</span><strong>−{money(record.appliedBenefits.manualDiscount.amountMinor)}</strong></div> : null}
+            {(record.coupon_discount_minor > 0 || record.referral_discount_minor > 0 || record.reward_discount_minor > 0 || record.manual_discount_minor > 0) ? null : <p className="muted">No benefits applied.</p>}
+            <div className="info-panel"><Info size={16} /><p>Benefits and discounts cannot be changed after a payment has been recorded. This protects the existing payment history and prevents the paid amount from exceeding the revised bill total.</p></div>
+          </div>
+        ) : (
+          <div>
+            <p className="eyebrow">Benefits and rewards</p>
+            <div className="form-grid">
+              <label><span>Coupon code</span><input autoCapitalize="characters" onChange={e => { setCouponCode(e.target.value.toUpperCase()); clearField("benefits.couponCode"); setPreviewDirty(true); }} placeholder="Optional" value={couponCode} />{fieldErrors["benefits.couponCode"] ? <span className="field-error">{fieldErrors["benefits.couponCode"]}</span> : null}</label>
+              <label><span>Referral code</span><input autoCapitalize="characters" onChange={e => { setReferralCode(e.target.value.toUpperCase()); clearField("benefits.referralCode"); setPreviewDirty(true); }} placeholder="Optional" value={referralCode} />{fieldErrors["benefits.referralCode"] ? <span className="field-error">{fieldErrors["benefits.referralCode"]}</span> : null}</label>
+              <label><span>Available reward</span>
+                {rewardsLoading ? <span className="muted">Loading...</span> : (
+                  <select onChange={e => { const r = rewards.find(rw => rw.id === e.target.value); setRewardId(e.target.value); setRewardAmount(r ? (r.remaining_amount_minor / 100).toString() : ""); clearField("benefits.rewardId"); setPreviewDirty(true); }} value={rewardId}>
+                    <option value="">Do not redeem a reward</option>
+                    {rewards.map(r => <option key={r.id} value={r.id}>{money(r.remaining_amount_minor)}{r.expires_at ? ` · expires ${new Date(r.expires_at).toLocaleDateString()}` : ""}</option>)}
+                  </select>
+                )}
+                {fieldErrors["benefits.rewardId"] ? <span className="field-error">{fieldErrors["benefits.rewardId"]}</span> : null}
+              </label>
+              <label><span>Reward amount</span><input disabled={rewardId === ""} max={(() => { const r = rewards.find(rw => rw.id === rewardId); return r ? (r.remaining_amount_minor / 100).toString() : "0"; })()} min="0" onChange={e => { setRewardAmount(e.target.value); clearField("benefits.rewardAmountMinor"); setPreviewDirty(true); }} step="0.01" type="number" value={rewardAmount} />{fieldErrors["benefits.rewardAmountMinor"] ? <span className="field-error">{fieldErrors["benefits.rewardAmountMinor"]}</span> : null}</label>
+            </div>
+            {canApplyManualDiscount ? (
+              <div className="form-grid benefit-admin-fields">
+                <label><span>Manual discount</span><input min="0" onChange={e => { setManualDiscount(e.target.value); clearField("benefits.manualDiscountMinor"); setPreviewDirty(true); }} step="0.01" type="number" value={manualDiscount} />{fieldErrors["benefits.manualDiscountMinor"] ? <span className="field-error">{fieldErrors["benefits.manualDiscountMinor"]}</span> : null}</label>
+                <label><span>Manual discount reason</span><input disabled={parseFloat(manualDiscount || "0") === 0} minLength={5} onChange={e => { setManualDiscountReason(e.target.value); clearField("benefits.manualDiscountReason"); setPreviewDirty(true); }} required={parseFloat(manualDiscount || "0") > 0} value={manualDiscountReason} />{fieldErrors["benefits.manualDiscountReason"] ? <span className="field-error">{fieldErrors["benefits.manualDiscountReason"]}</span> : null}</label>
+              </div>
+            ) : null}
+            <div style={{ marginTop: "0.75rem" }}>
+              <Button busy={previewBusy} onClick={() => void doVerify()} tone="secondary" type="button">Verify benefits</Button>
+              {previewError ? <span className="field-error" style={{ marginLeft: "0.75rem" }}>{previewError}</span> : null}
+              {previewDirty && preview ? <span className="muted" style={{ marginLeft: "0.5rem" }}>Changed — verify again</span> : null}
+            </div>
+            {/* Revised billing preview */}
+            {preview ? (
+              <div className="bill-preview" style={{ marginTop: "0.75rem" }}>
+                <p className="eyebrow">Revised billing preview</p>
+                {preview.requested?.couponDiscountMinor > 0 ? <span>Coupon discount <strong>−{money(preview.requested.couponDiscountMinor)}</strong></span> : null}
+                {preview.requested?.referralDiscountMinor > 0 ? <span>Referral discount <strong>−{money(preview.requested.referralDiscountMinor)}</strong></span> : null}
+                {preview.requested?.rewardDiscountMinor > 0 ? <span>Reward <strong>−{money(preview.requested.rewardDiscountMinor)}</strong></span> : null}
+                {preview.requested?.manualDiscountMinor > 0 ? <span>Manual discount <strong>−{money(preview.requested.manualDiscountMinor)}</strong></span> : null}
+                {preview.revised?.totalAmountMinor === 0 ? <div style={{ marginTop: "0.5rem" }}><p>These benefits fully cover the remaining bill. No payment transaction will be created.</p></div> : null}
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {/* Payment section */}
+        {showPayFields ? (<>
+          <label><span>Amount</span><input defaultValue={effectiveBalanceMinor > 0 && !amountEdited ? (effectiveBalanceMinor / 100).toString() : undefined} key={`a-${effectiveBalanceMinor}`} max={(effectiveBalanceMinor / 100).toFixed(2)} min="0.01" name="amount" onChange={() => setAmountEdited(true)} required step="0.01" type="number" />{fieldErrors["amountMinor"] ? <span className="field-error">{fieldErrors["amountMinor"]}</span> : null}</label>
+          <label><span>Method</span><select name="method" required><option value="CASH">Cash</option><option value="UPI">UPI</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank transfer</option><option value="OTHER">Other</option></select></label>
+          <label><span>Transaction reference (optional)</span><input name="reference" /></label>
+          <label><span>Notes</span><textarea name="notes" /></label>
+        </>) : null}
+
         <div className="dialog-actions">
-          <Button onClick={onClose} tone="secondary" type="button">
-            Cancel
-          </Button>
-          <Button busy={busy} type="submit">
-            Record payment
-          </Button>
+          <Button disabled={busy} onClick={onClose} tone="secondary" type="button">Cancel</Button>
+          <Button busy={busy} type="submit">{effectiveBalanceMinor === 0 && preview ? "Apply benefits" : "Record payment"}</Button>
         </div>
       </form>
     </Dialog>

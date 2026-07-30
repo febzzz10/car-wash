@@ -3,12 +3,26 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../lib/api";
-import { liveTimer, TimerCorrectionDialog } from "./wash-job-detail";
+import { liveTimer, PaymentDialog, TimerCorrectionDialog } from "./wash-job-detail";
 
-vi.mock("../lib/api", () => ({
-  api: vi.fn(),
-  jsonBody: (value: unknown) => ({ body: JSON.stringify(value) }),
-}));
+vi.mock("../lib/api", () => {
+  class ApiError extends Error {
+    constructor(
+      public readonly status: number,
+      public readonly code: string,
+      message: string,
+      public readonly fields?: Readonly<Record<string, string>>,
+    ) {
+      super(message);
+      this.name = "ApiError";
+    }
+  }
+  return {
+    api: vi.fn(),
+    jsonBody: (value: unknown) => ({ body: JSON.stringify(value) }),
+    ApiError,
+  };
+});
 
 describe("liveTimer", () => {
   it("returns zero elapsed when there are no events", () => {
@@ -513,10 +527,14 @@ vi.mock("react-router-dom", () => ({
   ),
 }));
 
+const { mockUseAuth } = vi.hoisted(() => ({
+  mockUseAuth: vi.fn(() => ({
+    user: { id: "admin-1", role: "ADMIN", permissions: [] },
+  })),
+}));
+
 vi.mock("../auth", () => ({
-  useAuth: () => ({
-    user: { id: "admin-1", role: "ADMIN", permissions: [] as string[] },
-  }),
+  useAuth: mockUseAuth,
 }));
 
 vi.mock("../components/toast", () => ({
@@ -624,5 +642,341 @@ describe("WashJobDetailPage — read-only assignment display", () => {
     await waitFor(() => {
       expect(screen.getByText("Historical Name")).toBeInTheDocument();
     });
+  });
+});
+
+let uuidSeq = 0;
+
+function defaultRecord(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+  return {
+    id: "job-123",
+    balance_minor: 50000,
+    paid_amount_minor: 0,
+    payment_status: "PENDING",
+    billing_locked_at: undefined,
+    version: 1,
+    customer_id: "customer-1",
+    appliedBenefits: undefined,
+    coupon_discount_minor: 0,
+    referral_discount_minor: 0,
+    reward_discount_minor: 0,
+    manual_discount_minor: 0,
+    total_amount_minor: 50000,
+    subtotal_minor: 50000,
+    tax_rate_basis_points: 0,
+    job_reference: "WJ-001",
+    customer_name_snapshot: "Test",
+    customer_phone_snapshot: "",
+    vehicle_registration_snapshot: "",
+    primary_service_name_snapshot: "",
+    status: "COMPLETED",
+    total_active_seconds: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    items: [],
+    locations: [],
+    photos: [],
+    tax_minor: 0,
+    rounding_minor: 0,
+    ...overrides,
+  };
+}
+
+describe("PaymentDialog", () => {
+  function renderDialog(recordOverrides: Partial<Record<string, unknown>> = {}) {
+    const onClose = vi.fn();
+    const onDone = vi.fn();
+    const record = defaultRecord(recordOverrides);
+    render(<PaymentDialog
+      record={record as any}
+      onClose={onClose}
+      onDone={onDone}
+      open={recordOverrides.open !== false}
+    />);
+    return { onClose, onDone, record };
+  }
+
+  function dialogEl() { return screen.getByRole("dialog"); }
+  function formEl() { return dialogEl().querySelector("form")!; }
+  function amountInput() { return formEl().querySelector('input[name="amount"]') as HTMLInputElement; }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    uuidSeq = 0;
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    try { vi.spyOn(crypto, "randomUUID").mockImplementation(() => `00000000-0000-0000-0000-${String(++uuidSeq).padStart(12, "0")}` as `${string}-${string}-${string}-${string}-${string}`); } catch { /* ignore */ }
+  });
+
+  afterEach(() => { cleanup(); });
+
+  it("renders with Record payment title", () => {
+    renderDialog();
+    expect(screen.getByRole("heading", { name: "Record payment" })).toBeInTheDocument();
+  });
+
+  it("displays the balance as money", () => {
+    renderDialog({ balance_minor: 12345 });
+    expect(screen.getByText("Remaining balance")).toBeInTheDocument();
+  });
+
+  it("sets amount input max to balance / 100", () => {
+    renderDialog({ balance_minor: 50000 });
+    expect(amountInput()).toHaveAttribute("max", "500.00");
+  });
+
+  it("renders method select with all options", () => {
+    renderDialog();
+    expect(screen.getByRole("combobox", { name: /method/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Cash" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "UPI" })).toBeInTheDocument();
+  });
+
+  it("renders transaction reference input", () => {
+    renderDialog();
+    expect(screen.getByRole("textbox", { name: /transaction reference/i })).toBeInTheDocument();
+  });
+
+  it("renders notes textarea", () => {
+    renderDialog();
+    expect(screen.getByRole("textbox", { name: /notes/i })).toBeInTheDocument();
+  });
+
+  it("renders Cancel and Record payment buttons", () => {
+    renderDialog();
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /record payment/i })).toBeInTheDocument();
+  });
+
+  it("calls onClose when Cancel is clicked", async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderDialog();
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onClose when scrim is clicked", () => {
+    const { onClose } = renderDialog();
+    fireEvent.click(screen.getByLabelText("Close dialog"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onClose when X is clicked", () => {
+    const { onClose } = renderDialog();
+    fireEvent.click(screen.getByLabelText("Close"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render when closed", () => {
+    renderDialog({ open: false });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("submits correct payment payload", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog({ balance_minor: 50000, id: "job-abc" });
+    fireEvent.change(amountInput(), { target: { value: "200" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    const body = JSON.parse(payCall![1]!.body as string);
+    expect(body.amountMinor).toBe(20000);
+    expect(body.washJobId).toBe("job-abc");
+    expect(body.method).toBe("CASH");
+    expect(body.idempotencyKey).toBeDefined();
+  });
+
+  it("sends selected method", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /method/i }), { target: { value: "UPI" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    expect(JSON.parse(payCall![1]!.body as string).method).toBe("UPI");
+  });
+
+  it("sends transaction reference", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /transaction reference/i }), { target: { value: "TXN-001" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    expect(JSON.parse(payCall![1]!.body as string).transactionReference).toBe("TXN-001");
+  });
+
+  it("sends notes", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /notes/i }), { target: { value: "Test note" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    expect(JSON.parse(payCall![1]!.body as string).notes).toBe("Test note");
+  });
+
+  it("omits notes when empty", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    expect(JSON.parse(payCall![1]!.body as string).notes).toBeUndefined();
+  });
+
+  it("calls onDone on successful submission", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    const { onDone } = renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(onDone).toHaveBeenCalledTimes(1); });
+  });
+
+  it("shows error on API failure", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.reject(new Error("Insufficient balance"));
+    });
+    renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(screen.getByText("Insufficient balance")).toBeInTheDocument(); });
+  });
+
+  it("does not call onDone on API failure", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.reject(new Error("Server error"));
+    });
+    const { onDone, onClose } = renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(screen.getByText(/Server error/)).toBeInTheDocument(); });
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("disables submit button while busy", async () => {
+    let resolve!: () => void;
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return new Promise(r => { resolve = () => r({ success: true, data: {} }); });
+    });
+    renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(screen.getByRole("button", { name: /record payment/i })).toBeDisabled(); });
+    resolve!();
+  });
+
+  it("idempotency key uses crypto.randomUUID", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    expect(JSON.parse(payCall![1]!.body as string).idempotencyKey).toBeDefined();
+  });
+
+  it("reuses idempotency key for identical payload", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.reject(new Error("Conflict"));
+    });
+    const { onDone } = renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(screen.getByText("Conflict")).toBeInTheDocument(); });
+    const calls1 = vi.mocked(api).mock.calls;
+    const payCall1 = calls1.find(c => c[0] === "/payments");
+    expect(payCall1).toBeDefined();
+    const firstKey = JSON.parse(payCall1![1]!.body as string).idempotencyKey;
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(onDone).toHaveBeenCalled(); });
+    const calls2 = vi.mocked(api).mock.calls;
+    const payCall2 = calls2.slice().reverse().find(c => c[0] === "/payments");
+    expect(payCall2).toBeDefined();
+    const secondKey = JSON.parse(payCall2![1]!.body as string).idempotencyKey;
+    expect(firstKey).toBe(secondKey);
+  });
+
+  it("clears error on resubmit", async () => {
+    let called = 0;
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      called++;
+      if (called === 1) return Promise.reject(new Error("First error"));
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(screen.getByText("First error")).toBeInTheDocument(); });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(screen.queryByText("First error")).not.toBeInTheDocument(); });
+  });
+
+  it("amount input defaults to balance", () => {
+    renderDialog({ balance_minor: 50000 });
+    expect(amountInput()).toHaveValue(500);
+  });
+
+  it("submits with amount 0 when input is empty", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog();
+    fireEvent.change(amountInput(), { target: { value: "" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    expect(JSON.parse(payCall![1]!.body as string).amountMinor).toBe(0);
   });
 });

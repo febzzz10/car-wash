@@ -58,4 +58,18 @@ describe("billing engine", () => {
     expect(result.roundingMinor).toBe(1);
     expect(result.totalAmountMinor).toBe(10_000);
   });
+
+  it("returns totalAmountMinor of 0 when discounts cover the full subtotal", () => {
+    const result = calculateBill({
+      items: [{ unitPriceMinor: 10000, quantity: 1 }],
+      couponDiscountMinor: 6000,
+      referralDiscountMinor: 2000,
+      rewardDiscountMinor: 1000,
+      manualDiscountMinor: 1000,
+      taxRateBasisPoints: 0,
+      roundingMode: "NONE",
+    });
+    expect(result.totalAmountMinor).toBe(0);
+    expect(result.totalDiscountMinor).toBe(10000);
+  });
 });

@@ -100,6 +100,9 @@ beforeEach(async () => {
     env.DB.prepare(
       "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-referral-reward', 'org-wash', 'referral.reward_value', 'INTEGER', '500', ?)",
     ).bind(timestamp),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-referral-new-customers', 'org-wash', 'referral.new_customers_only', 'BOOLEAN', 'false', ?)",
+    ).bind(timestamp),
   ]);
 });
 
@@ -113,7 +116,7 @@ async function mutationHeaders(): Promise<Record<string, string>> {
 }
 
 describe("wash, timer, payment, and refund workflow", () => {
-  it("finalizes referral rewards only after completion and full payment and exposes them to New Wash", async () => {
+  it("applies referral benefit during first payment and completes job", async () => {
     const headers = await mutationHeaders();
     const createdResponse = await app.request(
       "/api/v1/wash-jobs",
@@ -129,7 +132,6 @@ describe("wash, timer, payment, and refund workflow", () => {
           },
           photoAssetId: "asset-referral-wash",
           primaryServiceId: "service-primary",
-          referralCode: "RAVI500",
           vehicleId: "vehicle-referral-wash",
         }),
         headers,
@@ -165,7 +167,9 @@ describe("wash, timer, payment, and refund workflow", () => {
       "/api/v1/payments",
       {
         body: JSON.stringify({
-          amountMinor: created.data.total_amount_minor,
+          amountMinor: 10620,
+          benefits: { replaceExisting: true, referralCode: "RAVI500" },
+          expectedVersion: version,
           idempotencyKey: "referral-full-payment-0001",
           method: "UPI",
           washJobId: created.data.id,
@@ -176,20 +180,10 @@ describe("wash, timer, payment, and refund workflow", () => {
       env,
     );
     expect(payment.status).toBe(201);
-    const rewards = await app.request(
-      "/api/v1/customers/referrer-wash/rewards",
-      { headers: { cookie: headers.cookie ?? "" } },
-      env,
-    );
-    expect(rewards.status).toBe(200);
-    expect(await rewards.json()).toMatchObject({
-      data: [
-        {
-          remaining_amount_minor: 500,
-        },
-      ],
-      success: true,
-    });
+    const paymentData = await payment.json<{ data: { appliedBenefits: { referral: { discountMinor: number; code: string } | null } } }>();
+    expect(paymentData.data.appliedBenefits.referral).not.toBeNull();
+    expect(paymentData.data.appliedBenefits.referral!.discountMinor).toBeGreaterThan(0);
+    expect(paymentData.data.appliedBenefits.referral!.code).toBe("RAVI500");
   });
 
   it("creates priced snapshots and preserves timer and financial integrity", async () => {
@@ -200,7 +194,6 @@ describe("wash, timer, payment, and refund workflow", () => {
         body: JSON.stringify({
           addOnServiceIds: ["service-addon-1"],
           assignedUserId: "staff-wash",
-          couponCode: " welcome-10 ",
           customerId: "customer-wash",
           idempotencyKey: "wash-create-key-0001",
           initialStatus: "WAITING",
@@ -228,7 +221,7 @@ describe("wash, timer, payment, and refund workflow", () => {
     }>();
     expect(created.data).toMatchObject({
       status: "WAITING",
-      total_amount_minor: 12980,
+      total_amount_minor: 14160,
     });
 
     const retry = await app.request(
@@ -303,14 +296,6 @@ describe("wash, timer, payment, and refund workflow", () => {
     }>();
     expect(timerBody.data.events).toHaveLength(4);
     expect(timerBody.data.adjustments).toHaveLength(1);
-    expect(
-      await env.DB.prepare(
-        "SELECT status FROM coupon_redemptions WHERE wash_job_id = ?",
-      )
-        .bind(created.data.id)
-        .first("status"),
-    ).toBe("REDEEMED");
-
     const partial = await app.request(
       "/api/v1/payments",
       {
@@ -335,7 +320,7 @@ describe("wash, timer, payment, and refund workflow", () => {
     }>();
     expect(partialBody.data).toMatchObject({
       paymentStatus: "PARTIALLY_PAID",
-      remainingBalanceMinor: 7980,
+      remainingBalanceMinor: 9160,
     });
 
     const duplicatePayment = await app.request(
@@ -361,7 +346,7 @@ describe("wash, timer, payment, and refund workflow", () => {
       "/api/v1/payments",
       {
         body: JSON.stringify({
-          amountMinor: 7980,
+          amountMinor: 9160,
           idempotencyKey: "payment-key-final-00001",
           method: "CASH",
           washJobId: created.data.id,

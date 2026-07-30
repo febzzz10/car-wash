@@ -10,7 +10,6 @@ export const STEP_IDS = [
   "assign",
   "photo-location",
   "services",
-  "benefits",
   "review",
 ] as const;
 
@@ -29,19 +28,13 @@ const OLD_STEP_TO_NEW_STEP: Record<number, number> = {
 };
 
 const persistedDraftSchema = z.object({
-  version: z.literal(2),
-  step: z.number().int().min(0).max(6),
+  version: z.literal(3),
+  step: z.number().int().min(0).max(5),
   stepId: z.enum(STEP_IDS),
   customerId: z.string().optional(),
   vehicleId: z.string().optional(),
   servicePriceId: z.string().optional(),
   addOnServiceIds: z.array(z.string()).default([]),
-  couponCode: z.string().max(64).optional(),
-  referralCode: z.string().max(64).optional(),
-  rewardId: z.string().optional(),
-  rewardUnits: z.number().int().nonnegative().default(0),
-  manualDiscountMinor: z.number().int().nonnegative().default(0),
-  manualDiscountReason: z.string().max(500).optional(),
   assignedUserId: z.string().optional(),
   startImmediately: z.boolean().default(false),
   photoAssetId: z.string().optional(),
@@ -70,7 +63,7 @@ export function serializeWizardDraft(draft: WashDraftInput): string {
     delete cleaned.place;
     delete cleaned.capturedAt;
   }
-  return JSON.stringify({ ...cleaned, version: 2 });
+  return JSON.stringify({ ...cleaned, version: 3 });
 }
 
 export function parseWizardDraft(
@@ -91,6 +84,13 @@ export function parseWizardDraft(
       raw.step = OLD_STEP_TO_NEW_STEP[oldStep] ?? 0;
       raw.stepId = STEP_IDS_LIST[raw.step as number] ?? STEP_IDS_LIST[0];
       raw.version = 2;
+    }
+    if (raw.version === 2) {
+      // Migrate from 7-step (with Benefits at index 5) to 6-step (Benefits removed)
+      const step = (raw.step as number) ?? 0;
+      if (step >= 5) raw.step = 5; // Benefits (5) or Review (6) → new Review (5)
+      raw.stepId = STEP_IDS_LIST[raw.step as number] ?? STEP_IDS_LIST[0];
+      raw.version = 3;
     }
     if (typeof raw.place === "string") {
       const trimmed = raw.place.trim();

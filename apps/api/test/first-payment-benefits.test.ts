@@ -139,14 +139,12 @@ async function mutationHeaders(): Promise<Record<string, string>> {
 type WashJobPayload = {
   addOnServiceIds?: string[];
   assignedUserId?: string;
-  couponCode?: string;
   customerId?: string;
   idempotencyKey?: string;
   initialStatus?: string;
   notes?: string;
   photoAssetId?: string;
   primaryServiceId?: string;
-  referralCode?: string;
   vehicleId?: string;
 };
 
@@ -432,7 +430,7 @@ describe("first payment with benefits - atomic operation", () => {
 
   it("existing benefits preserved when benefits block omitted", async () => {
     const headers = await mutationHeaders();
-    const job = await createWashJob({ couponCode: "REPEAT10" });
+    const job = await createWashJob();
     await startAndComplete(job.id, job.version);
 
     const res = await app.request(
@@ -457,13 +455,13 @@ describe("first payment with benefits - atomic operation", () => {
       .bind(job.id)
       .first<{ coupon_discount_minor: number; billing_locked_at: string | null }>();
     expect(jobRow).not.toBeNull();
-    expect(jobRow!.coupon_discount_minor).toBeGreaterThan(0);
+    expect(jobRow!.coupon_discount_minor).toBe(0);
     expect(jobRow!.billing_locked_at).not.toBeNull();
   });
 
   it("complete replacement when one benefit changes", async () => {
     const headers = await mutationHeaders();
-    const job = await createWashJob({ couponCode: "REPEAT10" });
+    const job = await createWashJob();
     const v = await startWashJob(job.id, job.version);
 
     const res = await app.request(
@@ -489,12 +487,12 @@ describe("first payment with benefits - atomic operation", () => {
     )
       .bind(job.id)
       .first<string>("status");
-    expect(redemption).toBe("RELEASED");
+    expect(redemption).toBeNull();
   });
 
   it("explicit removal of every benefit", async () => {
     const headers = await mutationHeaders();
-    const job = await createWashJob({ couponCode: "REPEAT10" });
+    const job = await createWashJob();
     const v = await startWashJob(job.id, job.version);
 
     const res = await app.request(
@@ -520,7 +518,7 @@ describe("first payment with benefits - atomic operation", () => {
     )
       .bind(job.id)
       .first<string>("status");
-    expect(redemption).toBe("RELEASED");
+    expect(redemption).toBeNull();
 
     const discount = await env.DB.prepare(
       "SELECT coupon_discount_minor FROM wash_jobs WHERE id = ?",
@@ -1316,9 +1314,9 @@ describe("audit logging", () => {
     expect(postCount).toBe(preCount);
   });
 
-  it("release audits appear before application audits in batch order", async () => {
+  it("applying a coupon during first payment creates COUPON_APPLIED audit", async () => {
     const headers = await mutationHeaders();
-    const job = await createWashJob({ couponCode: "REPEAT10" });
+    const job = await createWashJob();
     const v = await startWashJob(job.id, job.version);
 
     const res = await app.request(
@@ -1340,20 +1338,18 @@ describe("audit logging", () => {
     expect(res.status).toBe(201);
 
     const audits = await env.DB.prepare(
-      "SELECT action, created_at FROM audit_logs WHERE record_id = ? AND action IN ('COUPON_RELEASED', 'COUPON_APPLIED') ORDER BY created_at ASC",
+      "SELECT action, created_at FROM audit_logs WHERE record_id = ? AND action IN ('COUPON_APPLIED') ORDER BY created_at ASC",
     )
       .bind(job.id)
       .all<{ action: string; created_at: string }>();
 
-    expect(audits.results).toHaveLength(2);
-    expect(audits.results[0]!.action).toBe("COUPON_RELEASED");
-    expect(audits.results[1]!.action).toBe("COUPON_APPLIED");
-    expect(audits.results[0]!.created_at <= audits.results[1]!.created_at).toBe(true);
+    expect(audits.results).toHaveLength(1);
+    expect(audits.results[0]!.action).toBe("COUPON_APPLIED");
   });
 
-  it("unchanged benefits generate no benefit-specific audit records", async () => {
+  it("new coupon application creates audit record", async () => {
     const headers = await mutationHeaders();
-    const job = await createWashJob({ couponCode: "REPEAT10" });
+    const job = await createWashJob();
     const v = await startAndComplete(job.id, job.version);
 
     const res = await app.request(
@@ -1375,11 +1371,11 @@ describe("audit logging", () => {
     expect(res.status).toBe(201);
 
     const benefitAuditCount = await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM audit_logs WHERE record_id = ? AND action IN ('COUPON_RELEASED', 'COUPON_APPLIED', 'REFERRAL_BENEFIT_CANCELLED', 'REFERRAL_BENEFIT_APPLIED')",
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE record_id = ? AND action IN ('COUPON_APPLIED')",
     )
       .bind(job.id)
       .first<number>("count");
-    expect(benefitAuditCount).toBe(0);
+    expect(benefitAuditCount).toBe(1);
   });
 
   it("failed guard batch generates zero audit entries", async () => {
@@ -1586,5 +1582,139 @@ describe("concurrency", () => {
       .bind(job.id)
       .first<number>("count");
     expect(redeemedCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Strict schema rejection test
+// ---------------------------------------------------------------------------
+describe("wash job creation — strict schema", () => {
+  it("rejects benefit fields as unknown via strict schema", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [],
+        assignedUserId: "staff-wash",
+        customerId: "customer-wash",
+        idempotencyKey: "reject-benefits-01",
+        initialStatus: "WAITING",
+        location: {},
+        photoAssetId: getPhotoAssetId(),
+        primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+        couponCode: "TEST",
+      }),
+      headers,
+      method: "POST",
+    }, env);
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects referralCode as unknown via strict schema", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [],
+        assignedUserId: "staff-wash",
+        customerId: "customer-wash",
+        idempotencyKey: "reject-benefits-02",
+        initialStatus: "WAITING",
+        location: {},
+        photoAssetId: getPhotoAssetId(),
+        primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+        referralCode: "ABC",
+      }),
+      headers,
+      method: "POST",
+    }, env);
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects rewardId as unknown via strict schema", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [],
+        assignedUserId: "staff-wash",
+        customerId: "customer-wash",
+        idempotencyKey: "reject-benefits-03",
+        initialStatus: "WAITING",
+        location: {},
+        photoAssetId: getPhotoAssetId(),
+        primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+        rewardId: "R001",
+      }),
+      headers,
+      method: "POST",
+    }, env);
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects manualDiscountMinor as unknown via strict schema", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [],
+        assignedUserId: "staff-wash",
+        customerId: "customer-wash",
+        idempotencyKey: "reject-benefits-04",
+        initialStatus: "WAITING",
+        location: {},
+        photoAssetId: getPhotoAssetId(),
+        primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+        manualDiscountMinor: 100,
+      }),
+      headers,
+      method: "POST",
+    }, env);
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects rewardAmountMinor as unknown via strict schema", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [], assignedUserId: "staff-wash", customerId: "customer-wash",
+        idempotencyKey: "reject-benefits-05", initialStatus: "WAITING",
+        location: {}, photoAssetId: getPhotoAssetId(), primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+        rewardAmountMinor: 500,
+      }),
+      headers, method: "POST",
+    }, env);
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects manualDiscountReason as unknown via strict schema", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [], assignedUserId: "staff-wash", customerId: "customer-wash",
+        idempotencyKey: "reject-benefits-06", initialStatus: "WAITING",
+        location: {}, photoAssetId: getPhotoAssetId(), primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+        manualDiscountReason: "test",
+      }),
+      headers, method: "POST",
+    }, env);
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects benefits as unknown via strict schema", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [], assignedUserId: "staff-wash", customerId: "customer-wash",
+        idempotencyKey: "reject-benefits-07", initialStatus: "WAITING",
+        location: {}, photoAssetId: getPhotoAssetId(), primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+        benefits: { replaceExisting: true, manualDiscountMinor: 0 },
+      }),
+      headers, method: "POST",
+    }, env);
+    expect(res.status).toBe(422);
   });
 });

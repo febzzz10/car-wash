@@ -11,12 +11,6 @@ describe("New Wash draft persistence", () => {
       vehicleId: "vehicle-1",
       servicePriceId: "price-1",
       addOnServiceIds: ["addon-1"],
-      couponCode: "WELCOME",
-      referralCode: "REFER123",
-      rewardUnits: 250,
-      rewardId: "reward-1",
-      manualDiscountMinor: 100,
-      manualDiscountReason: "Service recovery",
       assignedUserId: "staff-1",
       startImmediately: true,
     });
@@ -26,9 +20,6 @@ describe("New Wash draft persistence", () => {
       stepId: "assign",
       customerId: "customer-1",
       addOnServiceIds: ["addon-1"],
-      rewardId: "reward-1",
-      rewardUnits: 250,
-      manualDiscountMinor: 100,
     });
   });
 
@@ -39,8 +30,6 @@ describe("New Wash draft persistence", () => {
       customerId: "customer-1",
       vehicleId: "vehicle-1",
       addOnServiceIds: [],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
       photoAssetId: "asset-1",
       place: "123 Main St, Springfield",
@@ -62,8 +51,6 @@ describe("New Wash draft persistence", () => {
       step: 3,
       stepId: "photo-location",
       addOnServiceIds: ["legacy-addon"],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
     });
     expect(parseWizardDraft(legacy)).toMatchObject({
@@ -92,9 +79,9 @@ describe("Old wizard step migration", () => {
     1: { step: 1, stepId: "vehicle" },
     2: { step: 3, stepId: "photo-location" },
     3: { step: 4, stepId: "services" },
-    4: { step: 5, stepId: "benefits" },
+    4: { step: 5, stepId: "review" },
     5: { step: 2, stepId: "assign" },
-    6: { step: 6, stepId: "review" },
+    6: { step: 5, stepId: "review" },
   };
 
   for (const [oldStep, expected] of Object.entries(OLD_TO_NEW)) {
@@ -148,8 +135,6 @@ describe("Evidence draft consistency", () => {
       place: "123 Main St",
       capturedAt: "2026-07-28T12:00:00.000Z",
       addOnServiceIds: [],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
     });
     const parsed = parseWizardDraft(value);
@@ -165,8 +150,6 @@ describe("Evidence draft consistency", () => {
       stepId: "photo-location",
       place: "123 Main St",
       addOnServiceIds: [],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
     });
     const parsed = parseWizardDraft(raw);
@@ -182,8 +165,6 @@ describe("Evidence draft consistency", () => {
       stepId: "photo-location",
       capturedAt: "2026-07-28T12:00:00.000Z",
       addOnServiceIds: [],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
     });
     const parsed = parseWizardDraft(raw);
@@ -197,8 +178,6 @@ describe("Evidence draft consistency", () => {
       step: 3,
       stepId: "photo-location",
       addOnServiceIds: [],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
     });
     const parsed = parseWizardDraft(value);
@@ -215,8 +194,6 @@ describe("Evidence draft consistency", () => {
       place: "51.5074° N, 0.1278° W",
       capturedAt: "2026-07-28T12:00:00.000Z",
       addOnServiceIds: [],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
     });
     const parsed = parseWizardDraft(raw);
@@ -232,8 +209,6 @@ describe("Evidence draft consistency", () => {
       place: "lat: 40.7128, lon: -74.0060",
       capturedAt: "2026-07-28T12:00:00.000Z",
       addOnServiceIds: [],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
     });
     const parsed = parseWizardDraft(value);
@@ -250,8 +225,6 @@ describe("Evidence draft consistency", () => {
       place: "   ",
       capturedAt: "2026-07-28T12:00:00.000Z",
       addOnServiceIds: [],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
     });
     const parsed = parseWizardDraft(raw);
@@ -267,8 +240,6 @@ describe("Evidence draft consistency", () => {
       place: "  123 Main St  ",
       capturedAt: "2026-07-28T12:00:00.000Z",
       addOnServiceIds: [],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
     });
     const parsed = parseWizardDraft(value);
@@ -282,8 +253,6 @@ describe("Evidence draft consistency", () => {
       stepId: "photo-location",
       photoAssetId: "asset-1",
       addOnServiceIds: [],
-      rewardUnits: 0,
-      manualDiscountMinor: 0,
       startImmediately: false,
     });
     const parsed = parseWizardDraft(value);

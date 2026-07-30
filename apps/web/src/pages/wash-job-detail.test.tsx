@@ -977,6 +977,104 @@ describe("PaymentDialog", () => {
     const calls = vi.mocked(api).mock.calls;
     const payCall = calls.find(c => c[0] === "/payments");
     expect(payCall).toBeDefined();
-    expect(JSON.parse(payCall![1]!.body as string).amountMinor).toBe(0);
+      expect(JSON.parse(payCall![1]!.body as string).amountMinor).toBe(0);
+  });
+});
+
+describe("PaymentDialog — benefits regression", () => {
+  const unlockedRecord = {
+    id: "job-1",
+    job_reference: "WJ-001",
+    customer_name_snapshot: "Test",
+    customer_phone_snapshot: "123",
+    vehicle_registration_snapshot: "KL01",
+    primary_service_name_snapshot: "Wash",
+    status: "COMPLETED",
+    payment_status: "PENDING",
+    total_amount_minor: 50000,
+    paid_amount_minor: 0,
+    balance_minor: 50000,
+    total_active_seconds: 0,
+    version: 1,
+    created_at: new Date().toISOString(),
+    subtotal_minor: 50000,
+    coupon_discount_minor: 0,
+    referral_discount_minor: 0,
+    reward_discount_minor: 0,
+    manual_discount_minor: 0,
+    manual_discount_reason: null,
+    tax_minor: 0,
+    rounding_minor: 0,
+    billing_locked_at: null,
+    customer_id: "c1",
+    appliedBenefits: {
+      coupon: null,
+      referral: null,
+      reward: null,
+      manualDiscount: null,
+    },
+    items: [],
+    locations: [],
+    photos: [],
+  } as any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders Benefits and rewards section when billing is unlocked", async () => {
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    expect(screen.getByText("Benefits and rewards")).toBeTruthy();
+  });
+
+  it("renders coupon code field when unlocked", async () => {
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    expect(screen.getByText("Coupon code")).toBeTruthy();
+  });
+
+  it("renders referral code field when unlocked", async () => {
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    expect(screen.getByText("Referral code")).toBeTruthy();
+  });
+
+  it("renders reward selector when unlocked", async () => {
+    render(
+      <PaymentDialog
+        record={unlockedRecord}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+        open={true}
+      />,
+    );
+    expect(screen.getByText("Available reward")).toBeTruthy();
   });
 });

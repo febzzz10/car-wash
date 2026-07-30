@@ -3,17 +3,14 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Gift,
   MapPin,
   Plus,
   RotateCcw,
-  Sparkles,
   VideoOff,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useAuth } from "../auth";
 import {
   Button,
   Card,
@@ -45,13 +42,12 @@ import type {
   VehicleTypeRecord,
 } from "../types";
 
-const stepLabels = [
+export const stepLabels = [
   "Customer",
   "Vehicle",
   "Assign",
   "Live photo & location",
   "Services",
-  "Benefits",
   "Review",
 ] as const;
 interface ServicePayload {
@@ -63,12 +59,6 @@ interface StaffRecord {
   readonly id: string;
   readonly full_name: string;
   readonly role: string;
-}
-interface RewardRecord {
-  readonly available_from?: string | null;
-  readonly expires_at?: string | null;
-  readonly id: string;
-  readonly remaining_amount_minor: number;
 }
 interface Evidence {
   readonly photoAssetId?: string | undefined;
@@ -91,27 +81,21 @@ export default function NewWashPage() {
   const [addOnServiceIds, setAddOnServiceIds] = useState<readonly string[]>(
     restored?.addOnServiceIds ?? [],
   );
-  const [couponCode, setCouponCode] = useState(restored?.couponCode ?? "");
-  const [referralCode, setReferralCode] = useState(
-    restored?.referralCode ?? "",
-  );
-  const [rewardId, setRewardId] = useState(restored?.rewardId ?? "");
-  const [rewardAmountMinor, setRewardAmountMinor] = useState(
-    restored?.rewardUnits ?? 0,
-  );
-  const [manualDiscountMinor, setManualDiscountMinor] = useState(
-    restored?.manualDiscountMinor ?? 0,
-  );
-  const [manualDiscountReason, setManualDiscountReason] = useState(
-    restored?.manualDiscountReason ?? "",
-  );
   const [assignedUserId, setAssignedUserId] = useState(
     restored?.assignedUserId ?? "",
   );
   const [startImmediately, setStartImmediately] = useState(
     restored?.startImmediately ?? false,
   );
-  const [evidence, setEvidence] = useState<Evidence>({});
+  const [evidence, setEvidence] = useState<Evidence>(
+    restored?.photoAssetId
+      ? {
+          photoAssetId: restored.photoAssetId,
+          place: restored.place,
+          capturedAt: restored.capturedAt,
+        }
+      : {},
+  );
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,18 +104,14 @@ export default function NewWashPage() {
   const customers = useApiData<readonly CustomerRecord[]>(
     `/customers?search=${encodeURIComponent(search)}`,
   );
-  const rewards = useApiData<readonly RewardRecord[]>(
-    `/customers/${customerId || "none"}/rewards`,
-    customerId !== "",
-  );
-  const vehicles = useApiData<readonly VehicleRecord[]>("/vehicles");
-  const services = useApiData<ServicePayload>("/services");
   const staff = useApiData<readonly StaffRecord[]>(
     "/wash-jobs/assignable-users",
   );
+  const vehicles = useApiData<readonly VehicleRecord[]>("/vehicles");
+  const services = useApiData<ServicePayload>("/services");
   const navigate = useNavigate();
   const toast = useToast();
-  const { user } = useAuth();
+
   useEffect(() => {
     if (assignedUserId === "") return;
     const eligible = (staff.data ?? []).filter((p) => p.role === "STAFF");
@@ -139,8 +119,6 @@ export default function NewWashPage() {
       setAssignedUserId("");
     }
   }, [staff.data, assignedUserId]);
-  const canApplyManualDiscount =
-    user?.role === "ADMIN" || user?.permissions.includes("payments.adjust");
 
   useEffect(() => {
     sessionStorage.setItem(
@@ -148,13 +126,7 @@ export default function NewWashPage() {
       serializeWizardDraft({
         addOnServiceIds: [...addOnServiceIds],
         assignedUserId: assignedUserId || undefined,
-        couponCode: couponCode || undefined,
         customerId: customerId || undefined,
-        referralCode: referralCode || undefined,
-        rewardId: rewardId || undefined,
-        rewardUnits: rewardAmountMinor,
-        manualDiscountMinor,
-        manualDiscountReason: manualDiscountReason || undefined,
         servicePriceId: primaryServiceId || undefined,
         startImmediately,
         step,
@@ -168,17 +140,11 @@ export default function NewWashPage() {
   }, [
     addOnServiceIds,
     assignedUserId,
-    couponCode,
     customerId,
     evidence.capturedAt,
     evidence.photoAssetId,
     evidence.place,
     primaryServiceId,
-    referralCode,
-    rewardAmountMinor,
-    rewardId,
-    manualDiscountMinor,
-    manualDiscountReason,
     startImmediately,
     step,
     vehicleId,
@@ -228,9 +194,6 @@ export default function NewWashPage() {
         assignedUserId !== "",
         evidence.photoAssetId !== undefined,
         primaryServiceId !== "",
-        (rewardId === "" || rewardAmountMinor > 0) &&
-          (manualDiscountMinor === 0 ||
-            manualDiscountReason.trim().length >= 5),
         true,
       ][step] ?? false
     );
@@ -247,7 +210,6 @@ export default function NewWashPage() {
         ...jsonBody({
           addOnServiceIds,
           assignedUserId,
-          couponCode: couponCode.trim() || undefined,
           customerId,
           idempotencyKey: crypto.randomUUID(),
           initialStatus:
@@ -256,17 +218,8 @@ export default function NewWashPage() {
             evidence.place !== undefined && evidence.capturedAt !== undefined
               ? { place: evidence.place.trim(), capturedAt: evidence.capturedAt }
               : {},
-          manualDiscountReason:
-            manualDiscountMinor > 0 ? manualDiscountReason.trim() : undefined,
-          manualDiscountMinor,
           photoAssetId: evidence.photoAssetId,
           primaryServiceId,
-          referralCode: referralCode.trim() || undefined,
-          rewardAmountMinor:
-            rewardId === "" || rewardAmountMinor <= 0
-              ? undefined
-              : rewardAmountMinor,
-          rewardId: rewardId || undefined,
           vehicleId,
         }),
         method: "POST",
@@ -349,8 +302,6 @@ export default function NewWashPage() {
                       onClick={() => {
                         setCustomerId(customer.id);
                         setVehicleId("");
-                        setRewardId("");
-                        setRewardAmountMinor(0);
                       }}
                       primary={customer.full_name}
                       secondary={`${customer.phone} · ${customer.total_visits_cached} visits`}
@@ -494,131 +445,6 @@ export default function NewWashPage() {
             </SelectionStep>
           ) : null}
           {step === 5 ? (
-            <SelectionStep
-              heading="Benefits and rewards"
-              intro="Codes are checked for dates, limits, customer, vehicle, service, and stacking eligibility when the job is created."
-            >
-              <div className="form-grid">
-                <label>
-                  <span>Coupon code</span>
-                  <div className="input-with-icon">
-                    <Gift size={18} />
-                    <input
-                      autoCapitalize="characters"
-                      onChange={(event) =>
-                        setCouponCode(event.target.value.toUpperCase())
-                      }
-                      placeholder="Optional"
-                      value={couponCode}
-                    />
-                  </div>
-                </label>
-                <label>
-                  <span>Referral code</span>
-                  <div className="input-with-icon">
-                    <Sparkles size={18} />
-                    <input
-                      autoCapitalize="characters"
-                      onChange={(event) =>
-                        setReferralCode(event.target.value.toUpperCase())
-                      }
-                      placeholder="Optional"
-                      value={referralCode}
-                    />
-                  </div>
-                </label>
-                <label>
-                  <span>Available reward</span>
-                  <select
-                    onChange={(event) => {
-                      const selected = rewards.data?.find(
-                        (reward) => reward.id === event.target.value,
-                      );
-                      setRewardId(event.target.value);
-                      setRewardAmountMinor(
-                        selected?.remaining_amount_minor ?? 0,
-                      );
-                    }}
-                    value={rewardId}
-                  >
-                    <option value="">Do not redeem a reward</option>
-                    {rewards.data?.map((reward) => (
-                      <option key={reward.id} value={reward.id}>
-                        {money(reward.remaining_amount_minor)}
-                        {reward.expires_at === null ||
-                        reward.expires_at === undefined
-                          ? ""
-                          : ` · expires ${new Date(reward.expires_at).toLocaleDateString()}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Reward amount</span>
-                  <input
-                    disabled={rewardId === ""}
-                    max={
-                      (rewards.data?.find((item) => item.id === rewardId)
-                        ?.remaining_amount_minor ?? 0) / 100
-                    }
-                    min="0.01"
-                    onChange={(event) =>
-                      setRewardAmountMinor(
-                        Math.max(
-                          0,
-                          Math.round(Number(event.target.value) * 100),
-                        ),
-                      )
-                    }
-                    step="0.01"
-                    type="number"
-                    value={(rewardAmountMinor / 100).toString()}
-                  />
-                </label>
-              </div>
-              {canApplyManualDiscount ? (
-                <div className="form-grid benefit-admin-fields">
-                  <label>
-                    <span>Manual discount</span>
-                    <input
-                      min="0"
-                      onChange={(event) =>
-                        setManualDiscountMinor(
-                          Math.max(
-                            0,
-                            Math.round(Number(event.target.value) * 100),
-                          ),
-                        )
-                      }
-                      step="0.01"
-                      type="number"
-                      value={(manualDiscountMinor / 100).toString()}
-                    />
-                  </label>
-                  <label>
-                    <span>Manual discount reason</span>
-                    <input
-                      disabled={manualDiscountMinor === 0}
-                      minLength={5}
-                      onChange={(event) =>
-                        setManualDiscountReason(event.target.value)
-                      }
-                      required={manualDiscountMinor > 0}
-                      value={manualDiscountReason}
-                    />
-                  </label>
-                </div>
-              ) : null}
-              <div className="info-panel">
-                <strong>Server-verified benefits</strong>
-                <p>
-                  Invalid, expired, exhausted, duplicated, or ineligible
-                  benefits are rejected without losing this form.
-                </p>
-              </div>
-            </SelectionStep>
-          ) : null}
-          {step === 6 ? (
             <ReviewStep
               addOns={selectedAddOns}
               assignedUserName={
@@ -627,14 +453,10 @@ export default function NewWashPage() {
                   : (staff.data?.find((p) => p.id === assignedUserId)
                       ?.full_name ?? "Unassigned")
               }
-              couponCode={couponCode}
               customer={selectedCustomer}
-              enteredDiscountMinor={rewardAmountMinor + manualDiscountMinor}
               estimate={estimate}
               evidence={evidence}
               primary={selectedPrimary}
-              referralCode={referralCode}
-              rewardAmountMinor={rewardAmountMinor}
               startImmediately={startImmediately}
               vehicle={selectedVehicle}
             />
@@ -1050,27 +872,19 @@ function PhotoLocationStep({
 function ReviewStep({
   addOns,
   assignedUserName,
-  couponCode,
   customer,
-  enteredDiscountMinor,
   estimate,
   evidence,
   primary,
-  referralCode,
-  rewardAmountMinor,
   startImmediately,
   vehicle,
 }: {
   readonly addOns: readonly ServiceRecord[];
   readonly assignedUserName: string;
-  readonly couponCode: string;
   readonly customer: CustomerRecord | undefined;
-  readonly enteredDiscountMinor: number;
   readonly estimate: number;
   readonly evidence: Evidence;
   readonly primary: ServiceRecord | undefined;
-  readonly referralCode: string;
-  readonly rewardAmountMinor: number;
   readonly startImmediately: boolean;
   readonly vehicle: VehicleRecord | undefined;
 }) {
@@ -1148,41 +962,12 @@ function ReviewStep({
           </small>
         </div>
       </div>
-      {couponCode || referralCode || rewardAmountMinor > 0 ? (
-        <div className="review-benefits">
-          <p className="eyebrow">Benefits</p>
-          {couponCode ? (
-            <div className="summary-line">
-              <span>Coupon</span>
-              <strong>{couponCode}</strong>
-            </div>
-          ) : null}
-          {referralCode ? (
-            <div className="summary-line">
-              <span>Referral</span>
-              <strong>{referralCode}</strong>
-            </div>
-          ) : null}
-          {rewardAmountMinor > 0 ? (
-            <div className="summary-line">
-              <span>Reward</span>
-              <strong>{money(rewardAmountMinor)}</strong>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
       <div className="review-total">
         <span>Estimated service value</span>
         <strong>{money(estimate)}</strong>
         <small>
           Final total appears after server-side discounts, tax, and rounding.
         </small>
-        {enteredDiscountMinor > 0 ? (
-          <small>
-            Selected reward/manual discounts: {money(enteredDiscountMinor)};
-            eligibility and caps are checked on creation.
-          </small>
-        ) : null}
       </div>
     </SelectionStep>
   );

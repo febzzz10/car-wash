@@ -1,5 +1,4 @@
 import type {
-  DiscountType,
   WashJobStatus,
 } from "@washpro/contracts";
 import { verifyBenefitsRequestSchema } from "@washpro/contracts";
@@ -32,7 +31,6 @@ const idSchema = z.string().trim().min(8).max(64);
 const createJobSchema = z.object({
   addOnServiceIds: z.array(idSchema).max(20).default([]),
   assignedUserId: idSchema,
-  couponCode: z.string().trim().max(40).optional(),
   customerId: idSchema,
   idempotencyKey: z.string().trim().min(16).max(128),
   initialStatus: z.enum(["DRAFT", "WAITING", "IN_PROGRESS"]).default("WAITING"),
@@ -50,14 +48,9 @@ const createJobSchema = z.object({
       (data.place === undefined && data.capturedAt === undefined),
     { message: "Both place and capturedAt must be provided together, or both omitted." },
   ),
-  manualDiscountMinor: z.number().int().nonnegative().default(0),
-  manualDiscountReason: z.string().trim().min(5).max(500).optional(),
   notes: z.string().trim().max(2000).optional(),
   photoAssetId: idSchema,
   primaryServiceId: idSchema,
-  referralCode: z.string().trim().max(40).optional(),
-  rewardAmountMinor: z.number().int().positive().optional(),
-  rewardId: idSchema.optional(),
   vehicleId: idSchema,
 }).strict();
 const actionSchema = z.object({ version: z.number().int().positive() });
@@ -104,23 +97,6 @@ interface ServiceRow {
   readonly name: string;
   readonly price_minor: number;
   readonly service_kind: "PRIMARY" | "ADD_ON";
-}
-
-interface CouponRow {
-  readonly code: string;
-  readonly code_normalized: string;
-  readonly discount_type: DiscountType;
-  readonly discount_value: number;
-  readonly expires_at: string;
-  readonly id: string;
-  readonly is_active: number;
-  readonly maximum_discount_minor: number | null;
-  readonly minimum_bill_minor: number;
-  readonly new_customers_only: number;
-  readonly start_at: string;
-  readonly total_usage_count_cached: number;
-  readonly total_usage_limit: number | null;
-  readonly usage_limit_per_customer: number | null;
 }
 
 interface JobRow {
@@ -198,17 +174,6 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       422,
       "VALIDATION_ERROR",
       "Check each wash step and try again.",
-    );
-  }
-  if (
-    parsed.data.manualDiscountMinor > 0 &&
-    (parsed.data.manualDiscountReason === undefined ||
-      (auth.role !== "ADMIN" && !auth.permissions.includes("payments.adjust")))
-  ) {
-    throw new ApiError(
-      403,
-      "AUTH_PERMISSION_DENIED",
-      "Manual discounts require permission and a reason.",
     );
   }
   if (auth.branchId === null) {
@@ -332,220 +297,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
     auth.organizationId,
     auth.branchId,
   );
-  const subtotalMinor = selectedServices.reduce(
-    (sum, service) => sum + service.price_minor,
-    0,
-  );
   const serviceIds = selectedServices.map((service) => service.id);
-  let coupon: CouponRow | null = null;
-  let couponDiscountMinor = 0;
-  if (
-    parsed.data.couponCode !== undefined &&
-    parsed.data.couponCode.trim() !== ""
-  ) {
-    coupon = await c.env.DB.prepare(
-      "SELECT * FROM coupons WHERE organization_id = ? AND code_normalized = ?",
-    )
-      .bind(auth.organizationId, normalizeCode(parsed.data.couponCode))
-      .first<CouponRow>();
-    if (coupon === null)
-      throw new ApiError(422, "COUPON_INVALID", "The coupon code is invalid.");
-    const [eligibleServices, eligibleVehicleTypes, usage] = await Promise.all([
-      c.env.DB.prepare(
-        "SELECT service_id FROM coupon_eligible_services WHERE coupon_id = ?",
-      )
-        .bind(coupon.id)
-        .all<{ service_id: string }>(),
-      c.env.DB.prepare(
-        "SELECT vehicle_type_id FROM coupon_eligible_vehicle_types WHERE coupon_id = ?",
-      )
-        .bind(coupon.id)
-        .all<{ vehicle_type_id: string }>(),
-      c.env.DB.prepare(
-        "SELECT COUNT(*) AS count FROM coupon_redemptions WHERE coupon_id = ? AND customer_id = ? AND status IN ('RESERVED', 'REDEEMED')",
-      )
-        .bind(coupon.id, parsed.data.customerId)
-        .first<number>("count"),
-    ]);
-    const validation = validateCoupon(
-      {
-        active: coupon.is_active === 1,
-        code: coupon.code,
-        discountType: coupon.discount_type,
-        discountValue: coupon.discount_value,
-        eligibleServiceIds: eligibleServices.results.map(
-          (row) => row.service_id,
-        ),
-        eligibleVehicleTypeIds: eligibleVehicleTypes.results.map(
-          (row) => row.vehicle_type_id,
-        ),
-        expiresAt: coupon.expires_at,
-        maximumDiscountMinor: coupon.maximum_discount_minor,
-        minimumBillMinor: coupon.minimum_bill_minor,
-        newCustomersOnly: coupon.new_customers_only === 1,
-        perCustomerLimit: coupon.usage_limit_per_customer,
-        startsAt: coupon.start_at,
-        totalUsageLimit: coupon.total_usage_limit,
-      },
-      {
-        customerCompletedVisits: related.customer_visits,
-        customerUsageCount: usage ?? 0,
-        now: new Date().toISOString(),
-        serviceIds,
-        subtotalMinor,
-        totalUsageCount: coupon.total_usage_count_cached,
-        vehicleTypeId: related.vehicle_type_id,
-      },
-    );
-    if (!validation.valid)
-      throw new ApiError(
-        422,
-        validation.reason,
-        "The coupon is not eligible for this wash.",
-      );
-    couponDiscountMinor = validation.discountMinor;
-  }
-
-  let referral: {
-    readonly code: string;
-    readonly codeId: string;
-    readonly discountMinor: number;
-    readonly referrerCustomerId: string;
-    readonly rewardType: DiscountType;
-    readonly rewardValue: number;
-  } | null = null;
-  if (
-    parsed.data.referralCode !== undefined &&
-    parsed.data.referralCode.trim() !== ""
-  ) {
-    if (
-      coupon !== null &&
-      !booleanSetting(settings, "coupon.allow_referral_stacking", false)
-    ) {
-      throw new ApiError(
-        422,
-        "REFERRAL_INVALID",
-        "Coupon and referral stacking is disabled.",
-      );
-    }
-    const code = await c.env.DB.prepare(
-      "SELECT * FROM referral_codes WHERE organization_id = ? AND code_normalized = ?",
-    )
-      .bind(auth.organizationId, normalizeCode(parsed.data.referralCode))
-      .first<{
-        code: string;
-        customer_id: string;
-        expires_at: string | null;
-        id: string;
-        status: "ACTIVE" | "DISABLED" | "EXPIRED";
-      }>();
-    if (code === null)
-      throw new ApiError(
-        422,
-        "REFERRAL_INVALID",
-        "The referral code is invalid.",
-      );
-    const alreadyUsed =
-      (await c.env.DB.prepare(
-        "SELECT COUNT(*) AS count FROM referral_redemptions WHERE referred_customer_id = ? AND status IN ('PENDING', 'QUALIFIED', 'REWARD_ISSUED')",
-      )
-        .bind(parsed.data.customerId)
-        .first<number>("count")) ?? 0;
-    const friendType = stringSetting(
-      settings,
-      "referral.friend_discount_type",
-      "FIXED",
-    ) as DiscountType;
-    const validation = validateReferral(
-      {
-        eligibleServiceIds: parseStringArray(
-          stringSetting(settings, "referral.eligible_service_ids", "[]"),
-        ),
-        eligibleVehicleTypeIds: parseStringArray(
-          stringSetting(settings, "referral.eligible_vehicle_type_ids", "[]"),
-        ),
-        enabled: booleanSetting(settings, "referral.enabled", true),
-        expiresAt: code.expires_at,
-        friendDiscountType: friendType,
-        friendDiscountValue: integerSetting(
-          settings,
-          "referral.friend_discount_value",
-          0,
-        ),
-        maximumDiscountMinor:
-          integerSetting(settings, "referral.maximum_discount_minor", 0) ||
-          null,
-        minimumBillMinor: integerSetting(
-          settings,
-          "referral.minimum_bill_minor",
-          0,
-        ),
-        newCustomersOnly: booleanSetting(
-          settings,
-          "referral.new_customers_only",
-          true,
-        ),
-        referrerCustomerId: code.customer_id,
-        status: code.status,
-      },
-      {
-        benefitAlreadyUsed: alreadyUsed > 0,
-        completedVisits: related.customer_visits,
-        now: new Date().toISOString(),
-        referredCustomerId: parsed.data.customerId,
-        serviceIds,
-        subtotalMinor,
-        vehicleTypeId: related.vehicle_type_id,
-      },
-    );
-    if (!validation.valid)
-      throw new ApiError(
-        422,
-        validation.reason,
-        "The referral is not eligible for this wash.",
-      );
-    referral = {
-      code: code.code,
-      codeId: code.id,
-      discountMinor: validation.discountMinor,
-      referrerCustomerId: code.customer_id,
-      rewardType: stringSetting(
-        settings,
-        "referral.reward_type",
-        "FIXED",
-      ) as DiscountType,
-      rewardValue: integerSetting(settings, "referral.reward_value", 0),
-    };
-  }
-
-  let reward: { id: string; amountMinor: number; version: number } | null =
-    null;
-  if (parsed.data.rewardId !== undefined) {
-    const row = await c.env.DB.prepare(
-      "SELECT id, remaining_amount_minor, version FROM referral_rewards WHERE id = ? AND organization_id = ? AND customer_id = ? AND status = 'AVAILABLE' AND (expires_at IS NULL OR expires_at >= ?)",
-    )
-      .bind(
-        parsed.data.rewardId,
-        auth.organizationId,
-        parsed.data.customerId,
-        new Date().toISOString(),
-      )
-      .first<{ id: string; remaining_amount_minor: number; version: number }>();
-    if (row === null)
-      throw new ApiError(
-        422,
-        "REFERRAL_REWARD_UNAVAILABLE",
-        "The selected reward is unavailable.",
-      );
-    reward = {
-      id: row.id,
-      amountMinor: Math.min(
-        parsed.data.rewardAmountMinor ?? row.remaining_amount_minor,
-        row.remaining_amount_minor,
-      ),
-      version: row.version,
-    };
-  }
 
   const taxRate = booleanSetting(settings, "tax.enabled", true)
     ? integerSetting(settings, "tax.rate_basis_points", 0)
@@ -555,14 +307,14 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       ? "NEAREST_RUPEE"
       : "NONE";
   const bill = calculateBill({
-    couponDiscountMinor,
+    couponDiscountMinor: 0,
     items: selectedServices.map((service) => ({
       quantity: 1,
       unitPriceMinor: service.price_minor,
     })),
-    manualDiscountMinor: parsed.data.manualDiscountMinor,
-    referralDiscountMinor: referral?.discountMinor ?? 0,
-    rewardDiscountMinor: reward?.amountMinor ?? 0,
+    manualDiscountMinor: 0,
+    referralDiscountMinor: 0,
+    rewardDiscountMinor: 0,
     roundingMode: rounding,
     taxRateBasisPoints: taxRate,
   });
@@ -634,7 +386,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       parsed.data.location.place || null,
       parsed.data.location.capturedAt ?? null,
       parsed.data.notes ?? null,
-      parsed.data.manualDiscountReason ?? null,
+      null /* manual_discount_reason — benefits removed */,
       rounding,
       auth.userId,
       auth.userId,
@@ -700,11 +452,11 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       action: "WASH_JOB_CREATED",
       auth,
       next: { bill, jobId, jobReference, serviceIds },
-      reason: parsed.data.manualDiscountReason ?? null,
+      reason: null,
       recordId: jobId,
       recordType: "WASH_JOB",
       requestId: c.get("requestId"),
-      severity: bill.manualDiscountMinor > 0 ? "WARNING" : "INFO",
+      severity: "INFO",
     }),
   ];
   if (status === "IN_PROGRESS") {
@@ -717,75 +469,6 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
         now.toISOString(),
         auth.userId,
         now.toISOString(),
-      ),
-    );
-  }
-  if (coupon !== null) {
-    statements.push(
-      c.env.DB.prepare(
-        `INSERT INTO coupon_redemptions (id, coupon_id, customer_id, wash_job_id, status, original_amount_minor, discount_amount_minor, coupon_code_snapshot, discount_type_snapshot, discount_value_snapshot, reserved_at, created_by_user_id) VALUES (?, ?, ?, ?, 'RESERVED', ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(
-        crypto.randomUUID(),
-        coupon.id,
-        parsed.data.customerId,
-        jobId,
-        bill.subtotalMinor,
-        bill.couponDiscountMinor,
-        coupon.code,
-        coupon.discount_type,
-        coupon.discount_value,
-        now.toISOString(),
-        auth.userId,
-      ),
-      c.env.DB.prepare(
-        "UPDATE coupons SET total_usage_count_cached = total_usage_count_cached + 1, updated_at = ?, version = version + 1 WHERE id = ?",
-      ).bind(now.toISOString(), coupon.id),
-    );
-  }
-  if (referral !== null) {
-    statements.push(
-      c.env.DB.prepare(
-        `INSERT INTO referral_redemptions (id, organization_id, referral_code_id, referring_customer_id, referred_customer_id, referred_wash_job_id, status, friend_discount_type_snapshot, friend_discount_value_snapshot, friend_discount_minor, reward_type_snapshot, reward_value_snapshot, created_at, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(
-        crypto.randomUUID(),
-        auth.organizationId,
-        referral.codeId,
-        referral.referrerCustomerId,
-        parsed.data.customerId,
-        jobId,
-        stringSetting(settings, "referral.friend_discount_type", "FIXED"),
-        integerSetting(settings, "referral.friend_discount_value", 0),
-        referral.discountMinor,
-        referral.rewardType,
-        referral.rewardValue,
-        now.toISOString(),
-        auth.userId,
-      ),
-    );
-  }
-  if (reward !== null) {
-    const remaining = reward.amountMinor;
-    statements.push(
-      c.env.DB.prepare(
-        "UPDATE referral_rewards SET status = 'RESERVED', reserved_for_wash_job_id = ?, remaining_amount_minor = remaining_amount_minor - ?, updated_at = ?, version = version + 1 WHERE id = ? AND status = 'AVAILABLE' AND version = ? AND remaining_amount_minor >= ?",
-      ).bind(
-        jobId,
-        remaining,
-        now.toISOString(),
-        reward.id,
-        reward.version,
-        remaining,
-      ),
-      c.env.DB.prepare(
-        "INSERT INTO referral_reward_transactions (id, referral_reward_id, customer_id, wash_job_id, transaction_type, amount_minor, balance_after_minor, performed_by_user_id, created_at) SELECT ?, id, customer_id, ?, 'RESERVE', ?, remaining_amount_minor, ?, ? FROM referral_rewards WHERE id = ? AND reserved_for_wash_job_id = ?",
-      ).bind(
-        crypto.randomUUID(),
-        jobId,
-        remaining,
-        auth.userId,
-        now.toISOString(),
-        reward.id,
-        jobId,
       ),
     );
   }

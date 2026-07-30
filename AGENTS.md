@@ -91,6 +91,19 @@ All UI components are in `apps/web/src/components/ui.tsx`: `Button`, `Card`, `Di
 - Do not expose sensitive backend information in the UI.
 - Password inputs must use `type="password"` with show/hide toggles. Clear fields after submission or dialog closure. Never store passwords in localStorage, sessionStorage, or URLs.
 
+### New Wash wizard flow
+
+The New Wash wizard has **six steps**:
+
+1. Customer
+2. Vehicle
+3. Assign
+4. Live photo & location
+5. Services
+6. Review
+
+Benefits (coupons, referrals, rewards, manual discounts) are **not** selected during wash-job creation. The create-job API rejects benefit fields as unknown. Benefits may only be applied during first-payment recording through the Record Payment dialog, and only before the first successful payment (while `billing_locked_at` is NULL and `paid_amount_minor` is 0). Existing historical benefit records on wash jobs remain readable.
+
 ---
 
 ## API and backend rules

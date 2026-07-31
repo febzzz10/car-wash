@@ -3,6 +3,7 @@ import {
   normalizeEmail,
   normalizeNameSearch,
   normalizePhone,
+  normalizeRegistration,
 } from "@washpro/domain";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -43,20 +44,69 @@ customerRoutes.get("/", requirePermission("customers.read"), async (c) => {
   const query = c.req.query("search")?.trim() ?? "";
   const status = c.req.query("status") === "INACTIVE" ? "INACTIVE" : "ACTIVE";
   const like = `%${query.toLocaleLowerCase("en-IN").replace(/\s+/gu, " ")}%`;
-  const phoneLike = `%${query.replace(/\D/gu, "")}%`;
+  const digits = query.replace(/\D/gu, "");
+  const phoneLike = digits === "" ? "" : `%${digits}%`;
+  let registrationSearch: string | null = null;
+  if (query.length > 0) {
+    try {
+      registrationSearch = normalizeRegistration(query).search;
+    } catch {
+      registrationSearch = null;
+    }
+  }
   const result = await c.env.DB.prepare(
     `SELECT id, customer_code, full_name, phone, phone_normalized, email,
       address, notes, status, registered_at, last_visit_at,
       total_visits_cached, total_spent_minor_cached, created_at, updated_at, version
     FROM customers
     WHERE organization_id = ? AND status = ?
-      AND (? = '' OR name_search LIKE ? OR replace(phone_normalized, '+', '') LIKE ?)
+      AND (
+        ? = ''
+        OR name_search LIKE ?
+        OR (? <> '' AND replace(phone_normalized, '+', '') LIKE ?)
+        OR (? IS NOT NULL AND EXISTS (
+          SELECT 1 FROM vehicles v
+          WHERE v.organization_id = customers.organization_id
+            AND v.customer_id = customers.id
+            AND v.registration_normalized = ?
+        ))
+      )
     ORDER BY COALESCE(last_visit_at, registered_at) DESC
     LIMIT 100`,
   )
-    .bind(auth.organizationId, status, query, like, phoneLike)
+    .bind(
+      auth.organizationId,
+      status,
+      query,
+      like,
+      phoneLike,
+      phoneLike,
+      registrationSearch,
+      registrationSearch,
+    )
     .all();
-  return c.json({ data: result.results, success: true });
+  const matchingRegistrations = new Map<string, string[]>();
+  if (registrationSearch !== null) {
+    const matches = await c.env.DB.prepare(
+      `SELECT customer_id, registration_number FROM vehicles
+       WHERE organization_id = ? AND registration_normalized = ?`,
+    )
+      .bind(auth.organizationId, registrationSearch)
+      .all();
+    for (const row of matches.results) {
+      const customerId = row.customer_id as string;
+      const registrations = matchingRegistrations.get(customerId) ?? [];
+      registrations.push(row.registration_number as string);
+      matchingRegistrations.set(customerId, registrations);
+    }
+  }
+  const data = result.results.map((row) => {
+    const registrations = matchingRegistrations.get(row.id as string);
+    return registrations === undefined
+      ? row
+      : { ...row, matching_registrations: registrations };
+  });
+  return c.json({ data, success: true });
 });
 
 customerRoutes.post("/", requirePermission("customers.create"), async (c) => {

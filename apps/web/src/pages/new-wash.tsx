@@ -271,12 +271,12 @@ export default function NewWashPage() {
           {step === 0 ? (
             <SelectionStep
               heading="Who is this wash for?"
-              intro="Search by customer name or phone. Phone numbers are normalized and checked for duplicates."
+              intro="Search by customer name, phone, or vehicle registration number. Phone and registration numbers are normalized for matching."
             >
               <div className="selection-toolbar">
                 <SearchField
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Name or phone…"
+                  placeholder="Name, phone, or registration number..."
                   value={search}
                 />
                 <Button
@@ -304,7 +304,12 @@ export default function NewWashPage() {
                         setVehicleId("");
                       }}
                       primary={customer.full_name}
-                      secondary={`${customer.phone} · ${customer.total_visits_cached} visits`}
+                      secondary={
+                        customer.matching_registrations !== undefined &&
+                        customer.matching_registrations.length > 0
+                          ? `${customer.matching_registrations.join(", ")} · ${customer.phone} · ${customer.total_visits_cached} visits`
+                          : `${customer.phone} · ${customer.total_visits_cached} visits`
+                      }
                     />
                   ))}
                 </div>

@@ -36,6 +36,7 @@ vi.mock("../hooks/use-api-data", () => ({
             full_name: "Test Customer",
             phone: "9876543210",
             total_visits_cached: 3,
+            matching_registrations: ["KL01TEST"],
           },
         ],
         error: null,
@@ -625,5 +626,79 @@ describe("New Wash — wizard summary panel", () => {
     expect(liveMatches.length).toBeGreaterThanOrEqual(2);
     const placeMatches = screen.getAllByText(/Place/);
     expect(placeMatches.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("New Wash — customer registration search", () => {
+  it("renders the updated helper text", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByText(
+        "Search by customer name, phone, or vehicle registration number. Phone and registration numbers are normalized for matching.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("renders the updated placeholder", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByPlaceholderText("Name, phone, or registration number..."),
+    ).toBeTruthy();
+  });
+
+  it("shows matching registration numbers on registration-matched results", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByText("KL01TEST · 9876543210 · 3 visits"),
+    ).toBeTruthy();
+  });
+
+  it("selecting a registration-matched customer continues the wizard", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    const customerButton = screen
+      .getByText("Test Customer")
+      .closest("button")!;
+    fireEvent.click(customerButton);
+    const continueButton = screen.getByText("Continue").closest("button")!;
+    expect(continueButton).not.toBeDisabled();
+    fireEvent.click(continueButton);
+    expect(screen.getByText("Select a vehicle")).toBeTruthy();
+  });
+
+  it("shows the normal empty state when a registration search has no match", async () => {
+    const useApiData = (await import("../hooks/use-api-data")).useApiData;
+    vi.mocked(useApiData).mockImplementationOnce(() => ({
+      data: [],
+      error: null,
+      loading: false,
+      reload: mockReload,
+    }));
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText("Test Customer")).toBeNull();
   });
 });

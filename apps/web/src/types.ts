@@ -18,6 +18,7 @@ export interface CustomerRecord {
   readonly total_spent_minor_cached: number;
   readonly last_visit_at?: string | null;
   readonly version: number;
+  readonly matching_registrations?: readonly string[];
 }
 
 export interface VehicleRecord {

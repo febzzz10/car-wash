@@ -1,3 +1,8 @@
+import {
+  formatMinorForDisplay,
+  REPORT_COLUMNS,
+  REPORT_KEYS,
+} from "@washpro/domain";
 import { BarChart3, Download, FileText } from "lucide-react";
 import { useState } from "react";
 
@@ -11,21 +16,9 @@ import {
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
 import { apiBlob, jsonBody } from "../lib/api";
-import { money, titleCase } from "../lib/format";
+import { activeCurrencyCode, titleCase } from "../lib/format";
 
-const reportTypes = [
-  "revenue",
-  "expenses",
-  "profit",
-  "services",
-  "vehicles",
-  "customers",
-  "coupons",
-  "referrals",
-  "staff",
-  "payments",
-  "jobs",
-] as const;
+const reportTypes = REPORT_KEYS;
 type ReportType = (typeof reportTypes)[number];
 export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10);
@@ -112,15 +105,17 @@ export default function ReportsPage() {
         ) : state.error !== null ? (
           <ErrorState message={state.error} onRetry={state.reload} />
         ) : (
-          <ReportTable rows={rows} />
+          <ReportTable report={report} rows={rows} />
         )}
       </Card>
     </>
   );
 }
 function ReportTable({
+  report,
   rows,
 }: {
+  readonly report: ReportType;
   readonly rows: readonly Record<string, unknown>[];
 }) {
   if (rows.length === 0)
@@ -133,14 +128,15 @@ function ReportTable({
         <p>Try another date range.</p>
       </div>
     );
-  const columns = Object.keys(rows[0] ?? {});
+  const columns = REPORT_COLUMNS[report];
+  const currency = activeCurrencyCode();
   return (
     <div className="table-wrap report-table">
       <table>
         <thead>
           <tr>
             {columns.map((column) => (
-              <th key={column}>{titleCase(column)}</th>
+              <th key={column.key}>{column.label}</th>
             ))}
           </tr>
         </thead>
@@ -148,10 +144,15 @@ function ReportTable({
           {rows.map((row, rowIndex) => (
             <tr key={rowIndex}>
               {columns.map((column) => (
-                <td key={column}>
-                  {typeof row[column] === "number" && column.includes("minor")
-                    ? money(Number(row[column]))
-                    : String(row[column] ?? "—")}
+                <td
+                  className={
+                    column.type === "currencyMinor" ? "cell-currency" : undefined
+                  }
+                  key={column.key}
+                >
+                  {column.type === "currencyMinor"
+                    ? formatMinorForDisplay(row[column.key], currency)
+                    : String(row[column.key] ?? "—")}
                 </td>
               ))}
             </tr>

@@ -57,6 +57,10 @@ export function isFiniteMinorAmount(value: number): boolean {
   return Number.isFinite(value);
 }
 
+export function activeCurrencyCode(): string {
+  return activePreferences.currency;
+}
+
 export function money(minor: number | null | undefined, currency?: string): string {
   if (!isFiniteMinorAmount(minor ?? NaN)) return "—";
   const safeMinor = minor as number;

@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — Current WashPro Implementation State
 
-*Last updated: 2026-07-29*
+*Last updated: 2026-07-31*
 
 ## Active deployments
 
@@ -13,15 +13,15 @@
 
 `https://washpro-web.xpersscarwash.workers.dev`
 
-## Test results (last run uncommitted)
+## Test results (last run: 2026-07-31)
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 15 | 226 | ✅ All pass |
-| @washpro/api | 14 | 66 | ✅ All pass |
-| @washpro/contracts | 1 | 4 | ✅ All pass |
-| @washpro/domain | 9 | 32 | ✅ All pass |
-| **Total** | **39** | **328** | **✅ All pass** |
+| @washpro/web | 18 | 349 | ✅ All pass |
+| @washpro/api | 20 | 168 | ✅ All pass |
+| @washpro/contracts | 1 | 20 | ✅ All pass |
+| @washpro/domain | 8 | 53 | ✅ All pass |
+| **Total** | **47** | **590** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -44,6 +44,10 @@ All packages: ✅ 0 errors
 7. **Vehicle-type PNG icons** (`570b81f`): Replaced Lucide SVG icons for vehicle types with PNG images (two-wheeler, three-wheeler, four-wheeler). Baked into Vite build, served from Worker assets.
 
 8. **Vehicle model autocomplete** (migration 0012, fully production-verified): New `vehicle_models` D1 table with `UNIQUE(organization_id, normalized_name)`. `GET /api/v1/vehicle-models` endpoint with safe prefix range matching. Reusable `VehicleModelAutocomplete` component with ARIA combobox pattern. Auto-upserts model on successful vehicle create/update. Backfill script for existing data. Authenticated Add Vehicle, Edit Vehicle, keyboard navigation, duplicate handling, API failure fallback, case-insensitive matching, and organization isolation all verified in production.
+
+9. **Refund toggle for payment recording** (deployed, commits `67a1ded`…`8442881`): Refund confirmation UI when recording first payment with refunds, refund locked when `billing_locked_at` set, benefits blocked from create-job API, refunds excluded from benefits eligibility. API worker `car-wash` v4c06f90b, web worker `washpro-web` v3ce9d804.
+
+10. **Report monetary formatting fix** (pending deploy): Reports module displayed raw minor-unit integers (e.g. `695000`) in the browser table, CSV, and PDF exports. Added `REPORT_COLUMNS` metadata (per-report column key/label/type) and shared helpers in `@washpro/domain`: `formatMinorForCsv` (machine-readable `6950.00`, throws on invalid values), `formatMinorForDisplay` (ASCII-safe `INR 6,950.00` fallback for PDF fonts; `—` for invalid), `formatReportLabel`. All three surfaces now use the same metadata: browser (`reports.tsx` + `cell-currency` CSS), CSV (readable headers, quoted text only, major-unit decimals), PDF (metadata columns + org currency from `business.settings`). Profit export now mirrors the browser summary row (`from`/`to`/`revenueMinor`/`expensesMinor`/`netProfitMinor`) instead of the daily financials view. API financial data remains integer minor units.
 
 ## Known issues
 

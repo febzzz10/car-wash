@@ -117,6 +117,51 @@ describe("expenses and reporting", () => {
     );
     expect(exported.status).toBe(200);
     expect(exported.headers.get("content-type")).toContain("text/csv");
+    const csv = await exported.text();
+    expect(csv.split("\r\n")[0]).toBe(
+      '"Date","Reference","Category","Title","Amount","Payment","Status"',
+    );
+    expect(csv).toContain('"Chemicals","Cleaning supplies",30.00,"UPI","CANCELLED"');
+    expect(csv).not.toContain("3000");
+    expect(csv).not.toContain("minor");
+
+    const injected = await app.request(
+      "/api/v1/expenses",
+      {
+        body: JSON.stringify({
+          amountMinor: 1500,
+          categoryId: "category-report",
+          description: "Formula injection attempt",
+          expenseDate: "2026-07-23",
+          idempotencyKey: "expense-key-0000002",
+          paymentMethod: "CASH",
+          title: '=1+1"',
+        }),
+        headers: mutationHeaders,
+        method: "POST",
+      },
+      env,
+    );
+    expect(injected.status).toBe(201);
+    const injectedCsv = await (
+      await app.request(
+        "/api/v1/reports/export",
+        {
+          body: JSON.stringify({
+            format: "CSV",
+            from: "2026-07-23",
+            report: "expenses",
+            to: "2026-07-23",
+          }),
+          headers: mutationHeaders,
+          method: "POST",
+        },
+        env,
+      )
+    ).text();
+    expect(injectedCsv).toContain('"=1+1"""');
+    expect(injectedCsv).not.toContain("=1+1,");
+    expect(injectedCsv).toContain("15.00");
 
     const pdf = await app.request(
       "/api/v1/reports/export",
@@ -137,6 +182,27 @@ describe("expenses and reporting", () => {
     expect(
       new TextDecoder().decode((await pdf.arrayBuffer()).slice(0, 5)),
     ).toBe("%PDF-");
+
+    const profitExport = await app.request(
+      "/api/v1/reports/export",
+      {
+        body: JSON.stringify({
+          format: "CSV",
+          from: "2026-07-23",
+          report: "profit",
+          to: "2026-07-23",
+        }),
+        headers: mutationHeaders,
+        method: "POST",
+      },
+      env,
+    );
+    expect(profitExport.status).toBe(200);
+    const profitCsv = await profitExport.text();
+    expect(profitCsv.split("\r\n")[0]).toBe(
+      '"Expenses","From","Net profit","Revenue","To"',
+    );
+    expect(profitCsv).toContain("15.00,2026-07-23,-15.00,0.00,2026-07-23");
 
     const category = await app.request(
       "/api/v1/expense-categories",

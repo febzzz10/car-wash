@@ -1,3 +1,8 @@
+import {
+  formatMinorForCsv,
+  REPORT_COLUMNS,
+  REPORT_KEYS,
+} from "@washpro/domain";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -5,25 +10,14 @@ import { ApiError } from "../http/errors";
 import { requireAdmin, requirePermission } from "../middleware/auth";
 import { auditStatement } from "../services/audit";
 import { buildReportPdf } from "../services/report-pdf";
+import { loadSettings, stringSetting } from "../services/settings";
 import type { AppBindings } from "../types";
 
 const dateSchema = z.iso.date();
 const exportSchema = z.object({
   format: z.enum(["CSV", "PDF"]),
   from: dateSchema,
-  report: z.enum([
-    "revenue",
-    "expenses",
-    "profit",
-    "services",
-    "vehicles",
-    "customers",
-    "coupons",
-    "referrals",
-    "staff",
-    "payments",
-    "jobs",
-  ]),
+  report: z.enum(REPORT_KEYS),
   to: dateSchema,
 });
 
@@ -78,6 +72,30 @@ async function financialSummary(
     .first<{ expenses_minor: number; revenue_minor: number }>();
 }
 
+async function profitSummaryRow(
+  env: Env,
+  auth: { branchId: string | null; organizationId: string },
+  from: string,
+  to: string,
+): Promise<Record<string, unknown>> {
+  const financial = await financialSummary(
+    env,
+    auth.organizationId,
+    auth.branchId,
+    from,
+    to,
+  );
+  const revenue = financial?.revenue_minor ?? 0;
+  const expenses = financial?.expenses_minor ?? 0;
+  return {
+    expensesMinor: expenses,
+    from,
+    netProfitMinor: revenue - expenses,
+    revenueMinor: revenue,
+    to,
+  };
+}
+
 async function reportRows(
   env: Env,
   organizationId: string,
@@ -116,15 +134,23 @@ async function reportRows(
   return (await statement.all<Record<string, unknown>>()).results;
 }
 
-function csv(rows: readonly Record<string, unknown>[]): string {
+function csv(
+  rows: readonly Record<string, unknown>[],
+  report: z.infer<typeof exportSchema>["report"],
+): string {
   if (rows.length === 0) return "No data\r\n";
-  const columns = Object.keys(rows[0] ?? {});
+  const columns = REPORT_COLUMNS[report] ?? [];
   const escape = (value: unknown) =>
     `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const cell = (value: unknown, type: (typeof columns)[number]["type"]) => {
+    if (type === "currencyMinor") return formatMinorForCsv(value);
+    if (type === "text") return escape(value);
+    return String(value ?? "");
+  };
   return [
-    columns.map(escape).join(","),
+    columns.map((column) => escape(column.label)).join(","),
     ...rows.map((row) =>
-      columns.map((column) => escape(row[column])).join(","),
+      columns.map((column) => cell(row[column.key], column.type)).join(","),
     ),
   ].join("\r\n");
 }
@@ -279,14 +305,17 @@ reportRoutes.post(
         "The start date must be before the end date.",
       );
     const auth = c.get("auth");
-    const rows = await reportRows(
-      c.env,
-      auth.organizationId,
-      auth.branchId,
-      parsed.data.report,
-      parsed.data.from,
-      parsed.data.to,
-    );
+    const rows =
+      parsed.data.report === "profit"
+        ? [await profitSummaryRow(c.env, auth, parsed.data.from, parsed.data.to)]
+        : await reportRows(
+            c.env,
+            auth.organizationId,
+            auth.branchId,
+            parsed.data.report,
+            parsed.data.from,
+            parsed.data.to,
+          );
     await auditStatement(c.env, {
       action: "REPORT_EXPORTED",
       auth,
@@ -296,7 +325,14 @@ reportRoutes.post(
       severity: "WARNING",
     }).run();
     if (parsed.data.format === "PDF") {
+      const settings = await loadSettings(
+        c.env,
+        auth.organizationId,
+        auth.branchId,
+      );
       const pdf = await buildReportPdf({
+        columns: REPORT_COLUMNS[parsed.data.report] ?? [],
+        currency: stringSetting(settings, "business.currency", "INR"),
         from: parsed.data.from,
         report: parsed.data.report,
         rows,
@@ -314,7 +350,7 @@ reportRoutes.post(
       "content-disposition",
       `attachment; filename="washpro-${parsed.data.report}-${parsed.data.from}-${parsed.data.to}.csv"`,
     );
-    return c.body(csv(rows), 200, {
+    return c.body(csv(rows, parsed.data.report), 200, {
       "content-type": "text/csv; charset=utf-8",
     });
   },

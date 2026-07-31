@@ -1,3 +1,8 @@
+import {
+  formatMinorForDisplay,
+  formatReportLabel,
+  type ReportColumn,
+} from "@washpro/domain";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 function printable(value: unknown): string {
@@ -13,7 +18,19 @@ function shorten(value: unknown, limit: number): string {
     : `${text.slice(0, Math.max(1, limit - 1))}…`.replace("…", ".");
 }
 
+function displayCell(
+  row: Record<string, unknown>,
+  column: ReportColumn,
+  currency: string,
+): unknown {
+  return column.type === "currencyMinor"
+    ? formatMinorForDisplay(row[column.key], currency)
+    : row[column.key];
+}
+
 export async function buildReportPdf(input: {
+  readonly columns: readonly ReportColumn[];
+  readonly currency: string;
   readonly from: string;
   readonly report: string;
   readonly rows: readonly Record<string, unknown>[];
@@ -29,7 +46,7 @@ export async function buildReportPdf(input: {
   const ink = rgb(32 / 255, 48 / 255, 65 / 255);
   const muted = rgb(100 / 255, 119 / 255, 138 / 255);
   const line = rgb(220 / 255, 230 / 255, 238 / 255);
-  const columns = Object.keys(input.rows[0] ?? {}).slice(0, 7);
+  const columns = input.columns;
   const width = 842;
   const height = 595;
   const margin = 42;
@@ -89,13 +106,16 @@ export async function buildReportPdf(input: {
         y: y - 7,
       });
       columns.forEach((column, index) =>
-        page.drawText(shorten(column.replaceAll("_", " ").toUpperCase(), 18), {
-          color: blue,
-          font: bold,
-          size: 6.5,
-          x: margin + index * columnWidth + 5,
-          y,
-        }),
+        page.drawText(
+          shorten(formatReportLabel(column.key).toUpperCase(), 18),
+          {
+            color: blue,
+            font: bold,
+            size: 6.5,
+            x: margin + index * columnWidth + 5,
+            y,
+          },
+        ),
       );
       y -= 24;
     }
@@ -118,7 +138,10 @@ export async function buildReportPdf(input: {
     }
     columns.forEach((column, index) =>
       page.drawText(
-        shorten(row[column], Math.max(8, Math.floor(columnWidth / 6))),
+        shorten(
+          displayCell(row, column, input.currency),
+          Math.max(8, Math.floor(columnWidth / 6)),
+        ),
         {
           color: ink,
           font: regular,

@@ -2029,6 +2029,9 @@ legend {
   content-visibility: auto;
   contain-intrinsic-size: 800px;
 }
+.report-table .cell-currency {
+  text-align: right;
+}
 .service-list {
   display: flex;
   flex-direction: column;

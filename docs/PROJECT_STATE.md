@@ -1,27 +1,27 @@
 # PROJECT_STATE.md — Current WashPro Implementation State
 
-*Last updated: 2026-08-01*
+*Last updated: 2026-08-02*
 
 ## Active deployments
 
 | Worker | Version ID | Commit |
 |--------|------------|--------|
 | washpro-web | `16ff6203-180d-4fd0-b374-a7a13baf6359` | (uncommitted) |
-| car-wash | `d49e520d-b222-48f5-b850-6400ecd45321` | (uncommitted) |
+| car-wash | `d768d8c1-c683-4e9e-83e1-3aa8075594ca` | `beca3fd` |
 
 ## Production URL
 
 `https://washpro-web.xpersscarwash.workers.dev`
 
-## Test results (last run: 2026-08-01)
+## Test results (last run: 2026-08-02)
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
 | @washpro/web | 20 | 378 | ✅ All pass |
-| @washpro/api | 24 | 214 | ✅ All pass |
+| @washpro/api | 27 | 242 | ✅ All pass |
 | @washpro/contracts | 1 | 24 | ✅ All pass |
 | @washpro/domain | 8 | 53 | ✅ All pass |
-| **Total** | **53** | **669** | **✅ All pass** |
+| **Total** | **56** | **697** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -54,6 +54,8 @@ All packages: ✅ 0 errors
 12. **Payment method card selector + default method setting** (not yet deployed, migration 0018): Record Payment dialog replaced its method dropdown with four PNG radio cards (Cash, UPI, Bank UPI, Paytm) mirroring the vehicle-type selector pattern. New `payment.default_method` business setting (validated against the 4 canonical methods, stored uppercased) is exposed on the session payload as `paymentDefaultMethod` and pre-selects the dialog default with a CASH fallback; Settings page saves it and refreshes the auth context. Contracts now expose `PAYMENT_METHODS` (CASH/UPI/BANK_UPI/PAYTM), `LEGACY_PAYMENT_METHODS` (CARD/BANK_TRANSFER/OTHER), and `PAYMENT_METHOD_LABELS`; the `payments` table CHECK constraint and `paymentInputSchema` accept only canonical methods while legacy rows stay readable and label-mapped (Payments list and Customer detail). Migration 0018 required a `DROP TRIGGER IF EXISTS tr_refunds_not_over_payment` workaround before the payments table rebuild because workerd reparses surviving triggers referencing the renamed table. Expenses keeps its own separate payment-method flow. 646 automated tests pass.
 
 13. **Manual discount toggle** (not yet deployed): New boolean business setting `payment.manual_discount_enabled` (default `false`) gates the manual discount feature. When off, the Record Payment dialog hides the Manual discount / Manual discount reason fields and the server rejects positive manual discounts on `POST /wash-jobs/:id/verify-benefits` and `POST /payments` with `403 MANUAL_DISCOUNT_DISABLED`. The setting is exposed on the session payload as `manualDiscountEnabled`; the Settings page renders it as "Allow manual discounts" (label override in the business group). No migration required — `business_settings` is a generic key/value table. 669 automated tests pass.
+
+14. **Hybrid admin/staff auth mode** (not yet deployed): New production `AUTH_MODE=hybrid_admin_staff` (now the `wrangler.jsonc` default) lets staff accounts sign in through the PBKDF2 database path while the static administrator keeps `ADMIN_LOGIN_EMAIL`/`ADMIN_LOGIN_PASSWORD` login. The static-admin identifier is reserved and cannot be shadowed by a DB user. Legacy 600,000-iteration hashes (from before the `beca3fd` PBKDF2 fix) fail safely with the generic invalid-credentials error and require an authorized reset. Static-admin sessions are blocked from change-password (`403 STATIC_ADMIN_PASSWORD_MANAGED_EXTERNALLY` — the password is managed through the deployment secret); database users keep the normal verified 100,000-iteration change flow. `validate-production-deploy.mjs` accepts both `AUTH_MODE` values. 13 new integration tests in `apps/api/test/hybrid-auth.test.ts`.
 
 ## Known issues
 

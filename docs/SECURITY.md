@@ -7,6 +7,12 @@
 - Password verified against `ADMIN_LOGIN_PASSWORD` secret using constant-time comparison
 - Set via `APP_ENV=production`, `AUTH_MODE=static_admin`
 
+### Production (hybrid_admin_staff mode, default)
+- Identifiers matching `ADMIN_LOGIN_EMAIL` are always authenticated against the static admin credentials — the identifier is reserved and a database user can never shadow it
+- All other identifiers use the PBKDF2 database path: normalized username/email/phone lookup, constant-time password verification, status checks (DISABLED/LOCKED rejected), sessions carry the user's organization/role/permissions
+- Legacy pre-100k-iteration PBKDF2 hashes (e.g. 600,000) fail safely with the same generic invalid-credentials error; they are never auto-rewritten and require an authorized password reset
+- In hybrid mode the static administrator cannot change their password through the API: the change-password request is rejected with `403 STATIC_ADMIN_PASSWORD_MANAGED_EXTERNALLY` (message: "The static administrator password is managed through the deployment secret.") and no database hash, session or audit record is touched. Changing the password requires updating the protected Cloudflare secret
+
 ### Development / testing
 - PBKDF2-SHA256 hashed passwords in D1
 - Test environment sets `APP_ENV=test` in vitest config to use PBKDF2 path

@@ -94,8 +94,18 @@ async function constantTimeDigestEqual(
   return crypto.timingSafeEqual(aHash, bHash);
 }
 
+export const AUTH_MODE_STATIC_ADMIN = "static_admin";
+export const AUTH_MODE_HYBRID_ADMIN_STAFF = "hybrid_admin_staff";
+
 function isStaticAdminMode(env: Env): boolean {
-  return env.APP_ENV === "production" && env.AUTH_MODE === "static_admin";
+  return env.APP_ENV === "production" && env.AUTH_MODE === AUTH_MODE_STATIC_ADMIN;
+}
+
+function isHybridAdminStaffMode(env: Env): boolean {
+  return (
+    env.APP_ENV === "production" &&
+    env.AUTH_MODE === AUTH_MODE_HYBRID_ADMIN_STAFF
+  );
 }
 
 async function recordAttempt(
@@ -260,6 +270,10 @@ publicAuthRoutes.post("/login", async (c) => {
     return await handleStaticAdminLogin(c, body);
   }
 
+  if (isHybridAdminStaffMode(c.env)) {
+    return await handleHybridLogin(c, body);
+  }
+
   return await handlePbkdf2Login(c, body);
   } catch (err) {
     if (err instanceof ApiError) throw err;
@@ -378,6 +392,26 @@ async function handleStaticAdminLogin(
     if (err instanceof ApiError) throw err;
     throw new ApiError(500, "INTERNAL_ERROR", "Auth error: " + (err instanceof Error ? err.message : String(err)));
   }
+}
+
+// ── Hybrid login (static admin + database staff) ──
+
+// The static-admin identifier is reserved: any login attempt with that
+// identifier is always authenticated against the static admin credentials,
+// so a database user can never shadow the static administrator account.
+async function handleHybridLogin(
+  c: Context<AppBindings>,
+  body: Record<string, unknown>,
+) {
+  const suppliedIdentifier =
+    typeof body.identifier === "string" ? body.identifier : "";
+  if (
+    suppliedIdentifier.trim().length > 0 &&
+    normalizeEmail(suppliedIdentifier) === normalizeEmail(c.env.ADMIN_LOGIN_EMAIL)
+  ) {
+    return await handleStaticAdminLogin(c, body);
+  }
+  return await handlePbkdf2Login(c, body);
 }
 
 // ── PBKDF2 password login (local development) ──
@@ -548,6 +582,26 @@ protectedAuthRoutes.post("/change-password", async (c) => {
       "AUTH_PERMISSION_DENIED",
       "Password management is not available with static admin authentication.",
     );
+  }
+
+  if (isHybridAdminStaffMode(c.env)) {
+    const auth = c.get("auth");
+    const adminEmail = await c.env.DB.prepare(
+      "SELECT email_normalized FROM users WHERE id = ? AND organization_id = ?",
+    )
+      .bind(auth.userId, auth.organizationId)
+      .first<string>("email_normalized");
+    if (
+      auth.role === "ADMIN" &&
+      adminEmail !== null &&
+      adminEmail === normalizeEmail(c.env.ADMIN_LOGIN_EMAIL)
+    ) {
+      throw new ApiError(
+        403,
+        "STATIC_ADMIN_PASSWORD_MANAGED_EXTERNALLY",
+        "The static administrator password is managed through the deployment secret.",
+      );
+    }
   }
 
   const body: { currentPassword?: string; newPassword?: string } = await c.req

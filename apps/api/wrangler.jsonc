@@ -17,7 +17,7 @@
 		"ADMIN_LOGIN_EMAIL": "xpersscarwash@gmail.com",
 		"ALLOWED_ORIGINS": "https://washpro-web.xpersscarwash.workers.dev",
 		"APP_ENV": "production",
-		"AUTH_MODE": "static_admin",
+		"AUTH_MODE": "hybrid_admin_staff",
 		"GEOCODE_CACHE_TTL_SECONDS": "172800",
 		"GEOCODE_USER_AGENT": "WashPro/1.0 (xpersscarwash@gmail.com)",
 		"INVOICE_LINK_TTL_SECONDS": "604800",

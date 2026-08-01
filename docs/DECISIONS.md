@@ -1,5 +1,18 @@
 # DECISIONS.md — WashPro Architectural Decisions
 
+## 2026-08-02: Hybrid admin/staff authentication mode for production
+
+**Decision**: Add a `hybrid_admin_staff` production auth mode so staff accounts (PBKDF2-hashed in D1) can sign in alongside the static administrator. The static-admin identifier (`ADMIN_LOGIN_EMAIL`) is reserved: login attempts with that identifier always use the static admin credentials and can never be shadowed by a database user. `wrangler.jsonc` now defaults `AUTH_MODE` to `hybrid_admin_staff`.
+
+**Rationale**: The previous decision (2026-07-25) restricted production to `static_admin`, which prevented staff from signing in. Production staff accounts exist in D1 with PBKDF2 hashes; the hybrid mode routes non-admin identifiers through the existing PBKDF2 login path unchanged (lookup, verification, status checks, tenant-scoped sessions), preserving all session/cookie/CSRF/rate-limit/audit behaviour.
+
+**Impact**:
+- `isStaticAdminMode()` and new `isHybridAdminStaffMode()` dispatch in `apps/api/src/routes/auth.ts`; constants `AUTH_MODE_STATIC_ADMIN` / `AUTH_MODE_HYBRID_ADMIN_STAFF`
+- `validate-production-deploy.mjs` accepts both `AUTH_MODE` values
+- Legacy 600,000-iteration hashes (pre-`beca3fd`) fail safely with the generic invalid-credentials error and require an authorized reset
+- Static-admin sessions are blocked from change-password (`403 STATIC_ADMIN_PASSWORD_MANAGED_EXTERNALLY`); the static-admin password is managed exclusively through the `ADMIN_LOGIN_PASSWORD` deployment secret
+- 13 new integration tests in `apps/api/test/hybrid-auth.test.ts`
+
 ## 2026-07-25: Static-admin authentication mode for production
 
 **Decision**: Use `static_admin` mode instead of PBKDF2-based multi-user auth in production.

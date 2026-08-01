@@ -62,6 +62,13 @@ export function validateProductionConfig(config, options = {}) {
     errors.push('APP_ENV must be "production".');
   }
 
+  const supportedAuthModes = ["static_admin", "hybrid_admin_staff"];
+  if (!supportedAuthModes.includes(config?.vars?.AUTH_MODE)) {
+    errors.push(
+      `AUTH_MODE must be one of: ${supportedAuthModes.join(", ")}.`,
+    );
+  }
+
   const allowedOrigins = config?.vars?.ALLOWED_ORIGINS;
   if (typeof allowedOrigins !== "string" || allowedOrigins.trim() === "") {
     errors.push("ALLOWED_ORIGINS must contain the production web origin.");

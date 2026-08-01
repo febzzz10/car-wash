@@ -129,7 +129,8 @@ Benefits (coupons, referrals, rewards, manual discounts) are **not** selected du
 ## Authentication and security rules
 
 ### Current auth architecture
-- **Production**: static-admin mode (`APP_ENV=production`, `AUTH_MODE=static_admin`). Single admin identified by `ADMIN_LOGIN_EMAIL`, password verified via `ADMIN_LOGIN_PASSWORD` secret.
+- **Production — `static_admin` mode** (`APP_ENV=production`, `AUTH_MODE=static_admin`): single admin identified by `ADMIN_LOGIN_EMAIL`, password verified via `ADMIN_LOGIN_PASSWORD` secret.
+- **Production — `hybrid_admin_staff` mode** (`APP_ENV=production`, `AUTH_MODE=hybrid_admin_staff`, default in `wrangler.jsonc`): login identifiers matching `ADMIN_LOGIN_EMAIL` are always authenticated against the static admin credentials (the identifier is reserved and cannot be shadowed by a DB user); all other identifiers fall through to the PBKDF2 database path (username/email/phone lookup, status checks, role/permissions from the user row). The static administrator cannot change their password through the API — change-password is rejected with `403 STATIC_ADMIN_PASSWORD_MANAGED_EXTERNALLY`; the password is managed through the `ADMIN_LOGIN_PASSWORD` deployment secret.
 - **Development**: PBKDF2-based user authentication via seeded users in D1.
 - **Test environment**: Overrides `APP_ENV` to `"test"` in vitest config to use PBKDF2 path.
 

@@ -103,10 +103,12 @@ curl -sS https://washpro-web.xpersscarwash.workers.dev/invoice/test
     "ADMIN_LOGIN_EMAIL": "xpersscarwash@gmail.com",
     "ALLOWED_ORIGINS": "https://bab9bd69.washpro-web.pages.dev,https://washpro-web.xpersscarwash.workers.dev",
     "APP_ENV": "production",
-    "AUTH_MODE": "static_admin"
+    "AUTH_MODE": "hybrid_admin_staff"
   }
 }
 ```
+
+`AUTH_MODE` accepts `hybrid_admin_staff` (default, static admin + DB staff login) or `static_admin` (admin-only). The production deploy preflight validates the value.
 
 ### Required secrets on car-wash
 - `ADMIN_LOGIN_PASSWORD`

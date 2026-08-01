@@ -529,6 +529,7 @@ vi.mock("react-router-dom", () => ({
 
 const { mockUseAuth } = vi.hoisted(() => ({
   mockUseAuth: vi.fn(() => ({
+    manualDiscountEnabled: true,
     paymentDefaultMethod: "CASH",
     user: { id: "admin-1", role: "ADMIN", permissions: [] },
   })),
@@ -813,12 +814,14 @@ describe("PaymentDialog", () => {
 
   it("preselects the auth default payment method", () => {
     vi.mocked(mockUseAuth).mockReturnValue({
+      manualDiscountEnabled: true,
       paymentDefaultMethod: "PAYTM",
       user: { id: "admin-1", role: "ADMIN", permissions: [] },
     });
     renderDialog();
     expect(screen.getByRole("radio", { name: "Paytm" })).toBeChecked();
     vi.mocked(mockUseAuth).mockReturnValue({
+      manualDiscountEnabled: true,
       paymentDefaultMethod: "CASH",
       user: { id: "admin-1", role: "ADMIN", permissions: [] },
     });
@@ -826,12 +829,14 @@ describe("PaymentDialog", () => {
 
   it("falls back to Cash when the auth default is a legacy method", () => {
     vi.mocked(mockUseAuth).mockReturnValue({
+      manualDiscountEnabled: true,
       paymentDefaultMethod: "CARD",
       user: { id: "admin-1", role: "ADMIN", permissions: [] },
     });
     renderDialog();
     expect(screen.getByRole("radio", { name: "Cash" })).toBeChecked();
     vi.mocked(mockUseAuth).mockReturnValue({
+      manualDiscountEnabled: true,
       paymentDefaultMethod: "CASH",
       user: { id: "admin-1", role: "ADMIN", permissions: [] },
     });
@@ -1632,5 +1637,142 @@ describe("PaymentDialog — benefits regression", () => {
       expect(payPayload).not.toBeNull();
     });
     expect((payPayload as any).amountMinor).toBe(20000);
+  });
+});
+
+describe("PaymentDialog — manual discount toggle", () => {
+  const unlockedRecord = {
+    id: "job-toggle",
+    job_reference: "WJ-002",
+    customer_name_snapshot: "Test",
+    customer_phone_snapshot: "123",
+    vehicle_registration_snapshot: "KL01",
+    primary_service_name_snapshot: "Wash",
+    status: "COMPLETED",
+    payment_status: "PENDING",
+    total_amount_minor: 50000,
+    paid_amount_minor: 0,
+    balance_minor: 50000,
+    total_active_seconds: 0,
+    version: 1,
+    created_at: new Date().toISOString(),
+    subtotal_minor: 50000,
+    coupon_discount_minor: 0,
+    referral_discount_minor: 0,
+    reward_discount_minor: 0,
+    manual_discount_minor: 0,
+    manual_discount_reason: null,
+    tax_minor: 0,
+    rounding_minor: 0,
+    billing_locked_at: null,
+    customer_id: "c1",
+    appliedBenefits: {
+      coupon: null,
+      referral: null,
+      reward: null,
+      manualDiscount: null,
+    },
+    items: [],
+    locations: [],
+    photos: [],
+  } as any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    vi.mocked(mockUseAuth).mockReturnValue({
+      manualDiscountEnabled: false,
+      paymentDefaultMethod: "CASH",
+      user: { id: "admin-1", role: "ADMIN", permissions: [] },
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.mocked(mockUseAuth).mockReturnValue({
+      manualDiscountEnabled: true,
+      paymentDefaultMethod: "CASH",
+      user: { id: "admin-1", role: "ADMIN", permissions: [] },
+    });
+  });
+
+  it("does not render manual discount fields when disabled", () => {
+    render(<PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />);
+    expect(screen.queryByText("Manual discount")).not.toBeInTheDocument();
+    expect(screen.queryByText("Manual discount reason")).not.toBeInTheDocument();
+  });
+
+  it("renders manual discount fields when enabled", () => {
+    vi.mocked(mockUseAuth).mockReturnValue({
+      manualDiscountEnabled: true,
+      paymentDefaultMethod: "CASH",
+      user: { id: "admin-1", role: "ADMIN", permissions: [] },
+    });
+    render(<PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />);
+    expect(screen.getByText("Manual discount")).toBeInTheDocument();
+    expect(screen.getByText("Manual discount reason")).toBeInTheDocument();
+  });
+
+  it("verify request omits manual discount fields when disabled", async () => {
+    let verifyPayload: unknown = null;
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        verifyPayload = _init?.body ? JSON.parse(_init.body as string) : null;
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(<PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />);
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    fireEvent.change(couponInput, { target: { value: "WELCOME10" } });
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => { expect(verifyPayload).not.toBeNull(); });
+    const benefits = (verifyPayload as any).benefits as Record<string, unknown>;
+    expect(benefits.manualDiscountMinor).toBeUndefined();
+    expect(benefits.manualDiscountReason).toBeUndefined();
+    expect(benefits.couponCode).toBe("WELCOME10");
+  });
+
+  it("payment request omits manual discount fields when disabled", async () => {
+    let payPayload: unknown = null;
+    vi.mocked(api).mockImplementation((path: string, _init?: RequestInit) => {
+      if (typeof path === "string" && path.includes("/verify-benefits")) {
+        return Promise.resolve({
+          requested: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+          revised: { couponDiscountMinor: 1000, totalDiscountMinor: 1000, totalAmountMinor: 49000, revisedRemainingBalanceMinor: 49000 },
+          applied: { coupon: { code: "WELCOME10", discountMinor: 1000 }, referral: null, reward: null, manualDiscount: null },
+          original: {},
+          normalizedBenefits: { couponCode: "WELCOME10", manualDiscountMinor: 0 },
+        } as any);
+      }
+      if (typeof path === "string" && path.includes("/payments")) {
+        payPayload = _init?.body ? JSON.parse(_init.body as string) : null;
+        return Promise.resolve({ success: true, data: {} });
+      }
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    render(<PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />);
+    const couponInput = screen.getAllByPlaceholderText("Optional")[0] as HTMLInputElement;
+    fireEvent.change(couponInput, { target: { value: "WELCOME10" } });
+    await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
+    await waitFor(() => { expect(screen.getByRole("button", { name: /record payment/i })).toBeTruthy(); });
+    const form = document.querySelector("form")!;
+    fireEvent.submit(form);
+    await waitFor(() => { expect(payPayload).not.toBeNull(); });
+    const benefits = (payPayload as any).benefits as Record<string, unknown>;
+    expect(benefits.manualDiscountMinor).toBeUndefined();
+    expect(benefits.manualDiscountReason).toBeUndefined();
+    expect(benefits.couponCode).toBe("WELCOME10");
   });
 });

@@ -25,6 +25,7 @@ const settingGroups = {
     "business.number_format",
     "payment.allow_refunds",
     "payment.default_method",
+    "payment.manual_discount_enabled",
   ]),
   invoice: new Set([
     "invoice.prefix",
@@ -165,6 +166,18 @@ for (const group of Object.keys(
             { "payment.default_method": `Unsupported default payment method: ${method}.` },
           );
         parsed.data.settings["payment.default_method"] = method;
+      }
+
+      const rawManualDiscountEnabled =
+        parsed.data.settings["payment.manual_discount_enabled"];
+      if (rawManualDiscountEnabled !== undefined) {
+        if (typeof rawManualDiscountEnabled !== "boolean")
+          throw new ApiError(
+            422,
+            "VALIDATION_ERROR",
+            "payment.manual_discount_enabled must be a boolean.",
+            { "payment.manual_discount_enabled": "Must be true or false." },
+          );
       }
 
       const previousRows = await c.env.DB.prepare(

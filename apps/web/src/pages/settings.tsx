@@ -53,6 +53,7 @@ const groups = {
     "business.number_format",
     "payment.default_method",
     "payment.allow_refunds",
+    "payment.manual_discount_enabled",
   ],
   invoice: [
     "invoice.prefix",
@@ -104,6 +105,7 @@ const booleanKeys = new Set([
   "referral.enabled",
   "referral.new_customers_only",
   "payment.allow_refunds",
+  "payment.manual_discount_enabled",
 ]);
 export default function SettingsPage() {
   const state = useApiData<SettingsPayload>("/settings");
@@ -225,13 +227,20 @@ export default function SettingsPage() {
                       />
                       <span>
                         <strong>
-                          {titleCase(key.split(".").at(-1) ?? key)}
+                          {key === "payment.manual_discount_enabled"
+                            ? "Allow manual discounts"
+                            : titleCase(key.split(".").at(-1) ?? key)}
                         </strong>
                         <small>{key}</small>
                         {key === "payment.allow_refunds" && (
                           <span className="muted" style={{ display: "block", marginTop: "0.25rem" }}>
                             Enables or disables payment refunds across the organization. When disabled, refund buttons
                             are hidden and refund API requests are rejected.
+                          </span>
+                        )}
+                        {key === "payment.manual_discount_enabled" && (
+                          <span className="muted" style={{ display: "block", marginTop: "0.25rem" }}>
+                            Allow authorized users to apply a manual discount while recording a payment.
                           </span>
                         )}
                       </span>

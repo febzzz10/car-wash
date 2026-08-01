@@ -219,4 +219,38 @@ describe("authentication and authorization", () => {
       error: { code: "CSRF_REJECTED" },
     });
   });
+
+  it("exposes manualDiscountEnabled false on login when the setting is unset", async () => {
+    await seedUser("admin-mandisc-default", "admin-mandisc-default", "ADMIN");
+    const result = await login("admin-mandisc-default");
+    expect(result.response.status).toBe(200);
+    const body = await result.response.clone().json<{
+      data?: { manualDiscountEnabled: boolean };
+    }>();
+    expect(body.data?.manualDiscountEnabled).toBe(false);
+  });
+
+  it("exposes manualDiscountEnabled true on login when enabled", async () => {
+    await seedUser("admin-mandisc-on", "admin-mandisc-on", "ADMIN");
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-mandisc-auth', 'org-1', 'payment.manual_discount_enabled', 'BOOLEAN', 'true', ?)",
+    ).bind(now).run();
+
+    const result = await login("admin-mandisc-on");
+    const body = await result.response.clone().json<{
+      data?: { manualDiscountEnabled: boolean };
+    }>();
+    expect(body.data?.manualDiscountEnabled).toBe(true);
+
+    const session = await app.request(
+      "/api/v1/auth/session",
+      { headers: { cookie: result.cookie } },
+      env,
+    );
+    expect(session.status).toBe(200);
+    const sessionBody = await session.json<{
+      data?: { manualDiscountEnabled: boolean };
+    }>();
+    expect(sessionBody.data?.manualDiscountEnabled).toBe(true);
+  });
 });

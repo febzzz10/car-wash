@@ -15,6 +15,7 @@ import {
 } from "../security/passwords";
 import { createCsrfToken, hashSessionToken, sha256 } from "../security/tokens";
 import {
+  booleanSetting,
   integerSetting,
   loadSettings,
   stringSetting,
@@ -53,6 +54,10 @@ function paymentDefaultMethod(settings: SettingMap): PaymentMethod {
   return (PAYMENT_METHODS as readonly string[]).includes(stored)
     ? (stored as PaymentMethod)
     : "CASH";
+}
+
+function manualDiscountEnabled(settings: SettingMap): boolean {
+  return booleanSetting(settings, "payment.manual_discount_enabled", false);
 }
 
 function normalizeIdentifier(value: string): {
@@ -220,6 +225,7 @@ async function createWashProSession(
   return {
     csrfToken,
     expiresAt: expiresAt.toISOString(),
+    manualDiscountEnabled: manualDiscountEnabled(settings),
     paymentDefaultMethod: paymentDefaultMethod(settings),
     preferences: formattingPreferences(settings),
     user: {
@@ -491,6 +497,7 @@ protectedAuthRoutes.get("/session", async (c) => {
   return c.json({
     data: {
       csrfToken,
+      manualDiscountEnabled: manualDiscountEnabled(settings),
       paymentDefaultMethod: paymentDefaultMethod(settings),
       preferences: formattingPreferences(settings),
       user: {

@@ -641,6 +641,13 @@ washJobRoutes.post("/:id/verify-benefits", requirePermission("payments.create"),
   }
 
   // Manual discount validation
+  const manualDiscountEnabled = booleanSetting(
+    settings,
+    "payment.manual_discount_enabled",
+    false,
+  );
+  if (benefits.manualDiscountMinor > 0 && !manualDiscountEnabled)
+    throw new ApiError(403, "MANUAL_DISCOUNT_DISABLED", "Manual discounts are disabled for this business.", { "benefits.manualDiscountMinor": "Manual discounts are disabled for this business." } as Record<string, string>);
   if (benefits.manualDiscountMinor > 0) {
     const maxManual = (job.subtotal_minor as number) - couponDiscountMinor - referralDiscountMinor - rewardDiscountMinor;
     if (benefits.manualDiscountMinor > maxManual)

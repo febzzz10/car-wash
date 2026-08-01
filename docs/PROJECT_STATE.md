@@ -17,11 +17,11 @@
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 19 | 370 | ✅ All pass |
-| @washpro/api | 23 | 199 | ✅ All pass |
+| @washpro/web | 20 | 378 | ✅ All pass |
+| @washpro/api | 24 | 214 | ✅ All pass |
 | @washpro/contracts | 1 | 24 | ✅ All pass |
 | @washpro/domain | 8 | 53 | ✅ All pass |
-| **Total** | **51** | **646** | **✅ All pass** |
+| **Total** | **53** | **669** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -52,6 +52,8 @@ All packages: ✅ 0 errors
 11. **Customer search by vehicle registration** (not yet deployed): The New Wash customer step now also matches vehicle registration numbers in addition to customer name and phone. `GET /api/v1/customers?search=` normalizes the query with the existing `normalizeRegistration` utility and matches `vehicles.registration_normalized` exactly (case/whitespace/hyphen-insensitive), joined via `EXISTS` (no duplicates, no N+1). Results found by registration carry `matching_registrations` (display registration numbers); the wizard shows them as secondary info. Helper text and placeholder updated on the New Wash customer step. Tenant isolation, permissions, ordering, and LIMIT 100 unchanged.
 
 12. **Payment method card selector + default method setting** (not yet deployed, migration 0018): Record Payment dialog replaced its method dropdown with four PNG radio cards (Cash, UPI, Bank UPI, Paytm) mirroring the vehicle-type selector pattern. New `payment.default_method` business setting (validated against the 4 canonical methods, stored uppercased) is exposed on the session payload as `paymentDefaultMethod` and pre-selects the dialog default with a CASH fallback; Settings page saves it and refreshes the auth context. Contracts now expose `PAYMENT_METHODS` (CASH/UPI/BANK_UPI/PAYTM), `LEGACY_PAYMENT_METHODS` (CARD/BANK_TRANSFER/OTHER), and `PAYMENT_METHOD_LABELS`; the `payments` table CHECK constraint and `paymentInputSchema` accept only canonical methods while legacy rows stay readable and label-mapped (Payments list and Customer detail). Migration 0018 required a `DROP TRIGGER IF EXISTS tr_refunds_not_over_payment` workaround before the payments table rebuild because workerd reparses surviving triggers referencing the renamed table. Expenses keeps its own separate payment-method flow. 646 automated tests pass.
+
+13. **Manual discount toggle** (not yet deployed): New boolean business setting `payment.manual_discount_enabled` (default `false`) gates the manual discount feature. When off, the Record Payment dialog hides the Manual discount / Manual discount reason fields and the server rejects positive manual discounts on `POST /wash-jobs/:id/verify-benefits` and `POST /payments` with `403 MANUAL_DISCOUNT_DISABLED`. The setting is exposed on the session payload as `manualDiscountEnabled`; the Settings page renders it as "Allow manual discounts" (label override in the business group). No migration required — `business_settings` is a generic key/value table. 669 automated tests pass.
 
 ## Known issues
 

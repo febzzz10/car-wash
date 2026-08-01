@@ -118,6 +118,9 @@ beforeEach(async () => {
     env.DB.prepare(
       "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-referral-new-customers', 'org-wash', 'referral.new_customers_only', 'BOOLEAN', 'false', ?)"
     ).bind(timestamp),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO business_settings (id, organization_id, setting_key, value_type, value_text, updated_at) VALUES ('setting-manual-discount-enabled', 'org-wash', 'payment.manual_discount_enabled', 'BOOLEAN', 'true', ?)"
+    ).bind(timestamp),
     ...photoAssets,
   ]);
 });
@@ -1895,5 +1898,162 @@ describe("wash job creation — strict schema", () => {
       headers, method: "POST",
     }, env);
     expect(res.status).toBe(422);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Manual discount toggle enforcement
+// ---------------------------------------------------------------------------
+describe("manual discount toggle enforcement", () => {
+  async function disableManualDiscounts(): Promise<void> {
+    await env.DB.prepare(
+      "UPDATE business_settings SET value_text = 'false', updated_at = ? WHERE organization_id = 'org-wash' AND setting_key = 'payment.manual_discount_enabled'",
+    ).bind(timestamp).run();
+  }
+
+  it("verify-benefits rejects a manual discount when disabled", async () => {
+    await disableManualDiscounts();
+    const headers = await mutationHeaders();
+    const job = await createWashJob();
+    const v = await startAndComplete(job.id, job.version);
+
+    const res = await app.request(
+      `/api/v1/wash-jobs/${job.id}/verify-benefits`,
+      {
+        body: JSON.stringify({
+          expectedVersion: v,
+          benefits: {
+            replaceExisting: true,
+            manualDiscountMinor: 2000,
+            manualDiscountReason: "Loyalty gesture",
+          },
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe("MANUAL_DISCOUNT_DISABLED");
+    expect(body.error.message).toBe("Manual discounts are disabled for this business.");
+  });
+
+  it("payment with a manual discount is rejected when disabled", async () => {
+    await disableManualDiscounts();
+    const headers = await mutationHeaders();
+    const job = await createWashJob();
+    const v = await startAndComplete(job.id, job.version);
+
+    const res = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 5000,
+          benefits: {
+            replaceExisting: true,
+            manualDiscountMinor: 2000,
+            manualDiscountReason: "Loyalty gesture",
+          },
+          expectedVersion: v,
+          idempotencyKey: `benefits-disabled-${idemSuffix()}`,
+          method: "UPI",
+          washJobId: job.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("MANUAL_DISCOUNT_DISABLED");
+  });
+
+  it("payment without a manual discount still succeeds when disabled", async () => {
+    await disableManualDiscounts();
+    const headers = await mutationHeaders();
+    const job = await createWashJob();
+    const v = await startAndComplete(job.id, job.version);
+
+    const res = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 5000,
+          benefits: { replaceExisting: true, couponCode: "REPEAT10" },
+          expectedVersion: v,
+          idempotencyKey: `benefits-no-manual-${idemSuffix()}`,
+          method: "UPI",
+          washJobId: job.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(res.status).toBe(201);
+  });
+
+  it("payment with a reason but no discount is rejected when disabled", async () => {
+    await disableManualDiscounts();
+    const headers = await mutationHeaders();
+    const job = await createWashJob();
+    const v = await startAndComplete(job.id, job.version);
+
+    const res = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 5000,
+          benefits: {
+            replaceExisting: true,
+            manualDiscountMinor: 0,
+            manualDiscountReason: "Loyalty gesture",
+          },
+          expectedVersion: v,
+          idempotencyKey: `benefits-reason-only-${idemSuffix()}`,
+          method: "UPI",
+          washJobId: job.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(res.status).toBe(422);
+    const body = await res.json<{ error: { code: string } }>();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("payment with a manual discount succeeds when enabled", async () => {
+    await env.DB.prepare(
+      "UPDATE business_settings SET value_text = 'true', updated_at = ? WHERE organization_id = 'org-wash' AND setting_key = 'payment.manual_discount_enabled'",
+    ).bind(timestamp).run();
+    const headers = await mutationHeaders();
+    const job = await createWashJob();
+    const v = await startAndComplete(job.id, job.version);
+
+    const res = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 5000,
+          benefits: {
+            replaceExisting: true,
+            manualDiscountMinor: 2000,
+            manualDiscountReason: "Loyalty gesture",
+          },
+          expectedVersion: v,
+          idempotencyKey: `benefits-enabled-${idemSuffix()}`,
+          method: "UPI",
+          washJobId: job.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(res.status).toBe(201);
   });
 });

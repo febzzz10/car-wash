@@ -682,7 +682,7 @@ export function PaymentDialog({
   readonly onDone: (result: { fullyDiscounted: boolean }) => void;
   readonly open: boolean;
 }) {
-  const { user, paymentDefaultMethod } = useAuth();
+  const { user, paymentDefaultMethod, manualDiscountEnabled } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -749,6 +749,15 @@ export function PaymentDialog({
   }, [open, record.id, benefitsLocked, record.appliedBenefits, paymentDefaultMethod]);
 
   useEffect(() => {
+    if (manualDiscountEnabled || !open) return;
+    setManualDiscount("0");
+    setManualDiscountReason("");
+    setPreviewDirty(true);
+    setVerifiedBalanceMinor(null);
+    setAmountEdited(false);
+  }, [manualDiscountEnabled, open]);
+
+  useEffect(() => {
     if (!open || benefitsLocked || !record.customer_id) return;
     const controller = new AbortController();
     setRewardsLoading(true);
@@ -768,8 +777,19 @@ export function PaymentDialog({
     setPreviewBusy(true); setPreviewError(null);
     const seq = ++previewSeq.current;
     try {
+      const benefitsPayload: Record<string, unknown> = {
+        replaceExisting: true,
+        couponCode: couponCode.trim() || undefined,
+        referralCode: referralCode.trim() || undefined,
+        rewardId: rewardId || undefined,
+        rewardAmountMinor: rewardId ? Math.round(parseFloat(rewardAmount || "0") * 100) : undefined,
+      };
+      if (manualDiscountEnabled) {
+        benefitsPayload.manualDiscountMinor = Math.round(parseFloat(manualDiscount || "0") * 100);
+        benefitsPayload.manualDiscountReason = manualDiscountReason.trim() || undefined;
+      }
       const r = await api<Record<string, any>>(`/wash-jobs/${encodeURIComponent(record.id)}/verify-benefits`, {
-        ...jsonBody({ expectedVersion: record.version, benefits: { replaceExisting: true, couponCode: couponCode.trim() || undefined, referralCode: referralCode.trim() || undefined, rewardId: rewardId || undefined, rewardAmountMinor: rewardId ? Math.round(parseFloat(rewardAmount || "0") * 100) : undefined, manualDiscountMinor: Math.round(parseFloat(manualDiscount || "0") * 100), manualDiscountReason: manualDiscountReason.trim() || undefined } }),
+        ...jsonBody({ expectedVersion: record.version, benefits: benefitsPayload }),
         method: "POST",
       });
       if (seq !== previewSeq.current) return;
@@ -796,8 +816,10 @@ export function PaymentDialog({
       referralCode.trim().toUpperCase() !== (record.appliedBenefits?.referral?.code ?? "").toUpperCase() ||
       rewardId !== (record.appliedBenefits?.reward?.id ?? "") ||
       Math.abs(Math.round(parseFloat(rewardAmount || "0") * 100) - (record.appliedBenefits?.reward?.amountMinor ?? 0)) > 0 ||
-      Math.abs(Math.round(parseFloat(manualDiscount || "0") * 100) - (record.appliedBenefits?.manualDiscount?.amountMinor ?? 0)) > 0 ||
-      manualDiscountReason.trim() !== (record.appliedBenefits?.manualDiscount?.reason ?? "")
+      (manualDiscountEnabled && (
+        Math.abs(Math.round(parseFloat(manualDiscount || "0") * 100) - (record.appliedBenefits?.manualDiscount?.amountMinor ?? 0)) > 0 ||
+        manualDiscountReason.trim() !== (record.appliedBenefits?.manualDiscount?.reason ?? "")
+      ))
     );
 
     if (benefitsChanged && previewDirty && preview !== null) {
@@ -817,14 +839,18 @@ export function PaymentDialog({
     };
     if (benefitsChanged) {
       payload.expectedVersion = record.version;
-      payload.benefits = { replaceExisting: true,
+      const benefitsPayload: Record<string, unknown> = {
+        replaceExisting: true,
         couponCode: couponCode.trim() || undefined,
         referralCode: referralCode.trim() || undefined,
         rewardId: rewardId || undefined,
         rewardAmountMinor: rewardId ? Math.round(parseFloat(rewardAmount || "0") * 100) : undefined,
-        manualDiscountMinor: Math.round(parseFloat(manualDiscount || "0") * 100),
-        manualDiscountReason: manualDiscountReason.trim() || undefined,
       };
+      if (manualDiscountEnabled) {
+        benefitsPayload.manualDiscountMinor = Math.round(parseFloat(manualDiscount || "0") * 100);
+        benefitsPayload.manualDiscountReason = manualDiscountReason.trim() || undefined;
+      }
+      payload.benefits = benefitsPayload;
     }
 
     const canonical = JSON.stringify({ washJobId: payload.washJobId, amountMinor: payload.amountMinor, method: payload.method, transactionReference: payload.transactionReference, notes: payload.notes, expectedVersion: payload.expectedVersion, benefits: payload.benefits });
@@ -878,7 +904,7 @@ export function PaymentDialog({
               </label>
               <label><span>Reward amount</span><input disabled={rewardId === ""} max={(() => { const r = rewards.find(rw => rw.id === rewardId); return r ? (r.remaining_amount_minor / 100).toString() : "0"; })()} min="0" onChange={e => { setRewardAmount(e.target.value); clearField("benefits.rewardAmountMinor"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} step="0.01" type="number" value={rewardAmount} />{fieldErrors["benefits.rewardAmountMinor"] ? <span className="field-error">{fieldErrors["benefits.rewardAmountMinor"]}</span> : null}</label>
             </div>
-            {canApplyManualDiscount ? (
+            {canApplyManualDiscount && manualDiscountEnabled ? (
               <div className="form-grid benefit-admin-fields">
                 <label><span>Manual discount</span><input min="0" onChange={e => { setManualDiscount(e.target.value); clearField("benefits.manualDiscountMinor"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} step="0.01" type="number" value={manualDiscount} />{fieldErrors["benefits.manualDiscountMinor"] ? <span className="field-error">{fieldErrors["benefits.manualDiscountMinor"]}</span> : null}</label>
                 <label><span>Manual discount reason</span><input disabled={parseFloat(manualDiscount || "0") === 0} minLength={5} onChange={e => { setManualDiscountReason(e.target.value); clearField("benefits.manualDiscountReason"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} required={parseFloat(manualDiscount || "0") > 0} value={manualDiscountReason} />{fieldErrors["benefits.manualDiscountReason"] ? <span className="field-error">{fieldErrors["benefits.manualDiscountReason"]}</span> : null}</label>

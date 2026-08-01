@@ -329,6 +329,18 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
     }
 
     // Manual discount validation
+    const manualDiscountEnabled = booleanSetting(
+      settings,
+      "payment.manual_discount_enabled",
+      false,
+    );
+    if (benefits.manualDiscountMinor > 0 && !manualDiscountEnabled)
+      throw new ApiError(
+        403,
+        "MANUAL_DISCOUNT_DISABLED",
+        "Manual discounts are disabled for this business.",
+        { "benefits.manualDiscountMinor": "Manual discounts are disabled for this business." },
+      );
     if (benefits.manualDiscountMinor > 0) {
       const maxManual = job.subtotal_minor - couponDiscountMinor - referralDiscountMinor - rewardDiscountMinor;
       if (benefits.manualDiscountMinor > maxManual)

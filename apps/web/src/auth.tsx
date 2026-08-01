@@ -14,6 +14,7 @@ import type { AuthUser } from "./types";
 
 interface SessionPayload {
   readonly csrfToken: string;
+  readonly manualDiscountEnabled?: boolean;
   readonly paymentDefaultMethod?: string;
   readonly preferences: FormattingPreferences;
   readonly user: {
@@ -30,6 +31,7 @@ interface SessionPayload {
 
 interface AuthContextValue {
   readonly loading: boolean;
+  readonly manualDiscountEnabled: boolean;
   readonly paymentDefaultMethod: string;
   readonly user: AuthUser | null;
   readonly login: (identifier: string, password: string) => Promise<void>;
@@ -52,6 +54,10 @@ function safePaymentDefaultMethod(value: string | undefined): string {
     : "CASH";
 }
 
+function safeManualDiscountEnabled(value: boolean | undefined): boolean {
+  return value === true;
+}
+
 function mapSession(payload: SessionPayload): AuthUser {
   return {
     branchId: payload.user.branchId,
@@ -67,6 +73,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [paymentDefaultMethod, setPaymentDefaultMethod] =
     useState<string>("CASH");
+  const [manualDiscountEnabled, setManualDiscountEnabled] =
+    useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -74,12 +82,14 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       const payload = await api<SessionPayload>("/auth/session");
       setCsrfToken(payload.csrfToken);
       setPaymentDefaultMethod(safePaymentDefaultMethod(payload.paymentDefaultMethod));
+      setManualDiscountEnabled(safeManualDiscountEnabled(payload.manualDiscountEnabled));
       configureFormatting(payload.preferences);
       setUser(mapSession(payload));
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 401) throw error;
       setCsrfToken("");
       setPaymentDefaultMethod("CASH");
+      setManualDiscountEnabled(false);
       configureFormatting(null);
       setUser(null);
     }
@@ -92,6 +102,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       loading,
+      manualDiscountEnabled,
       paymentDefaultMethod,
       user,
       login: async (identifier, password) => {
@@ -101,6 +112,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         });
         setCsrfToken(payload.csrfToken);
         setPaymentDefaultMethod(safePaymentDefaultMethod(payload.paymentDefaultMethod));
+        setManualDiscountEnabled(safeManualDiscountEnabled(payload.manualDiscountEnabled));
         configureFormatting(payload.preferences);
         setUser(mapSession(payload));
       },
@@ -108,12 +120,13 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
         await api<undefined>("/auth/logout", { method: "POST" });
         setCsrfToken("");
         setPaymentDefaultMethod("CASH");
+        setManualDiscountEnabled(false);
         configureFormatting(null);
         setUser(null);
       },
       refresh,
     }),
-    [loading, paymentDefaultMethod, refresh, user],
+    [loading, manualDiscountEnabled, paymentDefaultMethod, refresh, user],
   );
 
   return <AuthContext value={value}>{children}</AuthContext>;

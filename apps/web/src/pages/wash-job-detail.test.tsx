@@ -529,6 +529,7 @@ vi.mock("react-router-dom", () => ({
 
 const { mockUseAuth } = vi.hoisted(() => ({
   mockUseAuth: vi.fn(() => ({
+    paymentDefaultMethod: "CASH",
     user: { id: "admin-1", role: "ADMIN", permissions: [] },
   })),
 }));
@@ -726,11 +727,13 @@ describe("PaymentDialog", () => {
     expect(amountInput()).toHaveAttribute("max", "500.00");
   });
 
-  it("renders method select with all options", () => {
+  it("renders method cards for all canonical methods", () => {
     renderDialog();
-    expect(screen.getByRole("combobox", { name: /method/i })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Cash" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "UPI" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Cash" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "UPI" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Bank UPI" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Paytm" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /method/i })).not.toBeInTheDocument();
   });
 
   it("renders transaction reference input", () => {
@@ -799,13 +802,39 @@ describe("PaymentDialog", () => {
     });
     renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
-    fireEvent.change(screen.getByRole("combobox", { name: /method/i }), { target: { value: "UPI" } });
+    fireEvent.click(screen.getByRole("radio", { name: "UPI" }));
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
     const payCall = calls.find(c => c[0] === "/payments");
     expect(payCall).toBeDefined();
     expect(JSON.parse(payCall![1]!.body as string).method).toBe("UPI");
+  });
+
+  it("preselects the auth default payment method", () => {
+    vi.mocked(mockUseAuth).mockReturnValue({
+      paymentDefaultMethod: "PAYTM",
+      user: { id: "admin-1", role: "ADMIN", permissions: [] },
+    });
+    renderDialog();
+    expect(screen.getByRole("radio", { name: "Paytm" })).toBeChecked();
+    vi.mocked(mockUseAuth).mockReturnValue({
+      paymentDefaultMethod: "CASH",
+      user: { id: "admin-1", role: "ADMIN", permissions: [] },
+    });
+  });
+
+  it("falls back to Cash when the auth default is a legacy method", () => {
+    vi.mocked(mockUseAuth).mockReturnValue({
+      paymentDefaultMethod: "CARD",
+      user: { id: "admin-1", role: "ADMIN", permissions: [] },
+    });
+    renderDialog();
+    expect(screen.getByRole("radio", { name: "Cash" })).toBeChecked();
+    vi.mocked(mockUseAuth).mockReturnValue({
+      paymentDefaultMethod: "CASH",
+      user: { id: "admin-1", role: "ADMIN", permissions: [] },
+    });
   });
 
   it("sends transaction reference", async () => {

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { PAYMENT_METHODS } from "@washpro/contracts";
 import { validateCurrencyCode } from "@washpro/domain";
 import { ApiError } from "../http/errors";
 import { requireAdmin, requirePermission } from "../middleware/auth";
@@ -151,6 +152,19 @@ for (const group of Object.keys(
         if (!result.valid)
           throw new ApiError(422, "VALIDATION_ERROR", result.reason, { "currency": result.reason });
         parsed.data.settings["business.currency"] = result.currency;
+      }
+
+      const rawDefaultMethod = parsed.data.settings["payment.default_method"];
+      if (rawDefaultMethod !== undefined) {
+        const method = String(rawDefaultMethod).toUpperCase();
+        if (!(PAYMENT_METHODS as readonly string[]).includes(method))
+          throw new ApiError(
+            422,
+            "VALIDATION_ERROR",
+            `Unsupported default payment method: ${method}.`,
+            { "payment.default_method": `Unsupported default payment method: ${method}.` },
+          );
+        parsed.data.settings["payment.default_method"] = method;
       }
 
       const previousRows = await c.env.DB.prepare(

@@ -16,7 +16,8 @@ import {
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
 import { api, jsonBody } from "../lib/api";
-import { dateTime, money, titleCase } from "../lib/format";
+import { dateTime, money } from "../lib/format";
+import { paymentMethodLabel } from "../lib/payment-methods";
 
 interface PaymentRecord {
   readonly amount_minor: number;
@@ -88,7 +89,7 @@ export default function PaymentsPage() {
                       <small>{payment.customer_name_snapshot}</small>
                     </td>
                     <td>
-                      {titleCase(payment.payment_method)}
+                      {paymentMethodLabel(payment.payment_method)}
                       <small>
                         {payment.external_transaction_reference ?? ""}
                       </small>

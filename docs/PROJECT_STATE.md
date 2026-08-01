@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — Current WashPro Implementation State
 
-*Last updated: 2026-07-31*
+*Last updated: 2026-08-01*
 
 ## Active deployments
 
@@ -13,15 +13,15 @@
 
 `https://washpro-web.xpersscarwash.workers.dev`
 
-## Test results (last run: 2026-07-31)
+## Test results (last run: 2026-08-01)
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 18 | 349 | ✅ All pass |
-| @washpro/api | 20 | 168 | ✅ All pass |
-| @washpro/contracts | 1 | 20 | ✅ All pass |
+| @washpro/web | 19 | 370 | ✅ All pass |
+| @washpro/api | 23 | 199 | ✅ All pass |
+| @washpro/contracts | 1 | 24 | ✅ All pass |
 | @washpro/domain | 8 | 53 | ✅ All pass |
-| **Total** | **47** | **590** | **✅ All pass** |
+| **Total** | **51** | **646** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -50,6 +50,8 @@ All packages: ✅ 0 errors
 10. **Report monetary formatting fix** (pending deploy): Reports module displayed raw minor-unit integers (e.g. `695000`) in the browser table, CSV, and PDF exports. Added `REPORT_COLUMNS` metadata (per-report column key/label/type) and shared helpers in `@washpro/domain`: `formatMinorForCsv` (machine-readable `6950.00`, throws on invalid values), `formatMinorForDisplay` (ASCII-safe `INR 6,950.00` fallback for PDF fonts; `—` for invalid), `formatReportLabel`. All three surfaces now use the same metadata: browser (`reports.tsx` + `cell-currency` CSS), CSV (readable headers, quoted text only, major-unit decimals), PDF (metadata columns + org currency from `business.settings`). Profit export now mirrors the browser summary row (`from`/`to`/`revenueMinor`/`expensesMinor`/`netProfitMinor`) instead of the daily financials view. API financial data remains integer minor units.
 
 11. **Customer search by vehicle registration** (not yet deployed): The New Wash customer step now also matches vehicle registration numbers in addition to customer name and phone. `GET /api/v1/customers?search=` normalizes the query with the existing `normalizeRegistration` utility and matches `vehicles.registration_normalized` exactly (case/whitespace/hyphen-insensitive), joined via `EXISTS` (no duplicates, no N+1). Results found by registration carry `matching_registrations` (display registration numbers); the wizard shows them as secondary info. Helper text and placeholder updated on the New Wash customer step. Tenant isolation, permissions, ordering, and LIMIT 100 unchanged.
+
+12. **Payment method card selector + default method setting** (not yet deployed, migration 0018): Record Payment dialog replaced its method dropdown with four PNG radio cards (Cash, UPI, Bank UPI, Paytm) mirroring the vehicle-type selector pattern. New `payment.default_method` business setting (validated against the 4 canonical methods, stored uppercased) is exposed on the session payload as `paymentDefaultMethod` and pre-selects the dialog default with a CASH fallback; Settings page saves it and refreshes the auth context. Contracts now expose `PAYMENT_METHODS` (CASH/UPI/BANK_UPI/PAYTM), `LEGACY_PAYMENT_METHODS` (CARD/BANK_TRANSFER/OTHER), and `PAYMENT_METHOD_LABELS`; the `payments` table CHECK constraint and `paymentInputSchema` accept only canonical methods while legacy rows stay readable and label-mapped (Payments list and Customer detail). Migration 0018 required a `DROP TRIGGER IF EXISTS tr_refunds_not_over_payment` workaround before the payments table rebuild because workerd reparses surviving triggers referencing the renamed table. Expenses keeps its own separate payment-method flow. 646 automated tests pass.
 
 ## Known issues
 

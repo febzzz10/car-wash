@@ -1,4 +1,4 @@
-import { loginRequestSchema } from "@washpro/contracts";
+import { loginRequestSchema, PAYMENT_METHODS, type PaymentMethod } from "@washpro/contracts";
 import { normalizeEmail, normalizePhone } from "@washpro/domain";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -46,6 +46,13 @@ function formattingPreferences(settings: SettingMap) {
     locale: stringSetting(settings, "business.number_format", "en-IN"),
     timeZone: stringSetting(settings, "business.timezone", "Asia/Kolkata"),
   };
+}
+
+function paymentDefaultMethod(settings: SettingMap): PaymentMethod {
+  const stored = stringSetting(settings, "payment.default_method", "CASH");
+  return (PAYMENT_METHODS as readonly string[]).includes(stored)
+    ? (stored as PaymentMethod)
+    : "CASH";
 }
 
 function normalizeIdentifier(value: string): {
@@ -213,6 +220,7 @@ async function createWashProSession(
   return {
     csrfToken,
     expiresAt: expiresAt.toISOString(),
+    paymentDefaultMethod: paymentDefaultMethod(settings),
     preferences: formattingPreferences(settings),
     user: {
       branchId: user.default_branch_id,
@@ -483,6 +491,7 @@ protectedAuthRoutes.get("/session", async (c) => {
   return c.json({
     data: {
       csrfToken,
+      paymentDefaultMethod: paymentDefaultMethod(settings),
       preferences: formattingPreferences(settings),
       user: {
         branchId: auth.branchId,

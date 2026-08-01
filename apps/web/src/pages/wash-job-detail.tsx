@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { useAuth } from "../auth";
+import PaymentMethodSelect from "../components/payment-method-select";
 import {
   Button,
   Card,
@@ -31,6 +32,7 @@ import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
 import { api, ApiError, jsonBody } from "../lib/api";
 import { dateTime, duration, money, titleCase } from "../lib/format";
+import { isCanonicalPaymentMethod } from "../lib/payment-methods";
 import type { WashJobRecord } from "../types";
 
 interface JobItem {
@@ -680,10 +682,12 @@ export function PaymentDialog({
   readonly onDone: (result: { fullyDiscounted: boolean }) => void;
   readonly open: boolean;
 }) {
-  const { user } = useAuth();
+  const { user, paymentDefaultMethod } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const [method, setMethod] = useState("CASH");
 
   const benefitsLocked = useMemo(() =>
     Boolean(record.billing_locked_at) || record.paid_amount_minor > 0 || record.payment_status === "PAID",
@@ -719,26 +723,30 @@ export function PaymentDialog({
 
   useEffect(() => {
     const justOpened = open && !wasOpen.current;
-    if ((justOpened || (open && initializedFor.current !== record.id)) && !benefitsLocked) {
-      const ab = record.appliedBenefits;
-      setCouponCode(ab?.coupon?.code ?? "");
-      setReferralCode(ab?.referral?.code ?? "");
-      setRewardId(ab?.reward?.id ?? "");
-      setRewardAmount(ab?.reward?.amountMinor != null ? (ab.reward.amountMinor / 100).toString() : "");
-      setManualDiscount(ab?.manualDiscount?.amountMinor != null ? (ab.manualDiscount.amountMinor / 100).toString() : "0");
-      setManualDiscountReason(ab?.manualDiscount?.reason ?? "");
-      initializedFor.current = record.id;
+    if (justOpened || (open && initializedFor.current !== record.id)) {
+      setMethod(isCanonicalPaymentMethod(paymentDefaultMethod) ? paymentDefaultMethod : "CASH");
+      if (!benefitsLocked) {
+        const ab = record.appliedBenefits;
+        setCouponCode(ab?.coupon?.code ?? "");
+        setReferralCode(ab?.referral?.code ?? "");
+        setRewardId(ab?.reward?.id ?? "");
+        setRewardAmount(ab?.reward?.amountMinor != null ? (ab.reward.amountMinor / 100).toString() : "");
+        setManualDiscount(ab?.manualDiscount?.amountMinor != null ? (ab.manualDiscount.amountMinor / 100).toString() : "0");
+        setManualDiscountReason(ab?.manualDiscount?.reason ?? "");
+        initializedFor.current = record.id;
+      }
     }
     if (!open) {
       initializedFor.current = null;
       setCouponCode(""); setReferralCode(""); setRewardId(""); setRewardAmount("");
       setManualDiscount("0"); setManualDiscountReason("");
+      setMethod(isCanonicalPaymentMethod(paymentDefaultMethod) ? paymentDefaultMethod : "CASH");
       setPreview(null); setPreviewDirty(false); setPreviewError(null);
       setVerifiedBalanceMinor(null); setFieldErrors({}); setError(null); setAmountEdited(false);
       lastAttempt.current = null;
     }
     wasOpen.current = open;
-  }, [open, record.id, benefitsLocked, record.appliedBenefits]);
+  }, [open, record.id, benefitsLocked, record.appliedBenefits, paymentDefaultMethod]);
 
   useEffect(() => {
     if (!open || benefitsLocked || !record.customer_id) return;
@@ -802,7 +810,7 @@ export function PaymentDialog({
     }
 
     const payload: Record<string, unknown> = {
-      washJobId: record.id, amountMinor, method: form.get("method"),
+      washJobId: record.id, amountMinor, method: isCanonicalPaymentMethod(method) ? method : "CASH",
       transactionReference: (form.get("reference") as string) || undefined,
       notes: (form.get("notes") as string) || undefined,
       idempotencyKey: "",
@@ -898,7 +906,10 @@ export function PaymentDialog({
         {/* Payment section */}
         {showPayFields ? (<>
           <label><span>Amount</span><input defaultValue={effectiveBalanceMinor > 0 && !amountEdited ? (effectiveBalanceMinor / 100).toString() : undefined} key={`a-${effectiveBalanceMinor}`} max={(effectiveBalanceMinor / 100).toFixed(2)} min="0.01" name="amount" onChange={() => setAmountEdited(true)} required step="0.01" type="number" />{fieldErrors["amountMinor"] ? <span className="field-error">{fieldErrors["amountMinor"]}</span> : null}</label>
-          <label><span>Method</span><select name="method" required><option value="CASH">Cash</option><option value="UPI">UPI</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank transfer</option><option value="OTHER">Other</option></select></label>
+          <div>
+            <span className="field-label">Method</span>
+            <PaymentMethodSelect disabled={busy} error={fieldErrors["method"]} onChange={v => { setMethod(v); clearField("method"); }} value={method} />
+          </div>
           <label><span>Transaction reference (optional)</span><input name="reference" /></label>
           <label><span>Notes</span><textarea name="notes" /></label>
         </>) : null}

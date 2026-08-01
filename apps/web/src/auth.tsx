@@ -14,6 +14,7 @@ import type { AuthUser } from "./types";
 
 interface SessionPayload {
   readonly csrfToken: string;
+  readonly paymentDefaultMethod?: string;
   readonly preferences: FormattingPreferences;
   readonly user: {
     readonly branchId: string | null;
@@ -29,6 +30,7 @@ interface SessionPayload {
 
 interface AuthContextValue {
   readonly loading: boolean;
+  readonly paymentDefaultMethod: string;
   readonly user: AuthUser | null;
   readonly login: (identifier: string, password: string) => Promise<void>;
   readonly logout: () => Promise<void>;
@@ -36,6 +38,19 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+const CANONICAL_PAYMENT_METHODS = new Set([
+  "CASH",
+  "UPI",
+  "BANK_UPI",
+  "PAYTM",
+]);
+
+function safePaymentDefaultMethod(value: string | undefined): string {
+  return value !== undefined && CANONICAL_PAYMENT_METHODS.has(value)
+    ? value
+    : "CASH";
+}
 
 function mapSession(payload: SessionPayload): AuthUser {
   return {
@@ -50,17 +65,21 @@ function mapSession(payload: SessionPayload): AuthUser {
 
 export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [paymentDefaultMethod, setPaymentDefaultMethod] =
+    useState<string>("CASH");
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
       const payload = await api<SessionPayload>("/auth/session");
       setCsrfToken(payload.csrfToken);
+      setPaymentDefaultMethod(safePaymentDefaultMethod(payload.paymentDefaultMethod));
       configureFormatting(payload.preferences);
       setUser(mapSession(payload));
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 401) throw error;
       setCsrfToken("");
+      setPaymentDefaultMethod("CASH");
       configureFormatting(null);
       setUser(null);
     }
@@ -73,6 +92,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       loading,
+      paymentDefaultMethod,
       user,
       login: async (identifier, password) => {
         const payload = await api<SessionPayload>("/auth/login", {
@@ -80,18 +100,20 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
           method: "POST",
         });
         setCsrfToken(payload.csrfToken);
+        setPaymentDefaultMethod(safePaymentDefaultMethod(payload.paymentDefaultMethod));
         configureFormatting(payload.preferences);
         setUser(mapSession(payload));
       },
       logout: async () => {
         await api<undefined>("/auth/logout", { method: "POST" });
         setCsrfToken("");
+        setPaymentDefaultMethod("CASH");
         configureFormatting(null);
         setUser(null);
       },
       refresh,
     }),
-    [loading, refresh, user],
+    [loading, paymentDefaultMethod, refresh, user],
   );
 
   return <AuthContext value={value}>{children}</AuthContext>;

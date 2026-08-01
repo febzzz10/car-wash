@@ -1,5 +1,6 @@
 import { Save, Settings2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
+import { useAuth } from "../auth";
 import {
   Button,
   Card,
@@ -106,6 +107,7 @@ const booleanKeys = new Set([
 ]);
 export default function SettingsPage() {
   const state = useApiData<SettingsPayload>("/settings");
+  const { refresh } = useAuth();
   const [group, setGroup] = useState<Group>("business");
   const toast = useToast();
   const [currencyError, setCurrencyError] = useState<string | null>(null);
@@ -158,6 +160,7 @@ export default function SettingsPage() {
       setCurrencyInput("");
       toast.success(`${titleCase(group)} settings saved and audited.`);
       state.reload();
+      void refresh();
     } catch (failure) {
       toast.error(
         failure instanceof Error
@@ -232,6 +235,25 @@ export default function SettingsPage() {
                           </span>
                         )}
                       </span>
+                    </label>
+                  ) : key === "payment.default_method" ? (
+                    <label key={key}>
+                      <span>Default payment method</span>
+                      <select
+                        defaultValue={
+                          (["CASH", "UPI", "BANK_UPI", "PAYTM"] as const).includes(
+                            values.get(key) as "CASH" | "UPI" | "BANK_UPI" | "PAYTM",
+                          )
+                            ? values.get(key)
+                            : "CASH"
+                        }
+                        name={key}
+                      >
+                        <option value="CASH">Cash</option>
+                        <option value="UPI">UPI</option>
+                        <option value="BANK_UPI">Bank UPI</option>
+                        <option value="PAYTM">Paytm</option>
+                      </select>
                     </label>
                   ) : key === "business.currency" ? (
                     <div className="field-group" key={key}>

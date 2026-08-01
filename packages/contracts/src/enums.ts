@@ -26,11 +26,30 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const PAYMENT_METHODS = [
   "CASH",
   "UPI",
+  "BANK_UPI",
+  "PAYTM",
+] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const LEGACY_PAYMENT_METHODS = [
   "CARD",
   "BANK_TRANSFER",
   "OTHER",
 ] as const;
-export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+export type LegacyPaymentMethod = (typeof LEGACY_PAYMENT_METHODS)[number];
+
+export const PAYMENT_METHOD_LABELS: Record<
+  PaymentMethod | LegacyPaymentMethod,
+  string
+> = {
+  BANK_UPI: "Bank UPI",
+  BANK_TRANSFER: "Bank transfer",
+  CARD: "Card",
+  CASH: "Cash",
+  OTHER: "Other",
+  PAYTM: "Paytm",
+  UPI: "UPI",
+};
 
 export const TIMER_EVENTS = ["START", "PAUSE", "RESUME", "END"] as const;
 export type TimerEventType = (typeof TIMER_EVENTS)[number];

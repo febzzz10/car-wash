@@ -10,6 +10,7 @@ import {
   validateBenefitsInput,
   washJobStatusSchema,
 } from "./schemas";
+import { PAYMENT_METHOD_LABELS } from "./enums";
 
 describe("shared contract schemas", () => {
   it("accepts every documented wash job status", () => {
@@ -152,6 +153,39 @@ describe("paymentInputSchema extended", () => {
       extraField: "nope",
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("payment method values", () => {
+  it("accepts every canonical method", () => {
+    for (const method of ["CASH", "UPI", "BANK_UPI", "PAYTM"] as const) {
+      const r = paymentInputSchema.safeParse({
+        washJobId: "j".repeat(8), amountMinor: 5000, method, idempotencyKey: "k".repeat(16),
+      });
+      expect(r.success, method).toBe(true);
+    }
+  });
+
+  it("rejects legacy methods", () => {
+    for (const method of ["CARD", "BANK_TRANSFER", "OTHER"] as const) {
+      const r = paymentInputSchema.safeParse({
+        washJobId: "j".repeat(8), amountMinor: 5000, method, idempotencyKey: "k".repeat(16),
+      });
+      expect(r.success, method).toBe(false);
+    }
+  });
+
+  it("rejects arbitrary methods", () => {
+    const r = paymentInputSchema.safeParse({
+      washJobId: "j".repeat(8), amountMinor: 5000, method: "CHEQUE", idempotencyKey: "k".repeat(16),
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("labels every canonical and legacy method", () => {
+    for (const method of ["CASH", "UPI", "BANK_UPI", "PAYTM", "CARD", "BANK_TRANSFER", "OTHER"] as const) {
+      expect(PAYMENT_METHOD_LABELS[method].length, method).toBeGreaterThan(0);
+    }
   });
 });
 

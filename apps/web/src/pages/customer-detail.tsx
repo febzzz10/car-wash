@@ -16,6 +16,7 @@ import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
 import { api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
+import { paymentMethodLabel } from "../lib/payment-methods";
 import type {
   CustomerRecord,
   VehicleRecord,
@@ -286,7 +287,7 @@ export default function CustomerDetailPage() {
                       to={`/wash-jobs/${payment.wash_job_id}`}
                     >
                       <span>
-                        <strong>{payment.payment_method}</strong>
+                        <strong>{paymentMethodLabel(payment.payment_method)}</strong>
                         <small>{dateTime(payment.created_at)}</small>
                       </span>
                       <span>

@@ -1,7 +1,7 @@
 import type { ApiFailure } from "@washpro/contracts";
 import { Hono } from "hono";
 
-import { ApiError } from "./http/errors";
+import { ApiError, unhandledErrorBody } from "./http/errors";
 import { requireAdmin, requireSession } from "./middleware/auth";
 import { auditRoutes } from "./routes/audit";
 import { protectedAuthRoutes, publicAuthRoutes } from "./routes/auth";
@@ -62,23 +62,7 @@ app.onError((error, c) => {
     return c.json(body, error.status as 400);
   }
 
-  const msg = error instanceof Error ? error.message : String(error);
-  console.error(
-    JSON.stringify({
-      errorName: error.name,
-      errorMessage: msg,
-      requestId,
-    }),
-  );
-  const body: ApiFailure = {
-    error: {
-      code: "INTERNAL_ERROR",
-      message: `UNHANDLED: ${msg}`,
-      requestId,
-    },
-    success: false,
-  };
-  return c.json(body, 500);
+  return c.json(unhandledErrorBody(error, requestId), 500);
 });
 
 app.notFound((c) =>

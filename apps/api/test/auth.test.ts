@@ -253,4 +253,116 @@ describe("authentication and authorization", () => {
     }>();
     expect(sessionBody.data?.manualDiscountEnabled).toBe(true);
   });
+
+  it("changes the password to a verifiable 100,000-iteration hash and revokes sessions", async () => {
+    await seedUser("cp-user", "cp-user", "ADMIN");
+    const result = await login("cp-user");
+    expect(result.response.status).toBe(200);
+    const headers = {
+      "content-type": "application/json",
+      cookie: result.cookie,
+      origin: "https://washpro.test",
+      "x-csrf-token": result.csrfToken,
+    };
+
+    const wrongCurrent = await app.request(
+      "/api/v1/auth/change-password",
+      {
+        body: JSON.stringify({
+          currentPassword: "WrongPass!999",
+          newPassword: "NewPass!5678",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(wrongCurrent.status).toBe(401);
+    expect(await wrongCurrent.json()).toMatchObject({
+      error: { code: "AUTH_INVALID_CREDENTIALS" },
+    });
+
+    const weakNew = await app.request(
+      "/api/v1/auth/change-password",
+      {
+        body: JSON.stringify({
+          currentPassword: "WashPro!234",
+          newPassword: "short",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(weakNew.status).toBe(422);
+
+    const samePassword = await app.request(
+      "/api/v1/auth/change-password",
+      {
+        body: JSON.stringify({
+          currentPassword: "WashPro!234",
+          newPassword: "WashPro!234",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(samePassword.status).toBe(422);
+
+    const changed = await app.request(
+      "/api/v1/auth/change-password",
+      {
+        body: JSON.stringify({
+          currentPassword: "WashPro!234",
+          newPassword: "NewPass!5678",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(changed.status).toBe(204);
+
+    const stored = await env.DB.prepare(
+      "SELECT password_hash, must_change_password FROM users WHERE id = 'cp-user'",
+    ).first<{ password_hash: string; must_change_password: number }>();
+    expect(stored?.password_hash.startsWith("pbkdf2-sha256$100000$")).toBe(
+      true,
+    );
+    expect(stored?.password_hash).not.toContain("NewPass!5678");
+    expect(stored?.must_change_password).toBe(0);
+
+    const revokedSession = await app.request(
+      "/api/v1/auth/session",
+      { headers: { cookie: result.cookie } },
+      env,
+    );
+    expect(revokedSession.status).toBe(401);
+
+    const oldPasswordLogin = await login("cp-user");
+    expect(oldPasswordLogin.response.status).toBe(401);
+
+    const newPasswordLogin = await app.request(
+      "/api/v1/auth/login",
+      {
+        body: JSON.stringify({
+          identifier: "cp-user",
+          password: "NewPass!5678",
+        }),
+        headers: {
+          "content-type": "application/json",
+          origin: "https://washpro.test",
+        },
+        method: "POST",
+      },
+      env,
+    );
+    expect(newPasswordLogin.status).toBe(200);
+
+    const audit = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'PASSWORD_CHANGED' AND record_id = 'cp-user'",
+    ).first("count");
+    expect(audit).toBe(1);
+  });
 });

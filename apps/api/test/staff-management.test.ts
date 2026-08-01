@@ -262,4 +262,210 @@ describe("Staff management", () => {
       },
     });
   });
+
+  it("creates Staff with a Workers-compatible 100,000-iteration hash", async () => {
+    const headers = await adminHeaders();
+    const createdResponse = await app.request(
+      "/api/v1/users",
+      {
+        body: JSON.stringify({
+          fullName: "Meera Nair",
+          permissions: ["customers.read", "wash_jobs.read"],
+          role: "STAFF",
+          temporaryPassword: "MeeraTemp!234",
+          username: "meera",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(createdResponse.status).toBe(201);
+
+    const stored = await env.DB.prepare(
+      "SELECT id, organization_id, permissions_json, password_hash FROM users WHERE username = ?",
+    )
+      .bind("meera")
+      .first<{
+        id: string;
+        organization_id: string;
+        permissions_json: string;
+        password_hash: string;
+      }>();
+    expect(stored?.id).toBeDefined();
+    expect(stored?.organization_id).toBe("org-staff");
+    expect(stored?.permissions_json).toBe(
+      JSON.stringify(["customers.read", "wash_jobs.read"]),
+    );
+    expect(stored?.password_hash.startsWith("pbkdf2-sha256$100000$")).toBe(
+      true,
+    );
+    expect(stored?.password_hash).not.toContain("MeeraTemp!234");
+
+    const validLogin = await app.request(
+      "/api/v1/auth/login",
+      {
+        body: JSON.stringify({
+          identifier: "meera",
+          password: "MeeraTemp!234",
+        }),
+        headers: {
+          "content-type": "application/json",
+          origin: "https://washpro.test",
+        },
+        method: "POST",
+      },
+      env,
+    );
+    expect(validLogin.status).toBe(200);
+
+    const wrongLogin = await app.request(
+      "/api/v1/auth/login",
+      {
+        body: JSON.stringify({ identifier: "meera", password: "WrongTemp!234" }),
+        headers: {
+          "content-type": "application/json",
+          origin: "https://washpro.test",
+        },
+        method: "POST",
+      },
+      env,
+    );
+    expect(wrongLogin.status).toBe(401);
+
+    const duplicate = await app.request(
+      "/api/v1/users",
+      {
+        body: JSON.stringify({
+          fullName: "Meera Again",
+          permissions: [],
+          role: "STAFF",
+          temporaryPassword: "MeeraTemp!234",
+          username: "meera",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(duplicate.status).toBe(409);
+    expect(await duplicate.json()).toMatchObject({
+      error: { code: "RESOURCE_CONFLICT" },
+    });
+
+    const audit = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'USER_CREATED' AND record_id = ?",
+    )
+      .bind(stored?.id ?? "")
+      .first("count");
+    expect(audit).toBe(1);
+  });
+
+  it("resets a Staff password to a verifiable 100,000-iteration hash and revokes sessions", async () => {
+    const headers = await adminHeaders();
+    const createdResponse = await app.request(
+      "/api/v1/users",
+      {
+        body: JSON.stringify({
+          fullName: "Arun Pillai",
+          permissions: [],
+          role: "STAFF",
+          temporaryPassword: "ArunTemp!234",
+          username: "arun",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(createdResponse.status).toBe(201);
+    const created = await createdResponse.json<{
+      data: { id: string; version: number };
+    }>();
+    const staffCookie =
+      (
+        await app.request(
+          "/api/v1/auth/login",
+          {
+            body: JSON.stringify({
+              identifier: "arun",
+              password: "ArunTemp!234",
+            }),
+            headers: {
+              "content-type": "application/json",
+              origin: "https://washpro.test",
+            },
+            method: "POST",
+          },
+          env,
+        )
+      ).headers.get("set-cookie")?.split(";")[0] ?? "";
+
+    const reset = await app.request(
+      `/api/v1/users/${created.data.id}/reset-password`,
+      {
+        body: JSON.stringify({ temporaryPassword: "ArunReset!567" }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(reset.status).toBe(204);
+
+    const stored = await env.DB.prepare(
+      "SELECT password_hash, must_change_password FROM users WHERE id = ?",
+    )
+      .bind(created.data.id)
+      .first<{ password_hash: string; must_change_password: number }>();
+    expect(stored?.password_hash.startsWith("pbkdf2-sha256$100000$")).toBe(
+      true,
+    );
+    expect(stored?.password_hash).not.toContain("ArunReset!567");
+    expect(stored?.must_change_password).toBe(1);
+
+    const revokedSession = await app.request(
+      "/api/v1/auth/session",
+      { headers: { cookie: staffCookie } },
+      env,
+    );
+    expect(revokedSession.status).toBe(401);
+
+    const oldPassword = await app.request(
+      "/api/v1/auth/login",
+      {
+        body: JSON.stringify({ identifier: "arun", password: "ArunTemp!234" }),
+        headers: {
+          "content-type": "application/json",
+          origin: "https://washpro.test",
+        },
+        method: "POST",
+      },
+      env,
+    );
+    expect(oldPassword.status).toBe(401);
+
+    const newPassword = await app.request(
+      "/api/v1/auth/login",
+      {
+        body: JSON.stringify({
+          identifier: "arun",
+          password: "ArunReset!567",
+        }),
+        headers: {
+          "content-type": "application/json",
+          origin: "https://washpro.test",
+        },
+        method: "POST",
+      },
+      env,
+    );
+    expect(newPassword.status).toBe(200);
+
+    const audit = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'PASSWORD_RESET' AND record_id = ?",
+    )
+      .bind(created.data.id)
+      .first("count");
+    expect(audit).toBe(1);
+  });
 });

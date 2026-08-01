@@ -7,7 +7,10 @@ import {
 
 const algorithmName = "PBKDF2";
 const digestName = "SHA-256";
-const iterations = 600_000;
+// Cloudflare Workers/workerd rejects PBKDF2 requests above 100,000 iterations
+// ("Pbkdf2 failed: iteration counts above 100000 are not supported"), so
+// 100,000 is both the work factor for new hashes and the platform maximum.
+export const PBKDF2_ITERATIONS = 100_000;
 const keyLengthBits = 256;
 const format = "pbkdf2-sha256";
 
@@ -21,12 +24,21 @@ export function passwordPolicyError(password: string): string | null {
   return null;
 }
 
+export function assertPbkdf2IterationCount(rounds: number): void {
+  if (!Number.isInteger(rounds) || rounds > PBKDF2_ITERATIONS) {
+    throw new Error(
+      `Internal configuration error: PBKDF2 iteration count must not exceed ${PBKDF2_ITERATIONS} in the Cloudflare Workers runtime.`,
+    );
+  }
+}
+
 async function derive(
   password: string,
   pepper: string,
   salt: Uint8Array<ArrayBuffer>,
   rounds: number,
 ): Promise<Uint8Array> {
+  assertPbkdf2IterationCount(rounds);
   const material = await globalThis.crypto.subtle.importKey(
     "raw",
     encodeUtf8(`${password}\u0000${pepper}`).buffer,
@@ -53,10 +65,10 @@ export async function hashPassword(
 ): Promise<string> {
   const salt = new Uint8Array(new ArrayBuffer(16));
   globalThis.crypto.getRandomValues(salt);
-  const derived = await derive(password, pepper, salt, iterations);
+  const derived = await derive(password, pepper, salt, PBKDF2_ITERATIONS);
   return [
     format,
-    String(iterations),
+    String(PBKDF2_ITERATIONS),
     encodeBase64Url(salt),
     encodeBase64Url(derived),
   ].join("$");
@@ -72,7 +84,8 @@ export async function verifyPassword(
   if (
     storedFormat !== format ||
     !Number.isInteger(rounds) ||
-    rounds < 100_000 ||
+    rounds < PBKDF2_ITERATIONS ||
+    rounds > PBKDF2_ITERATIONS ||
     saltText === undefined ||
     hashText === undefined
   ) {

@@ -63,7 +63,7 @@ export default function CustomersPage() {
           </div>
           <SearchField
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search name or phone…"
+            placeholder="Search name, phone, or registration…"
             value={search}
           />
         </div>
@@ -77,7 +77,7 @@ export default function CustomersPage() {
               <Button onClick={() => setDialog(true)}>Add customer</Button>
             }
             icon={UserRoundSearch}
-            message="Try another name or phone, or create a new profile."
+            message="Try another name, phone, or registration, or create a new profile."
             title="No customers found"
           />
         ) : (
@@ -102,6 +102,12 @@ export default function CustomersPage() {
                     <td>
                       <strong>{customer.full_name}</strong>
                       <small>{customer.customer_code ?? "Customer"}</small>
+                      {customer.matching_registrations === undefined ? null : (
+                        <small className="matched-registration">
+                          Matched vehicle:{" "}
+                          {customer.matching_registrations.join(", ")}
+                        </small>
+                      )}
                     </td>
                     <td>{customer.phone}</td>
                     <td>{customer.total_visits_cached}</td>

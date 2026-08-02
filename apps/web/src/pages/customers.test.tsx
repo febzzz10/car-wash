@@ -56,6 +56,20 @@ const CUSTOMER_FIXTURE = [
   },
 ];
 
+const REGISTRATION_MATCHED = [
+  {
+    id: "c1",
+    full_name: "Test Customer",
+    phone: "9002005005",
+    status: "ACTIVE",
+    total_visits_cached: 3,
+    total_spent_minor_cached: 1000,
+    last_visit_at: "2026-07-01T10:00:00.000Z",
+    version: 1,
+    matching_registrations: ["KL 25 A 1234", "KL 26 B 5678"],
+  },
+];
+
 vi.mock("../lib/api", () => ({
   api: vi.fn(),
   jsonBody: (v: unknown) => ({ body: JSON.stringify(v) }),
@@ -108,13 +122,25 @@ vi.mock("../auth", () => ({
 }));
 
 vi.mock("../hooks/use-api-data", () => ({
-  useApiData: vi.fn((_path: string) => ({
-    data: CUSTOMER_FIXTURE,
-    error: null,
-    loading: false,
-    reload: mockReload,
-  })),
+  useApiData: vi.fn((_path: string) => {
+    const query =
+      new URLSearchParams(_path.split("?")[1] ?? "").get("search") ?? "";
+    return {
+      data: query.toUpperCase().includes("KL")
+        ? REGISTRATION_MATCHED
+        : CUSTOMER_FIXTURE,
+      error: null,
+      loading: false,
+      reload: mockReload,
+    };
+  }),
 }));
+
+function searchInput(): HTMLInputElement {
+  return screen.getByPlaceholderText(
+    "Search name, phone, or registration…",
+  ) as HTMLInputElement;
+}
 
 function LocationProbe() {
   const location = useLocation();
@@ -292,5 +318,137 @@ describe("Customers directory — contact actions", () => {
       screen.getByLabelText("Message Test Customer on WhatsApp"),
     ).toBeDefined();
     expect(screen.getByLabelText("Call No Phone")).toBeDisabled();
+  });
+});
+
+describe("Customers directory — registration search", () => {
+  afterEach(() => {
+    cleanup();
+    vi.mocked(useApiData).mockClear();
+    vi.mocked(useAuth).mockImplementation(() => adminUser());
+  });
+
+  it("shows the registration-aware search placeholder", () => {
+    renderPage();
+    expect(searchInput()).toBeDefined();
+  });
+
+  it("still searches customers by name", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "Kerala" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=Kerala&status=ACTIVE",
+    );
+  });
+
+  it("still searches customers by phone number", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "90020" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=90020&status=ACTIVE",
+    );
+  });
+
+  it("returns the associated customer for a full normalized registration", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "KL25A1234" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=KL25A1234&status=ACTIVE",
+    );
+    expect(
+      screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
+    ).toBeDefined();
+  });
+
+  it("returns the same customer for spaced or hyphenated registrations", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "KL 25 A 1234" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=KL%2025%20A%201234&status=ACTIVE",
+    );
+    fireEvent.change(searchInput(), { target: { value: "kl-25-a-1234" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=kl-25-a-1234&status=ACTIVE",
+    );
+    expect(
+      screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
+    ).toBeDefined();
+  });
+
+  it("returns the same customer for lowercase registration input", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "kl25a1234" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=kl25a1234&status=ACTIVE",
+    );
+    expect(
+      screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
+    ).toBeDefined();
+  });
+
+  it("passes short partial searches through to the server-side rule", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "12" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=12&status=ACTIVE",
+    );
+    expect(screen.getByText("Kerala Driver")).toBeDefined();
+  });
+
+  it("shows a customer owning multiple matching vehicles only once", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "KL25A1234" } });
+    expect(screen.getAllByText("Test Customer")).toHaveLength(1);
+    expect(screen.getAllByText(/Matched vehicle:/)).toHaveLength(1);
+    expect(
+      screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
+    ).toBeDefined();
+  });
+
+  it("clearing the search restores the full customer list", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "KL25A1234" } });
+    fireEvent.change(searchInput(), { target: { value: "" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=&status=ACTIVE",
+    );
+    expect(screen.getByText("Kerala Driver")).toBeDefined();
+  });
+
+  it("treats whitespace-only input as an empty search", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "   " } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=%20%20%20&status=ACTIVE",
+    );
+    expect(screen.getByText("Kerala Driver")).toBeDefined();
+  });
+
+  it("keeps immediate per-keystroke requests unchanged", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "K" } });
+    fireEvent.change(searchInput(), { target: { value: "KL25A1234" } });
+    const paths = vi
+      .mocked(useApiData)
+      .mock.calls.map(([path]) => path);
+    expect(paths).toContain("/customers?search=K&status=ACTIVE");
+    expect(paths).toContain("/customers?search=KL25A1234&status=ACTIVE");
+  });
+
+  it("lets admins search by registration", () => {
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "KL25A1234" } });
+    expect(
+      screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
+    ).toBeDefined();
+  });
+
+  it("lets staff search by registration", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "KL25A1234" } });
+    expect(
+      screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
+    ).toBeDefined();
   });
 });

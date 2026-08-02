@@ -20,17 +20,23 @@ import {
   SkeletonRows,
 } from "../components/ui";
 import { useToast } from "../components/toast";
+import { useAuth } from "../auth";
 import { useApiData } from "../hooks/use-api-data";
 import { api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
 import type { CustomerRecord } from "../types";
 
 export default function CustomersPage() {
+  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ACTIVE");
   const [dialog, setDialog] = useState(false);
+  const isStaff = user?.role === "STAFF";
+  const searchActive = search.trim() !== "";
+  const searchRequired = isStaff && !searchActive;
   const state = useApiData<readonly CustomerRecord[]>(
     `/customers?search=${encodeURIComponent(search)}&status=${status}`,
+    !searchRequired,
   );
   return (
     <>
@@ -67,7 +73,16 @@ export default function CustomersPage() {
             value={search}
           />
         </div>
-        {state.loading ? (
+        {searchRequired ? (
+          <EmptyState
+            action={
+              <Button onClick={() => setDialog(true)}>Add customer</Button>
+            }
+            icon={UserRoundSearch}
+            message="Enter a customer name, phone number, or vehicle registration number to view results."
+            title="Search for a customer"
+          />
+        ) : state.loading ? (
           <SkeletonRows />
         ) : state.error !== null ? (
           <ErrorState message={state.error} onRetry={state.reload} />

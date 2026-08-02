@@ -122,7 +122,7 @@ vi.mock("../auth", () => ({
 }));
 
 vi.mock("../hooks/use-api-data", () => ({
-  useApiData: vi.fn((_path: string) => {
+  useApiData: vi.fn((_path: string, _enabled: boolean) => {
     const query =
       new URLSearchParams(_path.split("?")[1] ?? "").get("search") ?? "";
     return {
@@ -304,6 +304,7 @@ describe("Customers directory — contact actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Inactive" }));
     expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
       "/customers?search=&status=INACTIVE",
+      true,
     );
     expect(
       screen.getByRole("button", { name: "Inactive" }).className,
@@ -313,6 +314,7 @@ describe("Customers directory — contact actions", () => {
   it("renders the contact actions for staff users", () => {
     vi.mocked(useAuth).mockImplementation(() => staffUser());
     renderPage();
+    fireEvent.change(searchInput(), { target: { value: "Test" } });
     expect(screen.getByLabelText("Call Test Customer")).toBeDefined();
     expect(
       screen.getByLabelText("Message Test Customer on WhatsApp"),
@@ -338,6 +340,7 @@ describe("Customers directory — registration search", () => {
     fireEvent.change(searchInput(), { target: { value: "Kerala" } });
     expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
       "/customers?search=Kerala&status=ACTIVE",
+      true,
     );
   });
 
@@ -346,6 +349,7 @@ describe("Customers directory — registration search", () => {
     fireEvent.change(searchInput(), { target: { value: "90020" } });
     expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
       "/customers?search=90020&status=ACTIVE",
+      true,
     );
   });
 
@@ -354,6 +358,7 @@ describe("Customers directory — registration search", () => {
     fireEvent.change(searchInput(), { target: { value: "KL25A1234" } });
     expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
       "/customers?search=KL25A1234&status=ACTIVE",
+      true,
     );
     expect(
       screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
@@ -365,10 +370,12 @@ describe("Customers directory — registration search", () => {
     fireEvent.change(searchInput(), { target: { value: "KL 25 A 1234" } });
     expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
       "/customers?search=KL%2025%20A%201234&status=ACTIVE",
+      true,
     );
     fireEvent.change(searchInput(), { target: { value: "kl-25-a-1234" } });
     expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
       "/customers?search=kl-25-a-1234&status=ACTIVE",
+      true,
     );
     expect(
       screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
@@ -380,6 +387,7 @@ describe("Customers directory — registration search", () => {
     fireEvent.change(searchInput(), { target: { value: "kl25a1234" } });
     expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
       "/customers?search=kl25a1234&status=ACTIVE",
+      true,
     );
     expect(
       screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
@@ -391,6 +399,7 @@ describe("Customers directory — registration search", () => {
     fireEvent.change(searchInput(), { target: { value: "12" } });
     expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
       "/customers?search=12&status=ACTIVE",
+      true,
     );
     expect(screen.getByText("Kerala Driver")).toBeDefined();
   });
@@ -411,6 +420,7 @@ describe("Customers directory — registration search", () => {
     fireEvent.change(searchInput(), { target: { value: "" } });
     expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
       "/customers?search=&status=ACTIVE",
+      true,
     );
     expect(screen.getByText("Kerala Driver")).toBeDefined();
   });
@@ -420,6 +430,7 @@ describe("Customers directory — registration search", () => {
     fireEvent.change(searchInput(), { target: { value: "   " } });
     expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
       "/customers?search=%20%20%20&status=ACTIVE",
+      true,
     );
     expect(screen.getByText("Kerala Driver")).toBeDefined();
   });
@@ -450,5 +461,120 @@ describe("Customers directory — registration search", () => {
     expect(
       screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
     ).toBeDefined();
+  });
+});
+
+describe("Customers directory — staff must search first", () => {
+  afterEach(() => {
+    cleanup();
+    vi.mocked(useApiData).mockClear();
+    vi.mocked(useAuth).mockImplementation(() => adminUser());
+  });
+
+  it("does not load the customer list for staff with an empty search", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    expect(vi.mocked(useApiData)).toHaveBeenCalledWith(
+      "/customers?search=&status=ACTIVE",
+      false,
+    );
+    expect(screen.queryByText("Test Customer")).toBeNull();
+    expect(screen.queryByText("Kerala Driver")).toBeNull();
+  });
+
+  it("shows a search prompt instead of the list for staff", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    expect(screen.getByText("Search for a customer")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Enter a customer name, phone number, or vehicle registration number to view results.",
+      ),
+    ).toBeDefined();
+    expect(document.querySelector("table")).toBeNull();
+    expect(document.querySelector(".skeleton-list")).toBeNull();
+  });
+
+  it("treats whitespace-only input as no search for staff", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "   " } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=%20%20%20&status=ACTIVE",
+      false,
+    );
+    expect(screen.queryByText("Kerala Driver")).toBeNull();
+  });
+
+  it("loads customers for staff once a name search is entered", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "Kerala" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=Kerala&status=ACTIVE",
+      true,
+    );
+    expect(screen.getByText("Kerala Driver")).toBeDefined();
+  });
+
+  it("loads customers for staff once a phone search is entered", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "90020" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=90020&status=ACTIVE",
+      true,
+    );
+    expect(screen.getByText("Test Customer")).toBeDefined();
+  });
+
+  it("loads customers for staff once a registration search is entered", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "KL25A1234" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=KL25A1234&status=ACTIVE",
+      true,
+    );
+    expect(
+      screen.getByText("Matched vehicle: KL 25 A 1234, KL 26 B 5678"),
+    ).toBeDefined();
+  });
+
+  it("hides the list again when staff clears the search", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "Kerala" } });
+    expect(screen.getByText("Kerala Driver")).toBeDefined();
+    fireEvent.change(searchInput(), { target: { value: "" } });
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=&status=ACTIVE",
+      false,
+    );
+    expect(screen.queryByText("Kerala Driver")).toBeNull();
+    expect(screen.getByText("Search for a customer")).toBeDefined();
+  });
+
+  it("keeps the search prompt when staff switch tabs", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Inactive" }));
+    expect(vi.mocked(useApiData)).toHaveBeenLastCalledWith(
+      "/customers?search=&status=INACTIVE",
+      false,
+    );
+    expect(screen.getByText("Search for a customer")).toBeDefined();
+    expect(screen.queryByText("Kerala Driver")).toBeNull();
+  });
+
+  it("loads the full customer list for admins with an empty search", () => {
+    renderPage();
+    expect(vi.mocked(useApiData)).toHaveBeenCalledWith(
+      "/customers?search=&status=ACTIVE",
+      true,
+    );
+    expect(screen.getByText("Kerala Driver")).toBeDefined();
+    expect(document.querySelector("table")).not.toBeNull();
+    expect(screen.queryByText("Search for a customer")).toBeNull();
   });
 });

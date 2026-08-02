@@ -6,11 +6,13 @@ import {
   MapPin,
   Plus,
   RotateCcw,
+  UserRoundSearch,
   VideoOff,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { useAuth } from "../auth";
 import {
   Button,
   Card,
@@ -101,8 +103,12 @@ export default function NewWashPage() {
   const [error, setError] = useState<string | null>(null);
   const [customerDialog, setCustomerDialog] = useState(false);
   const [vehicleDialog, setVehicleDialog] = useState(false);
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
+  const searching = search.trim() !== "";
   const customers = useApiData<readonly CustomerRecord[]>(
     `/customers?search=${encodeURIComponent(search)}`,
+    isAdmin || searching,
   );
   const staff = useApiData<readonly StaffRecord[]>(
     "/wash-jobs/assignable-users",
@@ -286,34 +292,48 @@ export default function NewWashPage() {
                   <Plus size={17} /> Add customer
                 </Button>
               </div>
-              {customers.loading ? (
-                <SkeletonRows />
-              ) : customers.error !== null ? (
-                <ErrorState
-                  message={customers.error}
-                  onRetry={customers.reload}
-                />
-              ) : (
-                <div className="choice-list">
-                  {customers.data?.map((customer) => (
-                    <Choice
-                      active={customer.id === customerId}
-                      key={customer.id}
-                      onClick={() => {
-                        setCustomerId(customer.id);
-                        setVehicleId("");
-                      }}
-                      primary={customer.full_name}
-                      secondary={
-                        customer.matching_registrations !== undefined &&
-                        customer.matching_registrations.length > 0
-                          ? `${customer.matching_registrations.join(", ")} · ${customer.phone} · ${customer.total_visits_cached} visits`
-                          : `${customer.phone} · ${customer.total_visits_cached} visits`
-                      }
-                    />
-                  ))}
-                </div>
+              {isAdmin || searching ? null : (
+                <p className="step-intro" role="status">
+                  Search by customer name, phone, or vehicle registration number
+                  to find a customer.
+                </p>
               )}
+              {isAdmin || searching ? (
+                customers.loading ? (
+                  <SkeletonRows />
+                ) : customers.error !== null ? (
+                  <ErrorState
+                    message={customers.error}
+                    onRetry={customers.reload}
+                  />
+                ) : !isAdmin && (customers.data?.length ?? 0) === 0 ? (
+                  <EmptyState
+                    icon={UserRoundSearch}
+                    message="Try a different name, phone number, or registration number."
+                    title="No customers found"
+                  />
+                ) : (
+                  <div className="choice-list">
+                    {customers.data?.map((customer) => (
+                      <Choice
+                        active={customer.id === customerId}
+                        key={customer.id}
+                        onClick={() => {
+                          setCustomerId(customer.id);
+                          setVehicleId("");
+                        }}
+                        primary={customer.full_name}
+                        secondary={
+                          customer.matching_registrations !== undefined &&
+                          customer.matching_registrations.length > 0
+                            ? `${customer.matching_registrations.join(", ")} · ${customer.phone} · ${customer.total_visits_cached} visits`
+                            : `${customer.phone} · ${customer.total_visits_cached} visits`
+                        }
+                      />
+                    ))}
+                  </div>
+                )
+              ) : null}
             </SelectionStep>
           ) : null}
           {step === 1 ? (

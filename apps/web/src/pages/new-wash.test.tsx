@@ -5,40 +5,84 @@ import { MemoryRouter } from "react-router-dom";
 import { WASH_DRAFT_STORAGE_KEY } from "../lib/wizard-draft";
 import { stepLabels } from "./new-wash";
 import { api } from "../lib/api";
+import { useAuth } from "../auth";
+import { useApiData } from "../hooks/use-api-data";
 
 const mockReload = vi.fn();
+
+const CUSTOMER_FIXTURE: readonly {
+  readonly id: string;
+  readonly full_name: string;
+  readonly phone: string;
+  readonly total_visits_cached: number;
+  readonly matching_registrations: readonly string[];
+}[] = [
+  {
+    id: "c1",
+    full_name: "Test Customer",
+    phone: "9876543210",
+    total_visits_cached: 3,
+    matching_registrations: ["KL01TEST"],
+  },
+];
+
+let customerData = CUSTOMER_FIXTURE;
 
 vi.mock("../lib/api", () => ({
   api: vi.fn(),
   jsonBody: (v: unknown) => ({ body: JSON.stringify(v) }),
 }));
 
-vi.mock("../auth", () => ({
-  useAuth: () => ({
+function adminUser(): ReturnType<typeof useAuth> {
+  return {
+    loading: false,
+    manualDiscountEnabled: false,
+    paymentDefaultMethod: "CASH",
     user: {
       id: "admin-1",
-      role: "ADMIN" as const,
+      role: "ADMIN",
       permissions: [] as string[],
       branchId: "b1",
       fullName: "Admin",
+      username: "admin",
     },
-  }),
+    login: async () => undefined,
+    logout: async () => undefined,
+    refresh: async () => undefined,
+  };
+}
+
+vi.mock("../auth", () => ({
+  useAuth: vi.fn(() => adminUser()),
   AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+function asStaff() {
+  vi.mocked(useAuth).mockImplementation(
+    (): ReturnType<typeof useAuth> => ({
+      loading: false,
+      manualDiscountEnabled: false,
+      paymentDefaultMethod: "CASH",
+      user: {
+        id: "staff-1",
+        role: "STAFF",
+        permissions: [] as string[],
+        branchId: "b1",
+        fullName: "Staff",
+        username: "staff",
+      },
+      login: async () => undefined,
+      logout: async () => undefined,
+      refresh: async () => undefined,
+    }),
+  );
+}
+
 vi.mock("../hooks/use-api-data", () => ({
-  useApiData: vi.fn((path: string) => {
+  useApiData: vi.fn((path: string, enabled = true) => {
     if (path.includes("customers"))
       return {
-        data: [
-          {
-            id: "c1",
-            full_name: "Test Customer",
-            phone: "9876543210",
-            total_visits_cached: 3,
-            matching_registrations: ["KL01TEST"],
-          },
-        ],
+        data: enabled ? customerData : [],
         error: null,
         loading: false,
         reload: mockReload,
@@ -142,6 +186,8 @@ afterEach(() => {
   cleanup();
   sessionStorage.clear();
   vi.clearAllMocks();
+  vi.mocked(useAuth).mockImplementation(() => adminUser());
+  customerData = CUSTOMER_FIXTURE;
 });
 
 describe("New Wash — stepLabels", () => {
@@ -686,7 +732,6 @@ describe("New Wash — customer registration search", () => {
   });
 
   it("shows the normal empty state when a registration search has no match", async () => {
-    const useApiData = (await import("../hooks/use-api-data")).useApiData;
     vi.mocked(useApiData).mockImplementationOnce(() => ({
       data: [],
       error: null,
@@ -700,5 +745,240 @@ describe("New Wash — customer registration search", () => {
       </MemoryRouter>,
     );
     expect(screen.queryByText("Test Customer")).toBeNull();
+  });
+});
+
+const SEARCH_INSTRUCTION =
+  "Search by customer name, phone, or vehicle registration number to find a customer.";
+
+function customerInput(): HTMLInputElement {
+  return screen.getByPlaceholderText(
+    "Name, phone, or registration number...",
+  ) as HTMLInputElement;
+}
+
+describe("New Wash — staff customer search privacy", () => {
+  it("does not render customer rows when the step first opens", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText("Test Customer")).toBeNull();
+  });
+
+  it("does not request the unfiltered customer list initially", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    const customersCall = vi
+      .mocked(useApiData)
+      .mock.calls.find(([path]) => path.includes("customers"));
+    expect(customersCall).toBeDefined();
+    expect(customersCall![1]).toBe(false);
+  });
+
+  it("shows the search instruction when the search is empty", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(SEARCH_INSTRUCTION)).toBeTruthy();
+  });
+
+  it("does not show the no-results state before a search is performed", async () => {
+    asStaff();
+    customerData = [];
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText("No customers found")).toBeNull();
+    expect(screen.getByText(SEARCH_INSTRUCTION)).toBeTruthy();
+  });
+
+  it("entering a customer name displays matching results", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.change(customerInput(), { target: { value: "Test" } });
+    expect(screen.getByText("Test Customer")).toBeTruthy();
+    expect(screen.queryByText(SEARCH_INSTRUCTION)).toBeNull();
+  });
+
+  it("entering a phone number displays matching results", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.change(customerInput(), { target: { value: "9876" } });
+    expect(screen.getByText("Test Customer")).toBeTruthy();
+  });
+
+  it("entering a registration number displays matching results", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.change(customerInput(), { target: { value: "KL01" } });
+    expect(screen.getByText("Test Customer")).toBeTruthy();
+    expect(
+      screen.getByText("KL01TEST · 9876543210 · 3 visits"),
+    ).toBeTruthy();
+  });
+
+  it("clearing the search removes all customer rows and shows the instruction", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.change(customerInput(), { target: { value: "Test" } });
+    expect(screen.getByText("Test Customer")).toBeTruthy();
+    fireEvent.change(customerInput(), { target: { value: "" } });
+    expect(screen.queryByText("Test Customer")).toBeNull();
+    expect(screen.getByText(SEARCH_INSTRUCTION)).toBeTruthy();
+  });
+
+  it("clearing the search does not trigger an unfiltered request", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.change(customerInput(), { target: { value: "Test" } });
+    fireEvent.change(customerInput(), { target: { value: "" } });
+    const emptySearchCalls = vi
+      .mocked(useApiData)
+      .mock.calls.filter(([path]) => path === "/customers?search=");
+    expect(emptySearchCalls.length).toBeGreaterThan(0);
+    for (const [, enabled] of emptySearchCalls) expect(enabled).toBe(false);
+  });
+
+  it("shows the no-results state only after a completed search", async () => {
+    asStaff();
+    customerData = [];
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText("No customers found")).toBeNull();
+    fireEvent.change(customerInput(), { target: { value: "zzz" } });
+    expect(screen.getByText("No customers found")).toBeTruthy();
+  });
+
+  it("does not repopulate rows from held-back data once the search is cleared", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    const input = customerInput();
+    fireEvent.change(input, { target: { value: "Test" } });
+    expect(screen.getByText("Test Customer")).toBeTruthy();
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.queryByText("Test Customer")).toBeNull();
+    fireEvent.change(input, { target: { value: "Other" } });
+    expect(screen.queryByText(SEARCH_INSTRUCTION)).toBeNull();
+    expect(screen.getByText("Test Customer")).toBeTruthy();
+  });
+
+  it("selecting a searched customer continues the wizard", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.change(customerInput(), { target: { value: "Test" } });
+    fireEvent.click(screen.getByText("Test Customer").closest("button")!);
+    const continueButton = screen.getByText("Continue").closest("button")!;
+    expect(continueButton).not.toBeDisabled();
+    fireEvent.click(continueButton);
+    expect(screen.getByText("Select a vehicle")).toBeTruthy();
+  });
+
+  it("returning to the Customer step does not reveal the recent-customer list", async () => {
+    asStaff();
+    setDraft(1);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Back").closest("button")!);
+    expect(screen.getByText("Who is this wash for?")).toBeTruthy();
+    expect(screen.queryByText("Test Customer")).toBeNull();
+    expect(screen.getByText(SEARCH_INSTRUCTION)).toBeTruthy();
+  });
+
+  it("keeps the Add customer button without a search", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("button", { name: /Add customer/ }),
+    ).toBeTruthy();
+  });
+});
+
+describe("New Wash — admin customer list", () => {
+  it("still shows the default/recent customer list when the search is empty", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Test Customer")).toBeTruthy();
+    expect(screen.queryByText(SEARCH_INSTRUCTION)).toBeNull();
+  });
+
+  it("keeps the default list visible after clearing a search", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.change(customerInput(), { target: { value: "Test" } });
+    expect(screen.getByText("Test Customer")).toBeTruthy();
+    fireEvent.change(customerInput(), { target: { value: "" } });
+    expect(screen.getByText("Test Customer")).toBeTruthy();
   });
 });

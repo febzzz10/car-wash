@@ -763,6 +763,20 @@ tbody tr:hover {
 .row-link:hover {
   background: var(--water-100);
 }
+.contact-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+.contact-actions .icon-button {
+  min-height: 32px;
+  min-width: 32px;
+}
+.contact-actions .icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 .status-badge {
   align-items: center;
   background: #edf1f5;

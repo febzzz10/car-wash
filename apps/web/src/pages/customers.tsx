@@ -1,4 +1,11 @@
-import { ChevronRight, Plus, UserRoundSearch } from "lucide-react";
+import { normalizePhone } from "@washpro/domain";
+import {
+  ChevronRight,
+  MessageCircle,
+  Phone,
+  Plus,
+  UserRoundSearch,
+} from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
@@ -11,7 +18,6 @@ import {
   PageHeader,
   SearchField,
   SkeletonRows,
-  StatusBadge,
 } from "../components/ui";
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
@@ -84,7 +90,7 @@ export default function CustomersPage() {
                   <th>Visits</th>
                   <th>Lifetime value</th>
                   <th>Last visit</th>
-                  <th>Status</th>
+                  <th>Actions</th>
                   <th>
                     <span className="sr-only">Open</span>
                   </th>
@@ -102,7 +108,7 @@ export default function CustomersPage() {
                     <td>{money(customer.total_spent_minor_cached)}</td>
                     <td>{dateTime(customer.last_visit_at)}</td>
                     <td>
-                      <StatusBadge value={customer.status} />
+                      <ContactActions customer={customer} />
                     </td>
                     <td>
                       <Link
@@ -129,6 +135,73 @@ export default function CustomersPage() {
         open={dialog}
       />
     </>
+  );
+}
+
+function contactTargets(
+  phone: string,
+  customerName: string,
+): { readonly tel: string; readonly whatsappUrl: string } | null {
+  try {
+    const normalized = normalizePhone(phone);
+    const message = `Hi ${customerName}, your vehicle wash has been completed. Thank you for choosing WashPro.`;
+    return {
+      tel: `tel:${normalized}`,
+      whatsappUrl: `https://wa.me/${normalized.slice(1)}?text=${encodeURIComponent(message)}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function ContactActions({ customer }: { readonly customer: CustomerRecord }) {
+  const target = contactTargets(customer.phone, customer.full_name);
+  if (target === null)
+    return (
+      <span className="contact-actions">
+        <button
+          aria-label={`Call ${customer.full_name}`}
+          className="icon-button"
+          disabled
+          title="Phone number unavailable"
+          type="button"
+        >
+          <Phone aria-hidden size={18} />
+        </button>
+        <button
+          aria-label={`Message ${customer.full_name} on WhatsApp`}
+          className="icon-button"
+          disabled
+          title="Phone number unavailable"
+          type="button"
+        >
+          <MessageCircle aria-hidden size={18} />
+        </button>
+      </span>
+    );
+  return (
+    <span className="contact-actions">
+      <a
+        aria-label={`Call ${customer.full_name}`}
+        className="icon-button"
+        href={target.tel}
+        onClick={(event) => event.stopPropagation()}
+        title="Call customer"
+      >
+        <Phone aria-hidden size={18} />
+      </a>
+      <a
+        aria-label={`Message ${customer.full_name} on WhatsApp`}
+        className="icon-button"
+        href={target.whatsappUrl}
+        onClick={(event) => event.stopPropagation()}
+        rel="noopener noreferrer"
+        target="_blank"
+        title="Send wash completion message"
+      >
+        <MessageCircle aria-hidden size={18} />
+      </a>
+    </span>
   );
 }
 

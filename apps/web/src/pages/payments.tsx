@@ -26,12 +26,13 @@ interface PaymentRecord {
   readonly external_transaction_reference?: string | null;
   readonly id: string;
   readonly job_reference: string;
-  readonly wash_job_id: string;
   readonly paid_at: string;
   readonly payment_method: string;
   readonly payment_status: string;
   readonly status: string;
+  readonly tip_minor: number;
   readonly vehicle_registration_snapshot: string;
+  readonly wash_job_id: string;
 }
 interface SettingRow {
   readonly setting_key: string;
@@ -72,8 +73,9 @@ export default function PaymentsPage() {
                   <th>Method</th>
                   <th>Paid at</th>
                   <th>Status</th>
-                  <th className="align-right">Amount</th>
-                  {user?.role === "ADMIN" && refundsEnabled ? <th>Action</th> : null}
+              <th className="align-right">Amount</th>
+              <th className="align-right">Tip</th>
+              {user?.role === "ADMIN" && refundsEnabled ? <th>Action</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -98,10 +100,13 @@ export default function PaymentsPage() {
                     <td>
                       <StatusBadge value={payment.status} />
                     </td>
-                    <td className="align-right">
-                      <strong>{money(payment.amount_minor)}</strong>
-                    </td>
-                    {user?.role === "ADMIN" && refundsEnabled ? (
+                <td className="align-right">
+                  <strong>{money(payment.amount_minor)}</strong>
+                </td>
+                <td className="align-right">
+                  {payment.tip_minor > 0 ? money(payment.tip_minor) : null}
+                </td>
+                {user?.role === "ADMIN" && refundsEnabled ? (
                       <td>
                         <Button onClick={() => setRefund(payment)} tone="quiet">
                           <RotateCcw size={16} /> Refund

@@ -58,6 +58,7 @@ interface HistoryPayload {
     readonly id: string;
     readonly payment_method: string;
     readonly status: string;
+    readonly tip_minor: number;
     readonly wash_job_id: string;
   }[];
   readonly photos: readonly {
@@ -293,6 +294,9 @@ export default function CustomerDetailPage() {
                       <span>
                         <StatusBadge value={payment.status} />
                         <strong>{money(payment.amount_minor)}</strong>
+                        {payment.tip_minor > 0 ? (
+                          <small>+{money(payment.tip_minor)} tip</small>
+                        ) : null}
                       </span>
                     </Link>
                   ))}

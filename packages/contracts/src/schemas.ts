@@ -165,6 +165,7 @@ const paymentBaseSchema = z.object({
 export const paymentInputSchema = paymentBaseSchema
   .extend({
     amountMinor: moneyMinorSchema,
+    tipMinor: moneyMinorSchema.default(0),
     benefits: benefitsInputSchema.optional(),
     expectedVersion: z.number().int().positive().safe().optional(),
   })

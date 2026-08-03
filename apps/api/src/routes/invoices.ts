@@ -247,7 +247,7 @@ invoiceJobRoutes.post(
         .bind(job.id)
         .all<JobItemRow>(),
       c.env.DB.prepare(
-        "SELECT payment_method, amount_minor, paid_at, status FROM payments WHERE wash_job_id = ? AND organization_id = ? ORDER BY created_at",
+        "SELECT payment_method, amount_minor, tip_minor, paid_at, status FROM payments WHERE wash_job_id = ? AND organization_id = ? ORDER BY created_at",
       )
         .bind(job.id, auth.organizationId)
         .all<Record<string, unknown>>(),
@@ -309,6 +309,14 @@ invoiceJobRoutes.post(
           .map((payment) => String(payment.payment_method)),
       ),
     ];
+    const tipMinor = paymentsResult.results
+      .filter((payment) => payment.status === "SUCCESS")
+      .reduce(
+        (sum, payment) =>
+          sum +
+          (typeof payment.tip_minor === "number" ? payment.tip_minor : 0),
+        0,
+      );
     const snapshot: InvoicePdfSnapshot & {
       readonly jobReference: string;
       readonly payments: readonly Record<string, unknown>[];
@@ -347,6 +355,7 @@ invoiceJobRoutes.post(
       staffName: job.staff_name,
       subtotalMinor: job.subtotal_minor,
       taxMinor: job.tax_minor,
+      tipMinor,
       taxRegistration:
         stringSetting(settings, "business.tax_number", "") || null,
       terms: stringSetting(

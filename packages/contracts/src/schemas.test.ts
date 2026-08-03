@@ -154,6 +154,39 @@ describe("paymentInputSchema extended", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it("accepts tipMinor in valid range", () => {
+    const r = paymentInputSchema.safeParse({
+      washJobId: "j".repeat(8), amountMinor: 5000, tipMinor: 1000, method: "CASH",
+      idempotencyKey: "k".repeat(16),
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.tipMinor).toBe(1000);
+  });
+
+  it("defaults tipMinor to 0 when omitted", () => {
+    const r = paymentInputSchema.safeParse({
+      washJobId: "j".repeat(8), amountMinor: 5000, method: "CASH", idempotencyKey: "k".repeat(16),
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.tipMinor).toBe(0);
+  });
+
+  it("rejects negative tipMinor", () => {
+    const r = paymentInputSchema.safeParse({
+      washJobId: "j".repeat(8), amountMinor: 5000, tipMinor: -1, method: "CASH",
+      idempotencyKey: "k".repeat(16),
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects non-integer tipMinor", () => {
+    const r = paymentInputSchema.safeParse({
+      washJobId: "j".repeat(8), amountMinor: 5000, tipMinor: 0.5, method: "CASH",
+      idempotencyKey: "k".repeat(16),
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe("payment method values", () => {

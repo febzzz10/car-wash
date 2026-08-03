@@ -40,6 +40,7 @@ export interface InvoicePdfSnapshot {
   readonly taxRegistration: string | null;
   readonly thankYouMessage: string;
   readonly terms: string;
+  readonly tipMinor?: number;
   readonly totalMinor: number;
   readonly vehicle: string;
   readonly washCompletedAt: string | null;
@@ -294,6 +295,34 @@ export async function buildInvoicePdf(
       strong ? navy : ink,
     );
     y -= strong ? 23 : 18;
+  }
+
+  if ((snapshot.tipMinor ?? 0) > 0) {
+    drawText(page, regular, "Tip received", totalsX, y, 8.5, muted);
+    drawText(
+      page,
+      regular,
+      money(snapshot.tipMinor!, snapshot.currencyCode),
+      valueX,
+      y,
+      8.5,
+      ink,
+    );
+    y -= 18;
+    drawText(page, bold, "Total received", totalsX, y, 10, navy);
+    drawText(
+      page,
+      bold,
+      money(
+        snapshot.paidMinor + snapshot.tipMinor!,
+        snapshot.currencyCode,
+      ),
+      valueX,
+      y,
+      10,
+      navy,
+    );
+    y -= 23;
   }
 
   y = Math.min(y - 8, 205);

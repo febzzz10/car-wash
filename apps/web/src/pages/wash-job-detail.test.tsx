@@ -1013,6 +1013,60 @@ describe("PaymentDialog", () => {
     expect(payCall).toBeDefined();
       expect(JSON.parse(payCall![1]!.body as string).amountMinor).toBe(0);
   });
+
+  it("renders Tip (optional) input", () => {
+    renderDialog();
+    const tipInput = formEl().querySelector('input[name="tip"]') as HTMLInputElement;
+    expect(tipInput).toBeInTheDocument();
+    expect(tipInput).toHaveAttribute("placeholder", "0.00");
+    expect(tipInput).toHaveValue(null);
+  });
+
+  it("submits tipMinor when tip is filled", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog({ balance_minor: 50000, id: "job-tip" });
+    fireEvent.change(amountInput(), { target: { value: "200" } });
+    const tipInput = formEl().querySelector('input[name="tip"]') as HTMLInputElement;
+    fireEvent.change(tipInput, { target: { value: "50" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    const body = JSON.parse(payCall![1]!.body as string);
+    expect(body.tipMinor).toBe(5000);
+    expect(body.amountMinor).toBe(20000);
+  });
+
+  it("submits tipMinor 0 when tip is empty", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog({ balance_minor: 50000, id: "job-notip" });
+    fireEvent.change(amountInput(), { target: { value: "300" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    const body = JSON.parse(payCall![1]!.body as string);
+    expect(body.tipMinor).toBe(0);
+    expect(body.amountMinor).toBe(30000);
+  });
+
+  it("tip does not affect amount validation", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog({ balance_minor: 10000, id: "job-tip-val" });
+    fireEvent.change(amountInput(), { target: { value: "150" } });
+    expect(formEl().querySelector(".form-alert")).toBeNull();
+  });
 });
 
 describe("PaymentDialog — benefits regression", () => {

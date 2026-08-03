@@ -386,7 +386,7 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
 
     // Build idempotency + batch
     const now = new Date().toISOString();
-    const canonicalPayload = stableStringify({ washJobId: parsed.data.washJobId, amountMinor: parsed.data.amountMinor, method: parsed.data.method, transactionReference: parsed.data.transactionReference, notes: parsed.data.notes, expectedVersion: parsed.data.expectedVersion, benefits: parsed.data.benefits });
+    const canonicalPayload = stableStringify({ washJobId: parsed.data.washJobId, amountMinor: parsed.data.amountMinor, tipMinor: parsed.data.tipMinor, method: parsed.data.method, transactionReference: parsed.data.transactionReference, notes: parsed.data.notes, expectedVersion: parsed.data.expectedVersion, benefits: parsed.data.benefits });
     const requestHash = await sha256(canonicalPayload);
     const idemRecordId = crypto.randomUUID();
 
@@ -527,9 +527,9 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
     if (bill.totalAmountMinor > 0) {
       const paymentId = crypto.randomUUID();
       statements.push(c.env.DB.prepare(
-        `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, notes, idempotency_key, created_at) VALUES (?, ?, ?, ?, 'PAYMENT', ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, ?)`
-      ).bind(paymentId, auth.organizationId, job.branch_id, job.id, parsed.data.amountMinor, parsed.data.method, parsed.data.transactionReference ?? null, now, auth.userId, parsed.data.notes ?? null, parsed.data.idempotencyKey, now));
-      paymentRecord = { id: paymentId, amount_minor: parsed.data.amountMinor };
+        `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, notes, idempotency_key, created_at) VALUES (?, ?, ?, ?, 'PAYMENT', ?, ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, ?)`
+      ).bind(paymentId, auth.organizationId, job.branch_id, job.id, parsed.data.amountMinor, parsed.data.tipMinor, parsed.data.method, parsed.data.transactionReference ?? null, now, auth.userId, parsed.data.notes ?? null, parsed.data.idempotencyKey, now));
+      paymentRecord = { id: paymentId, amount_minor: parsed.data.amountMinor, tip_minor: parsed.data.tipMinor };
     }
 
     // 16. Consolidated wash_jobs UPDATE
@@ -650,7 +650,7 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
       }
     }
     if (bill.totalAmountMinor > 0)
-      statements.push(auditStatement(c.env, { action: "PAYMENT_RECORDED", auth, next: { amountMinor: parsed.data.amountMinor, method: parsed.data.method, paymentId: paymentRecord?.id ?? "unknown" }, recordId: (paymentRecord?.id ?? job.id) as string, recordType: "PAYMENT", requestId: c.get("requestId") }));
+      statements.push(auditStatement(c.env, { action: "PAYMENT_RECORDED", auth, next: { amountMinor: parsed.data.amountMinor, tipMinor: parsed.data.tipMinor, totalCollectedMinor: parsed.data.amountMinor + parsed.data.tipMinor, method: parsed.data.method, paymentId: paymentRecord?.id ?? "unknown" }, recordId: (paymentRecord?.id ?? job.id) as string, recordType: "PAYMENT", requestId: c.get("requestId") }));
     else
       statements.push(auditStatement(c.env, { action: "FULLY_DISCOUNTED_COMPLETION", auth, next: { bill: { totalAmountMinor: bill.totalAmountMinor, totalDiscountMinor: bill.totalDiscountMinor } }, recordId: job.id, recordType: "WASH_JOB", requestId: c.get("requestId"), severity: "INFO" }));
 
@@ -710,13 +710,14 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
   const now = new Date().toISOString();
   const statements: D1PreparedStatement[] = [
     c.env.DB.prepare(
-      `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, notes, idempotency_key, created_at) VALUES (?, ?, ?, ?, 'PAYMENT', ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, notes, idempotency_key, created_at) VALUES (?, ?, ?, ?, 'PAYMENT', ?, ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, ?)`,
     ).bind(
       id,
       auth.organizationId,
       job.branch_id,
       job.id,
       parsed.data.amountMinor,
+      parsed.data.tipMinor,
       parsed.data.method,
       parsed.data.transactionReference ?? null,
       now,
@@ -745,6 +746,9 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
       auth,
       next: {
         amountMinor: parsed.data.amountMinor,
+        tipMinor: parsed.data.tipMinor,
+        totalCollectedMinor:
+          parsed.data.amountMinor + parsed.data.tipMinor,
         method: parsed.data.method,
         paymentId: id,
         summary,

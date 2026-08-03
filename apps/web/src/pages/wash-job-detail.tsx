@@ -430,6 +430,23 @@ export default function WashJobDetailPage() {
                 <strong>{money(record.balance_minor)}</strong>
               </div>
             </div>
+            {(() => {
+              const tips = (payments.data?.payments ?? []).reduce(
+                (sum, p) => sum + (typeof p.tip_minor === "number" ? p.tip_minor : 0),
+                0,
+              );
+              if (tips > 0) {
+                return (
+                  <div className="payment-progress" style={{ marginTop: "0.25rem" }}>
+                    <div>
+                      <span>Tips collected</span>
+                      <strong>{money(tips)}</strong>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
             <StatusBadge value={record.payment_status} />
             <div className="stacked-actions">
               {record.balance_minor > 0 && record.status !== "CANCELLED" ? (
@@ -716,6 +733,7 @@ export function PaymentDialog({
 
   const [verifiedBalanceMinor, setVerifiedBalanceMinor] = useState<number | null>(null);
   const [amountEdited, setAmountEdited] = useState(false);
+  const [tip, setTip] = useState("");
 
   const lastAttempt = useRef<{ canonicalPayload: string; idempotencyKey: string } | null>(null);
 
@@ -743,6 +761,7 @@ export function PaymentDialog({
       setMethod(isCanonicalPaymentMethod(paymentDefaultMethod) ? paymentDefaultMethod : "CASH");
       setPreview(null); setPreviewDirty(false); setPreviewError(null);
       setVerifiedBalanceMinor(null); setFieldErrors({}); setError(null); setAmountEdited(false);
+      setTip("");
       lastAttempt.current = null;
     }
     wasOpen.current = open;
@@ -809,6 +828,7 @@ export function PaymentDialog({
     const form = new FormData(event.currentTarget);
     const amountText = (form.get("amount") as string || "0").trim();
     const amountMinor = Math.round(parseFloat(amountText || "0") * 100);
+    const tipMinor = Math.round(parseFloat(tip || "0") * 100);
     setBusy(true); setError(null);
 
     const benefitsChanged = !benefitsLocked && (
@@ -832,7 +852,7 @@ export function PaymentDialog({
     }
 
     const payload: Record<string, unknown> = {
-      washJobId: record.id, amountMinor, method: isCanonicalPaymentMethod(method) ? method : "CASH",
+      washJobId: record.id, amountMinor, tipMinor, method: isCanonicalPaymentMethod(method) ? method : "CASH",
       transactionReference: (form.get("reference") as string) || undefined,
       notes: (form.get("notes") as string) || undefined,
       idempotencyKey: "",
@@ -853,7 +873,7 @@ export function PaymentDialog({
       payload.benefits = benefitsPayload;
     }
 
-    const canonical = JSON.stringify({ washJobId: payload.washJobId, amountMinor: payload.amountMinor, method: payload.method, transactionReference: payload.transactionReference, notes: payload.notes, expectedVersion: payload.expectedVersion, benefits: payload.benefits });
+    const canonical = JSON.stringify({ washJobId: payload.washJobId, amountMinor: payload.amountMinor, tipMinor: payload.tipMinor, method: payload.method, transactionReference: payload.transactionReference, notes: payload.notes, expectedVersion: payload.expectedVersion, benefits: payload.benefits });
     payload.idempotencyKey = lastAttempt.current?.canonicalPayload === canonical ? lastAttempt.current.idempotencyKey : crypto.randomUUID();
     if (lastAttempt.current?.canonicalPayload !== canonical) lastAttempt.current = { canonicalPayload: canonical, idempotencyKey: payload.idempotencyKey as string };
 
@@ -931,7 +951,10 @@ export function PaymentDialog({
 
         {/* Payment section */}
         {showPayFields ? (<>
-          <label><span>Amount</span><input defaultValue={effectiveBalanceMinor > 0 && !amountEdited ? (effectiveBalanceMinor / 100).toString() : undefined} key={`a-${effectiveBalanceMinor}`} max={(effectiveBalanceMinor / 100).toFixed(2)} min="0.01" name="amount" onChange={() => setAmountEdited(true)} required step="0.01" type="number" />{fieldErrors["amountMinor"] ? <span className="field-error">{fieldErrors["amountMinor"]}</span> : null}</label>
+          <div className="form-grid">
+            <label><span>Amount</span><input defaultValue={effectiveBalanceMinor > 0 && !amountEdited ? (effectiveBalanceMinor / 100).toString() : undefined} key={`a-${effectiveBalanceMinor}`} max={(effectiveBalanceMinor / 100).toFixed(2)} min="0.01" name="amount" onChange={() => setAmountEdited(true)} required step="0.01" type="number" />{fieldErrors["amountMinor"] ? <span className="field-error">{fieldErrors["amountMinor"]}</span> : null}</label>
+            <label><span>Tip (optional)</span><input max="1000000" min="0" name="tip" onChange={e => setTip(e.target.value)} placeholder="0.00" step="0.01" type="number" value={tip} /></label>
+          </div>
           <div>
             <span className="field-label">Method</span>
             <PaymentMethodSelect disabled={busy} error={fieldErrors["method"]} onChange={v => { setMethod(v); clearField("method"); }} value={method} />

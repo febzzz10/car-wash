@@ -1217,6 +1217,69 @@ textarea:focus {
   width: 20px;
 }
 
+.payment-qr-card {
+  align-items: center;
+  background: var(--water-50);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  width: 100%;
+}
+
+.payment-qr-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: center;
+}
+
+.payment-qr-header strong {
+  color: var(--ink-900);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.payment-qr-header span {
+  color: var(--ink-500);
+  font-size: 0.8rem;
+}
+
+.payment-qr-image {
+  display: block;
+  height: auto;
+  object-fit: contain;
+  width: min(100%, 300px);
+}
+
+.payment-qr-note {
+  color: var(--ink-500);
+  font-size: 0.75rem;
+  margin: 0;
+  text-align: center;
+}
+
+.payment-qr-error {
+  color: var(--warning);
+  font-size: 0.8rem;
+  margin: 0;
+  text-align: center;
+}
+
+@media (max-width: 1023px) {
+  .payment-qr-image {
+    width: min(100%, 260px);
+  }
+}
+
+@media (max-width: 599px) {
+  .payment-qr-image {
+    width: min(100%, 230px);
+  }
+}
+
 
 .autocomplete-wrapper {
   position: relative;

@@ -734,6 +734,7 @@ export function PaymentDialog({
   const [verifiedBalanceMinor, setVerifiedBalanceMinor] = useState<number | null>(null);
   const [amountEdited, setAmountEdited] = useState(false);
   const [tip, setTip] = useState("");
+  const [qrError, setQrError] = useState(false);
 
   const lastAttempt = useRef<{ canonicalPayload: string; idempotencyKey: string } | null>(null);
 
@@ -761,7 +762,7 @@ export function PaymentDialog({
       setMethod(isCanonicalPaymentMethod(paymentDefaultMethod) ? paymentDefaultMethod : "CASH");
       setPreview(null); setPreviewDirty(false); setPreviewError(null);
       setVerifiedBalanceMinor(null); setFieldErrors({}); setError(null); setAmountEdited(false);
-      setTip("");
+      setTip(""); setQrError(false);
       lastAttempt.current = null;
     }
     wasOpen.current = open;
@@ -957,8 +958,31 @@ export function PaymentDialog({
           </div>
           <div>
             <span className="field-label">Method</span>
-            <PaymentMethodSelect disabled={busy} error={fieldErrors["method"]} onChange={v => { setMethod(v); clearField("method"); }} value={method} />
+            <PaymentMethodSelect disabled={busy} error={fieldErrors["method"]} onChange={v => { setMethod(v); setQrError(false); clearField("method"); }} value={method} />
           </div>
+          {method === "UPI" ? (
+            <div className="payment-qr-card">
+              <div className="payment-qr-header">
+                <strong>Scan to pay</strong>
+                <span>Scan this QR code using any UPI app.</span>
+              </div>
+              {qrError ? (
+                <p className="payment-qr-error">
+                  UPI QR code could not be loaded. Use the UPI ID shown on the payment image or try again.
+                </p>
+              ) : (
+                <img
+                  src="/payment-methods/upi-payment-qr.png"
+                  alt="UPI payment QR code"
+                  className="payment-qr-image"
+                  onError={() => setQrError(true)}
+                />
+              )}
+              <p className="payment-qr-note">
+                Confirm the payment before recording it.
+              </p>
+            </div>
+          ) : null}
           <label><span>Transaction reference (optional)</span><input name="reference" /></label>
           <label><span>Notes</span><textarea name="notes" /></label>
         </>) : null}

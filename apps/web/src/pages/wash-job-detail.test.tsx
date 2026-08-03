@@ -1069,6 +1069,152 @@ describe("PaymentDialog", () => {
   });
 });
 
+describe("PaymentDialog — UPI QR code", () => {
+  function renderDialog(recordOverrides: Partial<Record<string, unknown>> = {}) {
+    const onClose = vi.fn();
+    const onDone = vi.fn();
+    const record = defaultRecord(recordOverrides);
+    render(<PaymentDialog
+      record={record as any}
+      onClose={onClose}
+      onDone={onDone}
+      open={recordOverrides.open !== false}
+    />);
+    return { onClose, onDone, record };
+  }
+
+  function formEl() { return screen.getByRole("dialog").querySelector("form")!; }
+  function amountInput() { return formEl().querySelector('input[name="amount"]') as HTMLInputElement; }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    uuidSeq = 0;
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    try { vi.spyOn(crypto, "randomUUID").mockImplementation(() => `00000000-0000-0000-0000-${String(++uuidSeq).padStart(12, "0")}` as `${string}-${string}-${string}-${string}-${string}`); } catch { /* ignore */ }
+  });
+
+  afterEach(() => { cleanup(); });
+
+  function selectUPI() {
+    fireEvent.click(screen.getByRole("radio", { name: "UPI" }));
+  }
+
+  function selectCash() {
+    fireEvent.click(screen.getByRole("radio", { name: "Cash" }));
+  }
+
+  function selectBankUPI() {
+    fireEvent.click(screen.getByRole("radio", { name: "Bank UPI" }));
+  }
+
+  function selectPaytm() {
+    fireEvent.click(screen.getByRole("radio", { name: "Paytm" }));
+  }
+
+  it("does not show QR when Cash is selected", () => {
+    renderDialog();
+    expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+  });
+
+  it("shows QR section when UPI is selected", () => {
+    renderDialog();
+    selectUPI();
+    expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
+    expect(screen.getByText("Scan to pay")).toBeInTheDocument();
+    expect(screen.getByText("Scan this QR code using any UPI app.")).toBeInTheDocument();
+    expect(screen.getByText("Confirm the payment before recording it.")).toBeInTheDocument();
+  });
+
+  it("renders the correct QR image path", () => {
+    renderDialog();
+    selectUPI();
+    const img = screen.getByAltText("UPI payment QR code");
+    expect(img).toHaveAttribute("src", "/payment-methods/upi-payment-qr.png");
+  });
+
+  it("has meaningful alt text on QR image", () => {
+    renderDialog();
+    selectUPI();
+    const img = screen.getByAltText("UPI payment QR code");
+    expect(img.getAttribute("alt")).toBe("UPI payment QR code");
+  });
+
+  it("hides QR when switching from UPI to Cash", () => {
+    renderDialog();
+    selectUPI();
+    expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
+    selectCash();
+    expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+  });
+
+  it("hides QR when switching from UPI to Bank UPI", () => {
+    renderDialog();
+    selectUPI();
+    expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
+    selectBankUPI();
+    expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+  });
+
+  it("hides QR when switching from UPI to Paytm", () => {
+    renderDialog();
+    selectUPI();
+    expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
+    selectPaytm();
+    expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+  });
+
+  it("shows QR again when switching back to UPI", () => {
+    renderDialog();
+    selectUPI();
+    expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
+    selectCash();
+    expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+    selectUPI();
+    expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
+  });
+
+  it("submits method UPI when UPI is selected with QR visible", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog({ balance_minor: 50000, id: "job-upi-qr" });
+    selectUPI();
+    fireEvent.change(amountInput(), { target: { value: "100" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    const body = JSON.parse(payCall![1]!.body as string);
+    expect(body.method).toBe("UPI");
+    expect(body.amountMinor).toBe(10000);
+  });
+
+  it("no duplicate QR after repeatedly changing methods", () => {
+    renderDialog();
+    selectUPI();
+    selectCash();
+    selectUPI();
+    selectPaytm();
+    selectUPI();
+    const qrCards = screen.queryAllByAltText("UPI payment QR code");
+    expect(qrCards.length).toBe(1);
+  });
+
+  it("shows fallback text when QR image errors", () => {
+    renderDialog();
+    selectUPI();
+    const img = screen.getByAltText("UPI payment QR code");
+    fireEvent.error(img);
+    expect(screen.getByText(/UPI QR code could not be loaded/i)).toBeInTheDocument();
+    expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+  });
+});
+
 describe("PaymentDialog — benefits regression", () => {
   const unlockedRecord = {
     id: "job-1",

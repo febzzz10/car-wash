@@ -734,11 +734,35 @@ export function PaymentDialog({
   const [verifiedBalanceMinor, setVerifiedBalanceMinor] = useState<number | null>(null);
   const [amountEdited, setAmountEdited] = useState(false);
   const [tip, setTip] = useState("");
-  const [qrError, setQrError] = useState(false);
+  const [failedQrImage, setFailedQrImage] = useState<string | null>(null);
 
   const lastAttempt = useRef<{ canonicalPayload: string; idempotencyKey: string } | null>(null);
 
   const effectiveBalanceMinor = verifiedBalanceMinor ?? record.balance_minor;
+
+  const paymentQr =
+    method === "UPI"
+      ? {
+          image: "/payment-methods/upi-payment-qr.png",
+          alt: "UPI payment QR code",
+          description: "Scan this QR code using any UPI app.",
+          fallback:
+            "UPI QR code could not be loaded. Please try again.",
+        }
+      : method === "PAYTM"
+        ? {
+            image: "/payment-methods/paytm-payment-qr.png",
+            alt: "Paytm payment QR code",
+            description:
+              "Scan this QR code using the Paytm app or a supported UPI app.",
+            fallback:
+              "Paytm QR code could not be loaded. Please try again.",
+          }
+        : null;
+
+  useEffect(() => {
+    setFailedQrImage(null);
+  }, [paymentQr?.image]);
 
   useEffect(() => {
     const justOpened = open && !wasOpen.current;
@@ -762,7 +786,7 @@ export function PaymentDialog({
       setMethod(isCanonicalPaymentMethod(paymentDefaultMethod) ? paymentDefaultMethod : "CASH");
       setPreview(null); setPreviewDirty(false); setPreviewError(null);
       setVerifiedBalanceMinor(null); setFieldErrors({}); setError(null); setAmountEdited(false);
-      setTip(""); setQrError(false);
+      setTip(""); setFailedQrImage(null);
       lastAttempt.current = null;
     }
     wasOpen.current = open;
@@ -958,24 +982,22 @@ export function PaymentDialog({
           </div>
           <div>
             <span className="field-label">Method</span>
-            <PaymentMethodSelect disabled={busy} error={fieldErrors["method"]} onChange={v => { setMethod(v); setQrError(false); clearField("method"); }} value={method} />
+            <PaymentMethodSelect disabled={busy} error={fieldErrors["method"]} onChange={v => { setMethod(v); clearField("method"); }} value={method} />
           </div>
-          {method === "UPI" ? (
+          {paymentQr !== null ? (
             <div className="payment-qr-card">
               <div className="payment-qr-header">
                 <strong>Scan to pay</strong>
-                <span>Scan this QR code using any UPI app.</span>
+                <span>{paymentQr.description}</span>
               </div>
-              {qrError ? (
-                <p className="payment-qr-error">
-                  UPI QR code could not be loaded. Use the UPI ID shown on the payment image or try again.
-                </p>
+              {failedQrImage === paymentQr.image ? (
+                <p className="payment-qr-error">{paymentQr.fallback}</p>
               ) : (
                 <img
-                  src="/payment-methods/upi-payment-qr.png"
-                  alt="UPI payment QR code"
+                  src={paymentQr.image}
+                  alt={paymentQr.alt}
                   className="payment-qr-image"
-                  onError={() => setQrError(true)}
+                  onError={() => setFailedQrImage(paymentQr.image)}
                 />
               )}
               <p className="payment-qr-note">

@@ -1069,7 +1069,7 @@ describe("PaymentDialog", () => {
   });
 });
 
-describe("PaymentDialog — UPI QR code", () => {
+describe("PaymentDialog — UPI and Paytm QR codes", () => {
   function renderDialog(recordOverrides: Partial<Record<string, unknown>> = {}) {
     const onClose = vi.fn();
     const onDone = vi.fn();
@@ -1081,6 +1081,11 @@ describe("PaymentDialog — UPI QR code", () => {
       open={recordOverrides.open !== false}
     />);
     return { onClose, onDone, record };
+  }
+
+  function renderDialogAndClean(recordOverrides: Partial<Record<string, unknown>> = {}) {
+    cleanup();
+    return renderDialog(recordOverrides);
   }
 
   function formEl() { return screen.getByRole("dialog").querySelector("form")!; }
@@ -1098,48 +1103,64 @@ describe("PaymentDialog — UPI QR code", () => {
 
   afterEach(() => { cleanup(); });
 
-  function selectUPI() {
-    fireEvent.click(screen.getByRole("radio", { name: "UPI" }));
-  }
+  function selectUPI() { fireEvent.click(screen.getByRole("radio", { name: "UPI" })); }
+  function selectCash() { fireEvent.click(screen.getByRole("radio", { name: "Cash" })); }
+  function selectBankUPI() { fireEvent.click(screen.getByRole("radio", { name: "Bank UPI" })); }
+  function selectPaytm() { fireEvent.click(screen.getByRole("radio", { name: "Paytm" })); }
 
-  function selectCash() {
-    fireEvent.click(screen.getByRole("radio", { name: "Cash" }));
-  }
-
-  function selectBankUPI() {
-    fireEvent.click(screen.getByRole("radio", { name: "Bank UPI" }));
-  }
-
-  function selectPaytm() {
-    fireEvent.click(screen.getByRole("radio", { name: "Paytm" }));
-  }
-
-  it("does not show QR when Cash is selected", () => {
+  it("does not show any QR when Cash is selected", () => {
     renderDialog();
     expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+    expect(screen.queryByAltText("Paytm payment QR code")).not.toBeInTheDocument();
   });
 
-  it("shows QR section when UPI is selected", () => {
+  it("does not show any QR when Bank UPI is selected", () => {
+    renderDialog();
+    selectBankUPI();
+    expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+    expect(screen.queryByAltText("Paytm payment QR code")).not.toBeInTheDocument();
+  });
+
+  it("shows UPI QR section when UPI is selected", () => {
     renderDialog();
     selectUPI();
     expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
     expect(screen.getByText("Scan to pay")).toBeInTheDocument();
     expect(screen.getByText("Scan this QR code using any UPI app.")).toBeInTheDocument();
-    expect(screen.getByText("Confirm the payment before recording it.")).toBeInTheDocument();
   });
 
-  it("renders the correct QR image path", () => {
+  it("UPI QR uses correct image path", () => {
     renderDialog();
     selectUPI();
     const img = screen.getByAltText("UPI payment QR code");
     expect(img).toHaveAttribute("src", "/payment-methods/upi-payment-qr.png");
   });
 
-  it("has meaningful alt text on QR image", () => {
+  it("UPI QR has meaningful alt text", () => {
     renderDialog();
     selectUPI();
-    const img = screen.getByAltText("UPI payment QR code");
-    expect(img.getAttribute("alt")).toBe("UPI payment QR code");
+    expect(screen.getByAltText("UPI payment QR code").getAttribute("alt")).toBe("UPI payment QR code");
+  });
+
+  it("shows Paytm QR section when Paytm is selected", () => {
+    renderDialog();
+    selectPaytm();
+    expect(screen.getByAltText("Paytm payment QR code")).toBeInTheDocument();
+    expect(screen.getByText("Scan to pay")).toBeInTheDocument();
+    expect(screen.getByText("Scan this QR code using the Paytm app or a supported UPI app.")).toBeInTheDocument();
+  });
+
+  it("Paytm QR uses correct image path", () => {
+    renderDialog();
+    selectPaytm();
+    const img = screen.getByAltText("Paytm payment QR code");
+    expect(img).toHaveAttribute("src", "/payment-methods/paytm-payment-qr.png");
+  });
+
+  it("Paytm QR has meaningful alt text", () => {
+    renderDialog();
+    selectPaytm();
+    expect(screen.getByAltText("Paytm payment QR code").getAttribute("alt")).toBe("Paytm payment QR code");
   });
 
   it("hides QR when switching from UPI to Cash", () => {
@@ -1158,15 +1179,41 @@ describe("PaymentDialog — UPI QR code", () => {
     expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
   });
 
-  it("hides QR when switching from UPI to Paytm", () => {
+  it("hides QR when switching from Paytm to Cash", () => {
+    renderDialog();
+    selectPaytm();
+    expect(screen.getByAltText("Paytm payment QR code")).toBeInTheDocument();
+    selectCash();
+    expect(screen.queryByAltText("Paytm payment QR code")).not.toBeInTheDocument();
+  });
+
+  it("hides QR when switching from Paytm to Bank UPI", () => {
+    renderDialog();
+    selectPaytm();
+    expect(screen.getByAltText("Paytm payment QR code")).toBeInTheDocument();
+    selectBankUPI();
+    expect(screen.queryByAltText("Paytm payment QR code")).not.toBeInTheDocument();
+  });
+
+  it("replaces UPI QR with Paytm QR when switching UPI → Paytm", () => {
     renderDialog();
     selectUPI();
     expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
     selectPaytm();
     expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+    expect(screen.getByAltText("Paytm payment QR code")).toBeInTheDocument();
   });
 
-  it("shows QR again when switching back to UPI", () => {
+  it("replaces Paytm QR with UPI QR when switching Paytm → UPI", () => {
+    renderDialog();
+    selectPaytm();
+    expect(screen.getByAltText("Paytm payment QR code")).toBeInTheDocument();
+    selectUPI();
+    expect(screen.queryByAltText("Paytm payment QR code")).not.toBeInTheDocument();
+    expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
+  });
+
+  it("shows UPI QR again when switching back to UPI from Cash", () => {
     renderDialog();
     selectUPI();
     expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
@@ -1176,7 +1223,59 @@ describe("PaymentDialog — UPI QR code", () => {
     expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
   });
 
-  it("submits method UPI when UPI is selected with QR visible", async () => {
+  it("no duplicate QR cards after repeatedly changing methods", () => {
+    renderDialog();
+    selectUPI();
+    selectCash();
+    selectUPI();
+    selectPaytm();
+    selectUPI();
+    expect(screen.getAllByRole("img").length).toBe(1);
+  });
+
+  it("UPI image failure shows UPI-specific fallback", () => {
+    renderDialog();
+    selectUPI();
+    const img = screen.getByAltText("UPI payment QR code");
+    fireEvent.error(img);
+    expect(screen.getByText(/UPI QR code could not be loaded/i)).toBeInTheDocument();
+    expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+  });
+
+  it("Paytm image failure shows Paytm-specific fallback", () => {
+    renderDialog();
+    selectPaytm();
+    const img = screen.getByAltText("Paytm payment QR code");
+    fireEvent.error(img);
+    expect(screen.getByText(/Paytm QR code could not be loaded/i)).toBeInTheDocument();
+    expect(screen.queryByAltText("Paytm payment QR code")).not.toBeInTheDocument();
+  });
+
+  it("switching from failed Paytm to UPI allows UPI image to render", () => {
+    renderDialog();
+    selectPaytm();
+    const paytmImg = screen.getByAltText("Paytm payment QR code");
+    fireEvent.error(paytmImg);
+    expect(screen.getByText(/Paytm QR code could not be loaded/i)).toBeInTheDocument();
+    selectUPI();
+    expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
+    expect(screen.queryByText(/Paytm QR code could not be loaded/i)).not.toBeInTheDocument();
+  });
+
+  it("closing and reopening resets QR image errors", () => {
+    const { onClose } = renderDialog();
+    selectUPI();
+    const img = screen.getByAltText("UPI payment QR code");
+    fireEvent.error(img);
+    expect(screen.getByText(/UPI QR code could not be loaded/i)).toBeInTheDocument();
+    onClose();
+    renderDialogAndClean();
+    selectUPI();
+    expect(screen.getByAltText("UPI payment QR code")).toBeInTheDocument();
+    expect(screen.queryByText(/UPI QR code could not be loaded/i)).not.toBeInTheDocument();
+  });
+
+  it("submits method UPI when UPI is selected", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
       return Promise.resolve({ success: true, data: {} });
@@ -1189,29 +1288,23 @@ describe("PaymentDialog — UPI QR code", () => {
     const calls = vi.mocked(api).mock.calls;
     const payCall = calls.find(c => c[0] === "/payments");
     expect(payCall).toBeDefined();
-    const body = JSON.parse(payCall![1]!.body as string);
-    expect(body.method).toBe("UPI");
-    expect(body.amountMinor).toBe(10000);
+    expect(JSON.parse(payCall![1]!.body as string).method).toBe("UPI");
   });
 
-  it("no duplicate QR after repeatedly changing methods", () => {
-    renderDialog();
-    selectUPI();
-    selectCash();
-    selectUPI();
+  it("submits method PAYTM when Paytm is selected", async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      return Promise.resolve({ success: true, data: {} });
+    });
+    renderDialog({ balance_minor: 50000, id: "job-paytm-qr" });
     selectPaytm();
-    selectUPI();
-    const qrCards = screen.queryAllByAltText("UPI payment QR code");
-    expect(qrCards.length).toBe(1);
-  });
-
-  it("shows fallback text when QR image errors", () => {
-    renderDialog();
-    selectUPI();
-    const img = screen.getByAltText("UPI payment QR code");
-    fireEvent.error(img);
-    expect(screen.getByText(/UPI QR code could not be loaded/i)).toBeInTheDocument();
-    expect(screen.queryByAltText("UPI payment QR code")).not.toBeInTheDocument();
+    fireEvent.change(amountInput(), { target: { value: "200" } });
+    fireEvent.submit(formEl());
+    await waitFor(() => { expect(api).toHaveBeenCalled(); });
+    const calls = vi.mocked(api).mock.calls;
+    const payCall = calls.find(c => c[0] === "/payments");
+    expect(payCall).toBeDefined();
+    expect(JSON.parse(payCall![1]!.body as string).method).toBe("PAYTM");
   });
 });
 

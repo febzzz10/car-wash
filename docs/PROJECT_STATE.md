@@ -6,8 +6,8 @@
 
 | Worker | Version ID | Commit |
 |--------|------------|--------|
-| washpro-web | `dcfe6bae-9da3-4706-ad08-492fe28bffb4` | `b98d012` |
-| car-wash | `d768d8c1-c683-4e9e-83e1-3aa8075594ca` | `beca3fd` |
+| washpro-web | `7f3ed1a3-53f5-4d6b-bea1-f8e11a6fb9fe` | `44c216a` |
+| car-wash | `e605f58f-2796-4cf7-a72d-f7e6cca4b892` | `44c216a` |
 
 ## Production URL
 

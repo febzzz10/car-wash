@@ -1,4 +1,4 @@
-import { ArrowLeft, Car, ChevronDown, Edit3, History, Plus, UserRoundX } from "lucide-react";
+import { ArrowLeft, Car, ChevronDown, Edit3, History, MapPin, Plus, UserRoundX } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -35,6 +35,7 @@ interface VehiclePhoto {
   readonly captured_at: string;
   readonly id: string;
   readonly job_reference: string | null;
+  readonly location_place: string | null;
   readonly make: string | null;
   readonly model: string | null;
   readonly photo_type: string;
@@ -648,6 +649,12 @@ function VehiclePhotosCard({
                   <small className="vehicle-photo-meta">
                     {dateTime(photo.captured_at)}
                   </small>
+                  {photo.location_place !== null ? (
+                    <small className="vehicle-photo-meta vehicle-photo-meta--place">
+                      <MapPin aria-hidden="true" size={12} />
+                      {photo.location_place}
+                    </small>
+                  ) : null}
                   {formatBytes(photo.size_bytes) !== null ? (
                     <small className="vehicle-photo-meta">
                       {formatBytes(photo.size_bytes)}

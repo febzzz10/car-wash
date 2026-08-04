@@ -49,6 +49,7 @@ function photoFixture(overrides: Record<string, unknown> = {}) {
     captured_at: "2026-08-03T09:16:00.000Z",
     id: "photo-1",
     job_reference: "WP-2026-000011",
+    location_place: null,
     make: "Bajaj Auto",
     model: null,
     photo_type: "LIVE_BEFORE_WASH",
@@ -181,6 +182,20 @@ describe("Vehicle photos section", () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]!.textContent).toContain("5 Aug 2026");
     expect(cards[1]!.textContent).toContain("1 Aug 2026");
+  });
+
+  it("shows the location place on photos that have one", () => {
+    renderPage(
+      historyFixture({
+        photos: [photoFixture({ location_place: "Kottarakkara, Kollam" })],
+      }),
+    );
+    expect(screen.getByText("Kottarakkara, Kollam")).toBeInTheDocument();
+  });
+
+  it("does not show a place section when location_place is null", () => {
+    renderPage(historyFixture({ photos: [photoFixture()] }));
+    expect(screen.queryByText("Kottarakkara, Kollam")).not.toBeInTheDocument();
   });
 
   it("renders a valid file size and omits invalid ones without NaN", () => {

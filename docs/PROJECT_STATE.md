@@ -17,11 +17,11 @@
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 22 | 468 | ✅ All pass |
-| @washpro/api | 28 | 252 | ✅ All pass |
+| @washpro/web | 22 | 470 | ✅ All pass |
+| @washpro/api | 28 | 253 | ✅ All pass |
 | @washpro/contracts | 1 | 28 | ✅ All pass |
 | @washpro/domain | 8 | 53 | ✅ All pass |
-| **Total** | **59** | **801** | **✅ All pass** |
+| **Total** | **59** | **804** | **✅ All pass** |
 
 ## TypeScript typecheck
 

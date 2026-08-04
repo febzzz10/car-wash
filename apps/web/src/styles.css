@@ -2178,6 +2178,11 @@ legend {
 .vehicle-photo-meta:last-child {
   padding-bottom: 9px;
 }
+.vehicle-photo-meta--place {
+  align-items: center;
+  display: flex;
+  gap: 0.25rem;
+}
 .vehicle-photo-preview {
   border-radius: var(--radius-sm);
   display: block;

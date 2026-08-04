@@ -144,10 +144,11 @@ describe("vehicle photos — customer history", () => {
     expect(body.data.photos).toHaveLength(1);
     expect(body.data.photos[0]).toMatchObject({
       id: photoId,
+      job_reference: "WP-TEST-0001",
+      location_place: null,
+      mime_type: "image/jpeg",
       photo_type: "LIVE_BEFORE_WASH",
       registration_number: "VP-01",
-      job_reference: "WP-TEST-0001",
-      mime_type: "image/jpeg",
       size_bytes: 1234567,
     });
   });
@@ -191,6 +192,21 @@ describe("vehicle photos — customer history", () => {
     );
     const body = await response.json<{ data: { photos: unknown[] } }>();
     expect(body.data.photos).toHaveLength(0);
+  });
+
+  it("D2. includes wash job location_place when set", async () => {
+    await env.DB.prepare(
+      "UPDATE wash_jobs SET location_place = 'Kottarakkara, Kollam' WHERE id = 'job-vp'",
+    ).run();
+    await insertVehiclePhoto();
+    const response = await app.request(
+      "/api/v1/customers/customer-vp/history",
+      { headers: await adminHeaders() },
+      env,
+    );
+    const body = await response.json<{ data: { photos: Record<string, unknown>[] } }>();
+    expect(body.data.photos).toHaveLength(1);
+    expect(body.data.photos[0]!.location_place).toBe("Kottarakkara, Kollam");
   });
 });
 

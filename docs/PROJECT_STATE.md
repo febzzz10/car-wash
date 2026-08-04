@@ -1,27 +1,27 @@
 # PROJECT_STATE.md — Current WashPro Implementation State
 
-*Last updated: 2026-08-02*
+*Last updated: 2026-08-04*
 
 ## Active deployments
 
 | Worker | Version ID | Commit |
 |--------|------------|--------|
-| washpro-web | `16ff6203-180d-4fd0-b374-a7a13baf6359` | (uncommitted) |
+| washpro-web | `dcfe6bae-9da3-4706-ad08-492fe28bffb4` | `b98d012` |
 | car-wash | `d768d8c1-c683-4e9e-83e1-3aa8075594ca` | `beca3fd` |
 
 ## Production URL
 
 `https://washpro-web.xpersscarwash.workers.dev`
 
-## Test results (last run: 2026-08-02)
+## Test results (last run: 2026-08-04)
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 20 | 378 | ✅ All pass |
+| @washpro/web | 21 | 456 | ✅ All pass |
 | @washpro/api | 27 | 242 | ✅ All pass |
-| @washpro/contracts | 1 | 24 | ✅ All pass |
+| @washpro/contracts | 1 | 28 | ✅ All pass |
 | @washpro/domain | 8 | 53 | ✅ All pass |
-| **Total** | **56** | **697** | **✅ All pass** |
+| **Total** | **57** | **779** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -57,7 +57,7 @@ All packages: ✅ 0 errors
 
 14. **Hybrid admin/staff auth mode** (not yet deployed): New production `AUTH_MODE=hybrid_admin_staff` (now the `wrangler.jsonc` default) lets staff accounts sign in through the PBKDF2 database path while the static administrator keeps `ADMIN_LOGIN_EMAIL`/`ADMIN_LOGIN_PASSWORD` login. The static-admin identifier is reserved and cannot be shadowed by a DB user. Legacy 600,000-iteration hashes (from before the `beca3fd` PBKDF2 fix) fail safely with the generic invalid-credentials error and require an authorized reset. Static-admin sessions are blocked from change-password (`403 STATIC_ADMIN_PASSWORD_MANAGED_EXTERNALLY` — the password is managed through the deployment secret); database users keep the normal verified 100,000-iteration change flow. `validate-production-deploy.mjs` accepts both `AUTH_MODE` values. 13 new integration tests in `apps/api/test/hybrid-auth.test.ts`.
 
-15. **Typography system — Geist / Inter / Geist Mono** (not yet deployed): Locally bundled fonts via `@fontsource/geist`, `@fontsource/geist-mono`, `@fontsource/inter` (WOFF2, `font-display: swap`, CSP `font-src 'self'` compatible). CSS variables `--font-heading`/`--font-body`/`--font-mono` in `styles.css`, plus utility classes `.font-heading`/`.font-body`/`.font-mono`/`.numeric-value` and semantic `.identifier`/`.identifier--muted` (Geist Mono 500/400). Geist on h1–h6, buttons, tabs, nav, badges, labels, table headers; Inter on body/inputs (explicit `font-family: var(--font-body)` on form controls); Geist Mono on vehicle registrations, job/invoice numbers, transaction refs, coupon/referral codes, expense/service codes, audit record IDs/IPs, registration/code inputs. `tabular-nums` on amounts, totals, dates (via `td`), dashboard KPIs, timers. No `* { font-family }` selector. All 779 tests pass.
+15. **Typography system — Geist / Inter / Geist Mono** (deployed 2026-08-04, commit `b98d012`, web worker `dcfe6bae-9da3-4706-ad08-492fe28bffb4`): Locally bundled fonts via `@fontsource/geist`, `@fontsource/geist-mono`, `@fontsource/inter` (WOFF2, `font-display: swap`, CSP `font-src 'self'` compatible). CSS variables `--font-heading`/`--font-body`/`--font-mono` in `styles.css`, plus utility classes `.font-heading`/`.font-body`/`.font-mono`/`.numeric-value` and semantic `.identifier`/`.identifier--muted` (Geist Mono 500/400). Geist on h1–h6, buttons, tabs, nav, badges, labels, table headers; Inter on body/inputs (explicit `font-family: var(--font-body)` on form controls); Geist Mono on vehicle registrations, job/invoice numbers, transaction refs, coupon/referral codes, expense/service codes, audit record IDs/IPs, registration/code inputs. `tabular-nums` on amounts, totals, dates (via `td`), dashboard KPIs, timers. No `* { font-family }` selector. `build.assetsInlineLimit: 0` in `vite.config.ts` forces all 62 font subsets to emit as same-origin `/assets/*.woff2` files (Vite's default 4 KB inline limit produced `data:` URIs that CSP `font-src 'self'` would block). All 779 tests pass.
 
 ## Known issues
 

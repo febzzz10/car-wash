@@ -6,8 +6,8 @@
 
 | Worker | Version ID | Commit |
 |--------|------------|--------|
-| washpro-web | `7f3ed1a3-53f5-4d6b-bea1-f8e11a6fb9fe` | `44c216a` |
-| car-wash | `e605f58f-2796-4cf7-a72d-f7e6cca4b892` | `44c216a` |
+| washpro-web | `dd35a92c-9b54-4ac9-b7ed-324c7408e47f` | `7fce5c7` |
+| car-wash | `02567612-9e2b-4107-a936-682f458f3101` | `7fce5c7` |
 
 ## Production URL
 
@@ -59,7 +59,9 @@ All packages: ✅ 0 errors
 
 15. **Typography system — Geist / Inter / Geist Mono** (deployed 2026-08-04, commit `b98d012`, web worker `dcfe6bae-9da3-4706-ad08-492fe28bffb4`): Locally bundled fonts via `@fontsource/geist`, `@fontsource/geist-mono`, `@fontsource/inter` (WOFF2, `font-display: swap`, CSP `font-src 'self'` compatible). CSS variables `--font-heading`/`--font-body`/`--font-mono` in `styles.css`, plus utility classes `.font-heading`/`.font-body`/`.font-mono`/`.numeric-value` and semantic `.identifier`/`.identifier--muted` (Geist Mono 500/400). Geist on h1–h6, buttons, tabs, nav, badges, labels, table headers; Inter on body/inputs (explicit `font-family: var(--font-body)` on form controls); Geist Mono on vehicle registrations, job/invoice numbers, transaction refs, coupon/referral codes, expense/service codes, audit record IDs/IPs, registration/code inputs. `tabular-nums` on amounts, totals, dates (via `td`), dashboard KPIs, timers. No `* { font-family }` selector. `build.assetsInlineLimit: 0` in `vite.config.ts` forces all 62 font subsets to emit as same-origin `/assets/*.woff2` files (Vite's default 4 KB inline limit produced `data:` URIs that CSP `font-src 'self'` would block). All 779 tests pass.
 
-16. **Customer vehicle photos** (deploying): Enhanced `GET /customers/:id/history` to include enriched vehicle photos from wash jobs — size (via `file_assets.size`), registration number, make/model, job reference, captured timestamp, photo type, and mime type. New `GET /api/v1/uploads/photos/:id` serves authenticated photo bytes with organization-scoped ownership checks. `VehiclePhotosCard` component on customer detail page groups photos by vehicle registration, shows newest first within each group, and supports broken-image fallback and lightbox preview via existing `Dialog`. `formatBytes()` utility for human-readable file sizes. 22 new tests across API (10) and web (12) — all 801 tests pass. Global `cache-control: no-store` middleware applies; route sets only `Content-Type`.
+16. **Customer vehicle photos** (deployed 2026-08-04, commit `44c216a`, api `e605f58f-2796-4cf7-a72d-f7e6cca4b892`, web `7f3ed1a3-53f5-4d6b-bea1-f8e11a6fb9fe`): Enhanced `GET /customers/:id/history` to include enriched vehicle photos from wash jobs — size (via `file_assets.size`), registration number, make/model, job reference, captured timestamp, photo type, and mime type. New `GET /api/v1/uploads/photos/:id` serves authenticated photo bytes with organization-scoped ownership checks. `VehiclePhotosCard` component on customer detail page groups photos by vehicle registration, shows newest first within each group, and supports broken-image fallback and lightbox preview via existing `Dialog`. `formatBytes()` utility for human-readable file sizes. 22 new tests across API (10) and web (12) — all 801 tests pass. Global `cache-control: no-store` middleware applies; route sets only `Content-Type`.
+
+17. **Photo capture-place display** (deployed 2026-08-04, commit `7fce5c7`, api `02567612-9e2b-4107-a936-682f458f3101`, web `dd35a92c-9b54-4ac9-b7ed-324c7408e47f`): Each vehicle-photo card on the Customer Profile now shows the reverse-geocoded capture place from `wash_jobs.location_place` (existing column, existing JOIN). Place displays between date/time and file size with a MapPin icon, only when non-null. No browser reverse-geocoding, no coordinates exposed, no customer-address fallback. 3 new tests (api 1, web 2) — all 804 tests pass.
 
 ## Known issues
 

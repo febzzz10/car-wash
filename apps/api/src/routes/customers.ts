@@ -552,9 +552,17 @@ customerRoutes.get(
         .bind(auth.organizationId, customerId, customerId)
         .all(),
       c.env.DB.prepare(
-        "SELECT * FROM vehicle_photos WHERE customer_id = ? AND organization_id = ? ORDER BY created_at DESC",
+        `SELECT vp.*, fa.mime_type, fa.size_bytes,
+                v.registration_number, v.make, v.model,
+                w.job_reference
+         FROM vehicle_photos vp
+         INNER JOIN vehicles v ON v.id = vp.vehicle_id AND v.customer_id = ? AND v.organization_id = ?
+         INNER JOIN file_assets fa ON fa.id = vp.file_asset_id AND fa.organization_id = ?
+         LEFT JOIN wash_jobs w ON w.id = vp.wash_job_id AND w.organization_id = ?
+         WHERE vp.organization_id = ? AND fa.upload_status = 'READY' AND fa.access_level = 'PRIVATE'
+         ORDER BY vp.captured_at DESC, vp.id DESC`,
       )
-        .bind(customerId, auth.organizationId)
+        .bind(customerId, auth.organizationId, auth.organizationId, auth.organizationId, auth.organizationId)
         .all(),
       c.env.DB.prepare(
         "SELECT lc.* FROM location_captures lc INNER JOIN wash_jobs w ON w.id = lc.wash_job_id WHERE w.customer_id = ? AND lc.organization_id = ? ORDER BY lc.captured_at DESC",

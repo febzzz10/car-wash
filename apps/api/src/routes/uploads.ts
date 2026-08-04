@@ -378,6 +378,29 @@ uploadRoutes.post(
   },
 );
 
+uploadRoutes.get("/photos/:id", requirePermission("customers.read"), async (c) => {
+  const auth = c.get("auth");
+  const asset = await c.env.DB.prepare(
+    `SELECT fa.object_key, fa.mime_type
+     FROM file_assets fa
+     INNER JOIN vehicle_photos vp ON vp.file_asset_id = fa.id
+     WHERE vp.id = ? AND vp.organization_id = ?
+       AND fa.upload_status = 'READY' AND fa.access_level = 'PRIVATE'`,
+  )
+    .bind(c.req.param("id"), auth.organizationId)
+    .first<{ mime_type: string; object_key: string }>();
+  if (asset === null)
+    throw new ApiError(404, "RESOURCE_NOT_FOUND", "Photo not found.");
+  const object = await c.env.UPLOADS.get(asset.object_key);
+  if (object === null)
+    throw new ApiError(404, "RESOURCE_NOT_FOUND", "Photo not found.");
+  return new Response(object.body, {
+    headers: {
+      "Content-Type": asset.mime_type,
+    },
+  });
+});
+
 uploadRoutes.delete("/:id", async (c) => {
   const auth = c.get("auth");
   const asset = await c.env.DB.prepare(

@@ -13,9 +13,9 @@ import {
   StatusBadge,
 } from "../components/ui";
 import { useToast } from "../components/toast";
-import { useApiData } from "../hooks/use-api-data";
+import { useApiData, type ApiDataState } from "../hooks/use-api-data";
 import { api, jsonBody } from "../lib/api";
-import { dateTime, money } from "../lib/format";
+import { dateTime, formatBytes, money } from "../lib/format";
 import { paymentMethodLabel } from "../lib/payment-methods";
 import type {
   CustomerRecord,
@@ -30,6 +30,16 @@ interface CustomerDetail extends CustomerRecord {
   readonly notes?: string | null;
   readonly rewardBalance: { readonly balance_minor: number };
   readonly vehicles: readonly VehicleRecord[];
+}
+interface VehiclePhoto {
+  readonly captured_at: string;
+  readonly id: string;
+  readonly job_reference: string | null;
+  readonly make: string | null;
+  readonly model: string | null;
+  readonly photo_type: string;
+  readonly registration_number: string;
+  readonly size_bytes: number | null;
 }
 interface HistoryPayload {
   readonly coupons: readonly {
@@ -61,11 +71,7 @@ interface HistoryPayload {
     readonly tip_minor: number;
     readonly wash_job_id: string;
   }[];
-  readonly photos: readonly {
-    readonly captured_at: string;
-    readonly id: string;
-    readonly size_bytes: number;
-  }[];
+  readonly photos: readonly VehiclePhoto[];
   readonly referrals: readonly {
     readonly created_at: string;
     readonly friend_discount_minor: number;
@@ -252,6 +258,7 @@ export default function CustomerDetailPage() {
               ))}
             </div>
           </Card>
+          <VehiclePhotosCard history={history} />
           <Card>
             <div className="card-heading">
               <div>
@@ -338,21 +345,6 @@ export default function CustomerDetailPage() {
                           Reward {money(referral.referrer_reward_minor)}
                         </strong>
                       </span>
-                    </div>
-                  ))}
-                </HistoryGroup>
-                <HistoryGroup
-                  title={`Private photos (${history.data?.photos.length ?? 0})`}
-                >
-                  {history.data?.photos.slice(0, 5).map((photo) => (
-                    <div key={photo.id}>
-                      <span>
-                        <strong>Live vehicle capture</strong>
-                        <small>{dateTime(photo.captured_at)}</small>
-                      </span>
-                      <small>
-                        {Math.ceil(photo.size_bytes / 1024)} KB · private
-                      </small>
                     </div>
                   ))}
                 </HistoryGroup>
@@ -551,5 +543,150 @@ function HistoryGroup({
       <h3>{title}</h3>
       <div>{children}</div>
     </section>
+  );
+}
+
+const PHOTO_TYPE_LABELS: Readonly<Record<string, string>> = {
+  LIVE_BEFORE_WASH: "Live vehicle capture",
+  LIVE_AFTER_WASH: "After-wash photo",
+  VEHICLE_FRONT: "Vehicle front photo",
+  VEHICLE_REAR: "Vehicle rear photo",
+  OTHER: "Vehicle photo",
+};
+
+function photoTypeLabel(photoType: string): string {
+  return PHOTO_TYPE_LABELS[photoType] ?? "Vehicle photo";
+}
+
+function VehiclePhotosCard({
+  history,
+}: {
+  readonly history: ApiDataState<HistoryPayload>;
+}) {
+  const [preview, setPreview] = useState<VehiclePhoto | null>(null);
+  const [broken, setBroken] = useState<ReadonlySet<string>>(new Set());
+  const photos = history.data?.photos ?? [];
+  const uniquePhotos = photos.filter(
+    (photo, index, all) => all.findIndex((other) => other.id === photo.id) === index,
+  );
+  const byVehicle = new Map<string, VehiclePhoto[]>();
+  for (const photo of uniquePhotos) {
+    const list = byVehicle.get(photo.registration_number);
+    if (list === undefined) byVehicle.set(photo.registration_number, [photo]);
+    else list.push(photo);
+  }
+  const groups = [...byVehicle.entries()].map(([registration_number, group]) => ({
+    make: group[0]?.make ?? null,
+    model: group[0]?.model ?? null,
+    photos: group,
+    registration_number,
+  }));
+  let content: ReactNode;
+  if (history.loading) {
+    content = <p className="muted-text">Loading vehicle photos…</p>;
+  } else if (history.error !== null) {
+    content = (
+      <div className="form-alert">
+        <span>Vehicle photos could not be loaded.</span>
+        <Button onClick={history.reload} tone="secondary">
+          Retry
+        </Button>
+      </div>
+    );
+  } else if (uniquePhotos.length === 0) {
+    content = (
+      <EmptyState
+        icon={Car}
+        message="No vehicle photos are available for this customer."
+        title="No vehicle photos"
+      />
+    );
+  } else {
+    content = (
+      <div className="vehicle-photo-groups">
+        {groups.map((group) => (
+          <div key={group.registration_number} className="vehicle-photo-group">
+            <h3>
+              <span className="identifier">{group.registration_number}</span>
+              {group.make !== null || group.model !== null ? (
+                <small>
+                  {" "}
+                  — {[group.make, group.model].filter(Boolean).join(" ")}
+                </small>
+              ) : null}
+            </h3>
+            <div className="vehicle-photo-grid">
+              {group.photos.map((photo) => (
+                <button
+                  className="vehicle-photo-card"
+                  key={photo.id}
+                  onClick={() => setPreview(photo)}
+                  type="button"
+                >
+                  {broken.has(photo.id) ? (
+                    <span className="vehicle-photo-thumb vehicle-photo-thumb--broken" />
+                  ) : (
+                    <img
+                      alt={`${photoTypeLabel(photo.photo_type)} of vehicle ${photo.registration_number}`}
+                      className="vehicle-photo-thumb"
+                      loading="lazy"
+                      onError={() =>
+                        setBroken((previous) => new Set(previous).add(photo.id))
+                      }
+                      src={`/api/v1/uploads/photos/${photo.id}`}
+                    />
+                  )}
+                  <span className="vehicle-photo-type">
+                    {photoTypeLabel(photo.photo_type)}
+                  </span>
+                  <small className="vehicle-photo-meta">
+                    {photo.registration_number}
+                    {photo.job_reference !== null
+                      ? ` · ${photo.job_reference}`
+                      : ""}
+                  </small>
+                  <small className="vehicle-photo-meta">
+                    {dateTime(photo.captured_at)}
+                  </small>
+                  {formatBytes(photo.size_bytes) !== null ? (
+                    <small className="vehicle-photo-meta">
+                      {formatBytes(photo.size_bytes)}
+                    </small>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <Card>
+      <div className="card-heading">
+        <div>
+          <p className="eyebrow">Vehicle evidence</p>
+          <h2>Vehicle photos ({uniquePhotos.length})</h2>
+        </div>
+      </div>
+      {content}
+      <Dialog
+        onClose={() => setPreview(null)}
+        open={preview !== null}
+        title={
+          preview === null
+            ? "Vehicle photo"
+            : `${photoTypeLabel(preview.photo_type)} of vehicle ${preview.registration_number}`
+        }
+      >
+        {preview === null ? null : (
+          <img
+            alt={`${photoTypeLabel(preview.photo_type)} of vehicle ${preview.registration_number}`}
+            className="vehicle-photo-preview"
+            src={`/api/v1/uploads/photos/${preview.id}`}
+          />
+        )}
+      </Dialog>
+    </Card>
   );
 }

@@ -106,6 +106,21 @@ export function titleCase(value: string): string {
     .replace(/\b\w/gu, (letter) => letter.toLocaleUpperCase());
 }
 
+export function formatBytes(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+  if (value < 1024) return `${value} B`;
+  const units = ["KB", "MB", "GB"];
+  let size = value;
+  let unitIndex = -1;
+  do {
+    size /= 1024;
+    unitIndex += 1;
+  } while (size >= 1024 && unitIndex < units.length - 1);
+  return `${size.toFixed(size >= 100 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
 export function parseDecimalToMinor(value: string): number {
   const clean = value.trim();
   if (clean.length === 0) throw new Error("Enter an amount.");

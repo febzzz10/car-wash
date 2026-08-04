@@ -259,6 +259,29 @@ describe("Vehicle photos section", () => {
     expect(screen.getAllByText("Live vehicle capture")).toHaveLength(2);
   });
 
+  it("keeps the location place visible after a thumbnail fails", () => {
+    renderPage(
+      historyFixture({
+        photos: [
+          photoFixture({
+            id: "photo-broken",
+            location_place: "Kottarakkara, Kollam",
+          }),
+          photoFixture({ id: "photo-ok", location_place: null }),
+        ],
+      }),
+    );
+    const images = screen.getAllByRole("img");
+    const brokenImage = images.find(
+      (img) => img.getAttribute("src") === "/api/v1/uploads/photos/photo-broken",
+    )!;
+    fireEvent.error(brokenImage);
+    expect(screen.getByText("Kottarakkara, Kollam")).toBeInTheDocument();
+    expect(document.querySelectorAll(".vehicle-photo-thumb--broken")).toHaveLength(1);
+    expect(screen.getAllByText("Live vehicle capture")).toHaveLength(2);
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+  });
+
   it("opens the preview dialog when a photo card is selected", () => {
     renderPage(historyFixture({ photos: [photoFixture()] }));
     fireEvent.click(screen.getByRole("button", { name: /live vehicle capture/i }));

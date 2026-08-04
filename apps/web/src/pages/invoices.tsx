@@ -73,7 +73,9 @@ export default function InvoicesPage() {
                 {state.data?.map((invoice) => (
                   <tr key={invoice.id}>
                     <td>
-                      <strong>{invoice.invoice_number}</strong>
+                      <strong className="identifier">
+                        {invoice.invoice_number}
+                      </strong>
                       <small>
                         {invoice.revision_number === 0
                           ? "Original"

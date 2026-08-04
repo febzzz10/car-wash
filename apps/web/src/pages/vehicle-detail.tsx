@@ -124,7 +124,10 @@ export default function VehicleDetailPage() {
                   <div>
                     <strong>{job.primary_service_name_snapshot}</strong>
                     <small>
-                      {job.job_reference} · {dateTime(job.created_at)}
+                      <span className="identifier--muted">
+                        {job.job_reference}
+                      </span>{" "}
+                      · {dateTime(job.created_at)}
                     </small>
                   </div>
                   <StatusBadge value={job.status} />
@@ -139,7 +142,9 @@ export default function VehicleDetailPage() {
               {history.data?.invoices.map((invoice) => (
                 <Link key={invoice.id} to={`/invoices/${invoice.id}`}>
                   <span>
-                    <strong>{invoice.invoice_number}</strong>
+                    <strong className="identifier">
+                      {invoice.invoice_number}
+                    </strong>
                     <small>{dateTime(invoice.created_at)}</small>
                   </span>
                   <StatusBadge value={invoice.payment_status_snapshot} />
@@ -309,6 +314,7 @@ function VehicleEditDialog({
             <span>Registration number</span>
             <input
               autoCapitalize="characters"
+              className="font-mono"
               defaultValue={vehicle.registration_number}
               name="registrationNumber"
               required

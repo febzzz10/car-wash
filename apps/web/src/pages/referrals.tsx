@@ -124,7 +124,7 @@ export default function ReferralsPage() {
                   {state.data?.codes.map((item) => (
                     <tr key={item.id}>
                       <td>
-                        <strong>{item.code}</strong>
+                        <strong className="identifier">{item.code}</strong>
                       </td>
                       <td>
                         {item.customer_name}
@@ -163,7 +163,11 @@ export default function ReferralsPage() {
               <tbody>
                 {state.data?.redemptions.map((item) => (
                   <tr key={item.id}>
-                    <td>{item.job_reference}</td>
+                    <td>
+                      <code className="identifier--muted">
+                        {item.job_reference}
+                      </code>
+                    </td>
                     <td>{item.referrer_name}</td>
                     <td>{item.referred_name}</td>
                     <td>{money(item.friend_discount_minor)}</td>

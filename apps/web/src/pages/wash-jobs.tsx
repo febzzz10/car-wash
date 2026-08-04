@@ -114,11 +114,13 @@ export default function WashJobsPage() {
                 {filtered.map((job) => (
                   <tr key={job.id}>
                     <td>
-                      <strong>{job.job_reference}</strong>
+                      <strong className="identifier">{job.job_reference}</strong>
                       <small>{dateTime(job.created_at)}</small>
                     </td>
                     <td>
-                      <strong>{job.vehicle_registration_snapshot}</strong>
+                      <strong className="identifier">
+                        {job.vehicle_registration_snapshot}
+                      </strong>
                       <small>{job.customer_name_snapshot}</small>
                     </td>
                     <td>{job.primary_service_name_snapshot}</td>

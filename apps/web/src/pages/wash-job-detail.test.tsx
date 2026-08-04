@@ -739,7 +739,9 @@ describe("PaymentDialog", () => {
 
   it("renders transaction reference input", () => {
     renderDialog();
-    expect(screen.getByRole("textbox", { name: /transaction reference/i })).toBeInTheDocument();
+    const input = screen.getByRole("textbox", { name: /transaction reference/i });
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveClass("font-mono");
   });
 
   it("renders notes textarea", () => {

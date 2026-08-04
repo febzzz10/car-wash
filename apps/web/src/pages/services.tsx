@@ -81,7 +81,8 @@ export default function ServicesPage() {
                 <div>
                   <strong>{service.name}</strong>
                   <span>
-                    {service.code} · {titleCase(service.service_kind)} ·{" "}
+                    <code className="identifier--muted">{service.code}</code> ·{" "}
+                    {titleCase(service.service_kind)} ·{" "}
                     {service.estimated_duration_minutes ?? 0} min
                   </span>
                 </div>

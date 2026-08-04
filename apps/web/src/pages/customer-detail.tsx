@@ -239,7 +239,9 @@ export default function CustomerDetailPage() {
                     <Car />
                   </span>
                   <div>
-                    <strong>{vehicle.registration_number}</strong>
+                    <strong className="identifier">
+                      {vehicle.registration_number}
+                    </strong>
                     <small>
                       {vehicle.vehicle_type_name} ·{" "}
                       {vehicle.make ?? "Make not recorded"}
@@ -269,7 +271,9 @@ export default function CustomerDetailPage() {
                   {history.data?.invoices.slice(0, 5).map((invoice) => (
                     <Link key={invoice.id} to={`/invoices/${invoice.id}`}>
                       <span>
-                        <strong>{invoice.invoice_number}</strong>
+                        <strong className="identifier">
+                          {invoice.invoice_number}
+                        </strong>
                         <small>{dateTime(invoice.created_at)}</small>
                       </span>
                       <span>
@@ -389,8 +393,10 @@ export default function CustomerDetailPage() {
                       <span className="timeline-mark" />
                       <div>
                         <strong>
-                          {job.job_reference} ·{" "}
-                          {job.vehicle_registration_snapshot}
+                          <span className="identifier--muted">
+                            {job.job_reference}
+                          </span>{" "}
+                          · {job.vehicle_registration_snapshot}
                         </strong>
                         <small>
                           {job.primary_service_name_snapshot} ·{" "}

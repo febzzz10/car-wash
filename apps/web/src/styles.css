@@ -27,7 +27,9 @@
   --shadow-sm: 0 1px 2px rgb(6 21 37 / 6%), 0 4px 12px rgb(6 21 37 / 4%);
   --shadow-md: 0 12px 30px rgb(6 21 37 / 10%);
   --touch: 44px;
-  font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-heading: "Geist", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -38,6 +40,7 @@
 html {
   background: var(--canvas);
   color: var(--ink-900);
+  font-family: var(--font-body);
 }
 body {
   margin: 0;
@@ -72,7 +75,11 @@ a:hover {
 }
 h1,
 h2,
-h3 {
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
   scroll-margin-top: 80px;
   text-wrap: balance;
 }
@@ -106,6 +113,7 @@ table {
 }
 th {
   color: var(--ink-500);
+  font-family: var(--font-heading);
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -117,6 +125,7 @@ td {
   border-top: 1px solid var(--line);
   color: var(--ink-700);
   font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
   padding: 14px;
   vertical-align: middle;
   overflow-wrap: anywhere;
@@ -164,6 +173,7 @@ tbody tr:hover {
 }
 .eyebrow {
   color: var(--water-700);
+  font-family: var(--font-heading);
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.11em;
@@ -174,6 +184,30 @@ tbody tr:hover {
   color: var(--ink-500);
   font-size: 0.86rem;
   line-height: 1.55;
+}
+.font-heading {
+  font-family: var(--font-heading);
+}
+.font-body {
+  font-family: var(--font-body);
+}
+.font-mono {
+  font-family: var(--font-mono);
+}
+.numeric-value {
+  font-variant-numeric: tabular-nums;
+}
+.identifier {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.identifier--muted {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  letter-spacing: 0.02em;
 }
 
 .app-layout {
@@ -205,6 +239,7 @@ tbody tr:hover {
   border-radius: 10px;
   color: #fff;
   display: inline-flex;
+  font-family: var(--font-heading);
   font-size: 1.1rem;
   font-weight: 900;
   height: 38px;
@@ -217,6 +252,7 @@ tbody tr:hover {
   flex-direction: column;
 }
 .brand strong {
+  font-family: var(--font-heading);
   font-size: 1.05rem;
   letter-spacing: -0.02em;
 }
@@ -237,6 +273,7 @@ tbody tr:hover {
 }
 .nav-section > p {
   color: #64839d;
+  font-family: var(--font-heading);
   font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -248,6 +285,7 @@ tbody tr:hover {
   border-radius: var(--radius-sm);
   color: #afc3d4;
   display: flex;
+  font-family: var(--font-heading);
   font-size: 0.84rem;
   font-weight: 600;
   gap: 11px;
@@ -413,6 +451,7 @@ tbody tr:hover {
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   display: inline-flex;
+  font-family: var(--font-heading);
   font-size: 0.79rem;
   font-weight: 700;
   gap: 8px;
@@ -483,6 +522,7 @@ tbody tr:hover {
   border-radius: 7px;
   color: inherit;
   display: inline-flex;
+  font-family: var(--font-heading);
   justify-content: center;
   min-height: 36px;
   min-width: 36px;
@@ -535,7 +575,9 @@ tbody tr:hover {
   font-weight: 600;
 }
 .metric-card strong {
+  font-family: var(--font-heading);
   font-size: clamp(1.1rem, 2vw, 1.45rem);
+  font-variant-numeric: tabular-nums;
   letter-spacing: -0.035em;
   margin-top: 6px;
   overflow: hidden;
@@ -605,8 +647,9 @@ tbody tr:hover {
   border-radius: 7px;
   color: #fff;
   display: flex;
+  font-family: var(--font-mono);
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 700;
   height: 29px;
   justify-content: center;
   letter-spacing: 0.04em;
@@ -626,6 +669,7 @@ tbody tr:hover {
 .queue-amount {
   color: var(--ink-900);
   font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
 .activity-item {
@@ -710,6 +754,7 @@ tbody tr:hover {
   border: 0;
   border-radius: 6px;
   color: var(--ink-500);
+  font-family: var(--font-heading);
   font-size: 0.67rem;
   font-weight: 750;
   min-height: 35px;
@@ -779,6 +824,7 @@ tbody tr:hover {
 }
 td > .matched-registration {
   color: var(--water-700);
+  font-family: var(--font-mono);
   font-size: 0.62rem;
 }
 .status-badge {
@@ -787,6 +833,7 @@ td > .matched-registration {
   border-radius: 99px;
   color: var(--ink-700);
   display: inline-flex;
+  font-family: var(--font-heading);
   font-size: 0.6rem;
   font-weight: 800;
   letter-spacing: 0.045em;
@@ -939,12 +986,14 @@ label {
   color: var(--ink-700);
   display: flex;
   flex-direction: column;
+  font-family: var(--font-heading);
   font-size: 0.72rem;
   font-weight: 650;
   gap: 7px;
 }
 .field-label {
   color: var(--ink-700);
+  font-family: var(--font-heading);
   font-size: 0.72rem;
   font-weight: 650;
   line-height: 1.4;
@@ -962,6 +1011,7 @@ textarea {
   background: var(--surface);
   border: 1px solid #cbd9e4;
   border-radius: var(--radius-sm);
+  font-family: var(--font-body);
   font-size: 0.83rem;
   min-height: var(--touch);
   padding: 9px 11px;
@@ -1571,6 +1621,7 @@ legend {
 }
 .summary-line strong {
   font-size: 0.77rem;
+  font-variant-numeric: tabular-nums;
 }
 .summary-total {
   background: var(--navy-800);
@@ -1587,6 +1638,7 @@ legend {
 }
 .summary-total strong {
   font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
   margin: 5px 0;
 }
 .evidence-check {
@@ -1725,6 +1777,7 @@ legend {
 }
 .review-total strong {
   font-size: 1.55rem;
+  font-variant-numeric: tabular-nums;
   margin: 5px 0;
 }
 
@@ -1814,6 +1867,7 @@ legend {
 }
 .line-items strong {
   font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
 }
 .line-items small {
   margin-top: 4px;
@@ -1861,6 +1915,7 @@ legend {
 .bill-lines strong,
 .invoice-totals strong {
   color: var(--ink-900);
+  font-variant-numeric: tabular-nums;
 }
 .bill-total {
   align-items: center;
@@ -1874,6 +1929,7 @@ legend {
 }
 .bill-total strong {
   font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
 }
 .payment-progress {
   background: var(--canvas);
@@ -1910,6 +1966,12 @@ legend {
   gap: 10px;
   grid-template-columns: auto 1fr auto;
   padding: 13px;
+}
+.payment-due strong {
+  font-variant-numeric: tabular-nums;
+}
+.benefit-line strong {
+  font-variant-numeric: tabular-nums;
 }
 
 .profile-grid {
@@ -2185,6 +2247,7 @@ legend {
 }
 .invoice-grand strong {
   font-size: 1rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .expense-summary {
@@ -2224,6 +2287,7 @@ legend {
   contain-intrinsic-size: 800px;
 }
 .report-table .cell-currency {
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 .service-list {

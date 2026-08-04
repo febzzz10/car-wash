@@ -118,7 +118,7 @@ export default function CouponsPage() {
                 {state.data?.map((coupon) => (
                   <tr key={coupon.id}>
                     <td>
-                      <strong>{coupon.code}</strong>
+                      <strong className="identifier">{coupon.code}</strong>
                       <small>{coupon.description ?? ""}</small>
                     </td>
                     <td>
@@ -497,7 +497,10 @@ function CouponDialog({
                 >
                   <div>
                     <strong>
-                      {item.job_reference} · {item.customer_name}
+                      <span className="identifier--muted">
+                        {item.job_reference}
+                      </span>{" "}
+                      · {item.customer_name}
                     </strong>
                     <span>
                       {dateTime(item.reserved_at)} · {item.status}

@@ -183,7 +183,9 @@ export default function ExpensesPage() {
                   <tr key={expense.id}>
                     <td>
                       <strong>{expense.title}</strong>
-                      <small>{expense.expense_reference}</small>
+                      <small className="identifier--muted">
+                        {expense.expense_reference}
+                      </small>
                     </td>
                     <td>{expense.category_name}</td>
                     <td>{expense.expense_date}</td>
@@ -373,7 +375,7 @@ function CategoryDialog({
           <div key={category.id}>
             <span>
               <strong>{category.name}</strong>
-              <small>{category.code}</small>
+              <small className="identifier--muted">{category.code}</small>
             </span>
             <StatusBadge
               value={category.is_active === 1 ? "ACTIVE" : "DISABLED"}

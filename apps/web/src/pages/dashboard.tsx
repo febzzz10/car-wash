@@ -162,7 +162,9 @@ export default function DashboardPage() {
                     {job.vehicle_registration_snapshot.slice(-4)}
                   </span>
                   <div>
-                    <strong>{job.vehicle_registration_snapshot}</strong>
+                    <strong className="identifier">
+                      {job.vehicle_registration_snapshot}
+                    </strong>
                     <span>
                       {job.customer_name_snapshot} ·{" "}
                       {job.primary_service_name_snapshot}

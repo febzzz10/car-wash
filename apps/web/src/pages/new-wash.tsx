@@ -368,6 +368,7 @@ export default function NewWashPage() {
                       key={vehicle.id}
                       onClick={() => setVehicleId(vehicle.id)}
                       primary={vehicle.registration_number}
+                      primaryClassName="identifier"
                       secondary={`${vehicle.vehicle_type_name ?? "Vehicle"}${vehicle.make === null || vehicle.make === undefined ? "" : ` · ${vehicle.make} ${vehicle.model ?? ""}`}`}
                     />
                   ))}
@@ -528,6 +529,7 @@ export default function NewWashPage() {
           <SummaryLine
             label="Vehicle"
             value={selectedVehicle?.registration_number ?? "Not selected"}
+            valueClassName="identifier"
           />
           <SummaryLine
             label="Assigned to"
@@ -616,11 +618,13 @@ function Choice({
   active,
   onClick,
   primary,
+  primaryClassName = "",
   secondary,
 }: {
   readonly active: boolean;
   readonly onClick: () => void;
   readonly primary: string;
+  readonly primaryClassName?: string;
   readonly secondary: string;
 }) {
   return (
@@ -634,7 +638,7 @@ function Choice({
         {active ? <Check size={15} /> : null}
       </span>
       <span>
-        <strong>{primary}</strong>
+        <strong className={primaryClassName}>{primary}</strong>
         <small>{secondary}</small>
       </span>
     </button>
@@ -643,14 +647,16 @@ function Choice({
 function SummaryLine({
   label,
   value,
+  valueClassName = "",
 }: {
   readonly label: string;
   readonly value: string;
+  readonly valueClassName?: string;
 }) {
   return (
     <div className="summary-line">
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong className={valueClassName}>{value}</strong>
     </div>
   );
 }
@@ -926,7 +932,7 @@ function ReviewStep({
         </div>
         <div>
           <span>Vehicle</span>
-          <strong>{vehicle?.registration_number}</strong>
+          <strong className="identifier">{vehicle?.registration_number}</strong>
           <small>{vehicle?.vehicle_type_name}</small>
         </div>
         <div>
@@ -1120,6 +1126,7 @@ export function NewVehicleDialog({
           <span>Registration number</span>
           <input
             autoCapitalize="characters"
+            className="font-mono"
             name="registrationNumber"
             required
           />

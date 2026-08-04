@@ -925,8 +925,8 @@ export function PaymentDialog({
         {benefitsLocked ? (
           <div>
             <p className="eyebrow">Benefits and rewards</p>
-            {record.appliedBenefits?.coupon ? <div className="benefit-line"><span>Coupon ({record.appliedBenefits.coupon.code})</span><strong>−{money(record.appliedBenefits.coupon.discountMinor)}</strong></div> : null}
-            {record.appliedBenefits?.referral ? <div className="benefit-line"><span>Referral ({record.appliedBenefits.referral.code})</span><strong>−{money(record.appliedBenefits.referral.discountMinor)}</strong></div> : null}
+            {record.appliedBenefits?.coupon ? <div className="benefit-line"><span>Coupon (<code className="identifier">{record.appliedBenefits.coupon.code}</code>)</span><strong>−{money(record.appliedBenefits.coupon.discountMinor)}</strong></div> : null}
+            {record.appliedBenefits?.referral ? <div className="benefit-line"><span>Referral (<code className="identifier">{record.appliedBenefits.referral.code}</code>)</span><strong>−{money(record.appliedBenefits.referral.discountMinor)}</strong></div> : null}
             {record.appliedBenefits?.reward ? <div className="benefit-line"><span>Reward</span><strong>−{money(record.appliedBenefits.reward.amountMinor)}</strong></div> : null}
             {record.appliedBenefits?.manualDiscount ? <div className="benefit-line"><span>Manual discount{record.appliedBenefits.manualDiscount.reason ? ` (${record.appliedBenefits.manualDiscount.reason})` : ""}</span><strong>−{money(record.appliedBenefits.manualDiscount.amountMinor)}</strong></div> : null}
             {(record.coupon_discount_minor > 0 || record.referral_discount_minor > 0 || record.reward_discount_minor > 0 || record.manual_discount_minor > 0) ? null : <p className="muted">No benefits applied.</p>}
@@ -936,8 +936,8 @@ export function PaymentDialog({
           <div>
             <p className="eyebrow">Benefits and rewards</p>
               <div className="form-grid">
-              <label><span>Coupon code</span><input autoCapitalize="characters" onChange={e => { setCouponCode(e.target.value.toUpperCase()); clearField("benefits.couponCode"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} placeholder="Optional" value={couponCode} />{fieldErrors["benefits.couponCode"] ? <span className="field-error">{fieldErrors["benefits.couponCode"]}</span> : null}</label>
-              <label><span>Referral code</span><input autoCapitalize="characters" onChange={e => { setReferralCode(e.target.value.toUpperCase()); clearField("benefits.referralCode"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} placeholder="Optional" value={referralCode} />{fieldErrors["benefits.referralCode"] ? <span className="field-error">{fieldErrors["benefits.referralCode"]}</span> : null}</label>
+              <label><span>Coupon code</span><input autoCapitalize="characters" className="font-mono" onChange={e => { setCouponCode(e.target.value.toUpperCase()); clearField("benefits.couponCode"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} placeholder="Optional" value={couponCode} />{fieldErrors["benefits.couponCode"] ? <span className="field-error">{fieldErrors["benefits.couponCode"]}</span> : null}</label>
+              <label><span>Referral code</span><input autoCapitalize="characters" className="font-mono" onChange={e => { setReferralCode(e.target.value.toUpperCase()); clearField("benefits.referralCode"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} placeholder="Optional" value={referralCode} />{fieldErrors["benefits.referralCode"] ? <span className="field-error">{fieldErrors["benefits.referralCode"]}</span> : null}</label>
               <label><span>Available reward</span>
                 {rewardsLoading ? <span className="muted">Loading...</span> : (
                   <select onChange={e => { const r = rewards.find(rw => rw.id === e.target.value); setRewardId(e.target.value); setRewardAmount(r ? (r.remaining_amount_minor / 100).toString() : ""); clearField("benefits.rewardId"); setPreviewDirty(true); setVerifiedBalanceMinor(null); setAmountEdited(false); }} value={rewardId}>
@@ -1005,7 +1005,7 @@ export function PaymentDialog({
               </p>
             </div>
           ) : null}
-          <label><span>Transaction reference (optional)</span><input name="reference" /></label>
+          <label><span>Transaction reference (optional)</span><input className="font-mono" name="reference" /></label>
           <label><span>Notes</span><textarea name="notes" /></label>
         </>) : null}
 

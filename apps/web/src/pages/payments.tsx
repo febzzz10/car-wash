@@ -82,7 +82,10 @@ export default function PaymentsPage() {
                 {state.data?.map((payment) => (
                   <tr key={payment.id}>
                     <td>
-                      <Link to={`/wash-jobs/${payment.wash_job_id}`}>
+                      <Link
+                        className="identifier"
+                        to={`/wash-jobs/${payment.wash_job_id}`}
+                      >
                         {payment.job_reference}
                       </Link>
                     </td>
@@ -93,7 +96,11 @@ export default function PaymentsPage() {
                     <td>
                       {paymentMethodLabel(payment.payment_method)}
                       <small>
-                        {payment.external_transaction_reference ?? ""}
+                        {payment.external_transaction_reference ? (
+                          <code className="identifier--muted">
+                            {payment.external_transaction_reference}
+                          </code>
+                        ) : null}
                       </small>
                     </td>
                     <td>{dateTime(payment.paid_at)}</td>

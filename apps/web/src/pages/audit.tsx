@@ -59,14 +59,20 @@ export default function AuditPage() {
                     <td>{item.user_name ?? "System"}</td>
                     <td>
                       {titleCase(item.record_type)}
-                      <small>{item.record_id ?? ""}</small>
+                      <small className="identifier--muted">
+                        {item.record_id ?? ""}
+                      </small>
                     </td>
                     <td>{item.reason ?? "—"}</td>
                     <td>
                       <StatusBadge value={item.severity} />
                     </td>
                     <td>{dateTime(item.created_at)}</td>
-                    <td>{item.ip_address ?? "—"}</td>
+                    <td>
+                      <code className="identifier--muted">
+                        {item.ip_address ?? "—"}
+                      </code>
+                    </td>
                   </tr>
                 ))}
               </tbody>

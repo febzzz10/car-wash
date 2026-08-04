@@ -167,7 +167,7 @@ export default function InvoiceDetailPage() {
             </div>
             <div>
               <p>Invoice</p>
-              <strong>{item.invoice_number}</strong>
+              <strong className="identifier">{item.invoice_number}</strong>
               <StatusBadge value={item.invoice_status} />
             </div>
           </div>

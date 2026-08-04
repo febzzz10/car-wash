@@ -59,7 +59,9 @@ export default function VehiclesPage() {
                 {state.data?.map((vehicle) => (
                   <tr key={vehicle.id}>
                     <td>
-                      <strong>{vehicle.registration_number}</strong>
+                      <strong className="identifier">
+                        {vehicle.registration_number}
+                      </strong>
                     </td>
                     <td>{vehicle.customer_name}</td>
                     <td>{vehicle.vehicle_type_name}</td>

@@ -13,24 +13,31 @@ export interface NavigationSection {
   readonly items: readonly NavigationItem[];
 }
 
-const sharedSections: readonly NavigationSection[] = [
+const staffSections: readonly NavigationSection[] = [
   {
-    label: "Primary",
+    label: "Operations",
     items: [
-      { icon: "dashboard", label: "Today", mobile: true, to: "/dashboard" },
+      { icon: "gauge", label: "Today", mobile: true, to: "/dashboard" },
       {
-        icon: "newWash",
+        icon: "plus",
         label: "New wash",
         mobile: true,
         permission: "wash_jobs.create",
         to: "/wash-jobs/new",
       },
       {
-        icon: "queue",
+        icon: "timer",
         label: "Wash queue",
         mobile: true,
         permission: "wash_jobs.read",
         to: "/wash-jobs",
+      },
+      {
+        icon: "wallet",
+        label: "Payments",
+        mobile: true,
+        permission: "payments.create",
+        to: "/payments",
       },
     ],
   },
@@ -38,31 +45,19 @@ const sharedSections: readonly NavigationSection[] = [
     label: "Directory",
     items: [
       {
-        icon: "customers",
+        icon: "users",
         label: "Customers",
         permission: "customers.read",
         to: "/customers",
       },
       {
-        icon: "vehicles",
+        icon: "car",
         label: "Vehicles",
         permission: "vehicles.read",
         to: "/vehicles",
       },
-    ],
-  },
-  {
-    label: "Finance",
-    items: [
       {
-        icon: "payments",
-        label: "Payments",
-        mobile: true,
-        permission: "payments.create",
-        to: "/payments",
-      },
-      {
-        icon: "invoices",
+        icon: "receipt",
         label: "Invoices",
         permission: "invoices.generate",
         to: "/invoices",
@@ -71,54 +66,41 @@ const sharedSections: readonly NavigationSection[] = [
   },
 ];
 
-const adminOnlySections: readonly NavigationSection[] = [
+const adminSections: readonly NavigationSection[] = [
+  ...staffSections,
   {
-    label: "Directory",
-    items: [{ icon: "services", label: "Services & pricing", to: "/services" }],
-  },
-  {
-    label: "Finance",
-    items: [{ icon: "expenses", label: "Expenses", to: "/expenses" }],
-  },
-  {
-    label: "Benefits",
+    label: "Management",
     items: [
-      { icon: "coupons", label: "Coupons", to: "/coupons" },
-      { icon: "referrals", label: "Referrals", to: "/referrals" },
+      { icon: "chart", label: "Reports", to: "/reports" },
+      { icon: "expense", label: "Expenses", to: "/expenses" },
+      { icon: "staff", label: "Staff", to: "/staff" },
+      { icon: "sparkles", label: "Services & pricing", to: "/services" },
+      { icon: "ticket", label: "Coupons", to: "/coupons" },
+      { icon: "gift", label: "Referrals", to: "/referrals" },
     ],
   },
   {
-    label: "Administration",
+    label: "System",
     items: [
-      { icon: "reports", label: "Reports", to: "/reports" },
-      { icon: "staff", label: "Staff", to: "/staff" },
-      { icon: "audit", label: "Audit log", to: "/audit" },
       { icon: "settings", label: "Business settings", to: "/settings" },
+      { icon: "shield", label: "Audit log", to: "/audit" },
     ],
   },
 ];
-
-interface MutableSection {
-  label: string;
-  items: NavigationItem[];
-}
 
 export function navigationFor(
   role: UserRole,
   permissions: readonly string[],
 ): readonly NavigationSection[] {
-  const sources =
-    role === "ADMIN" ? [...sharedSections, ...adminOnlySections] : sharedSections;
+  const sections = role === "ADMIN" ? adminSections : staffSections;
+  if (role === "ADMIN") return sections;
   const allowed = new Set(permissions);
-  const merged: MutableSection[] = [];
-  for (const section of sources) {
-    const items = section.items.filter(
-      (item) => item.permission === undefined || allowed.has(item.permission),
-    );
-    if (items.length === 0) continue;
-    const existing = merged.find((group) => group.label === section.label);
-    if (existing !== undefined) existing.items.push(...items);
-    else merged.push({ label: section.label, items });
-  }
-  return merged;
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) => item.permission === undefined || allowed.has(item.permission),
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
 }

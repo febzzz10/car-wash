@@ -220,7 +220,7 @@ describe("New Wash — stepLabels", () => {
 });
 
 describe("New Wash wizard — navigation", () => {
-  it("renders six stepper buttons", async () => {
+  it("renders six stepper step indicators", async () => {
     const { default: NewWashPage } = await import("./new-wash");
     render(
       <MemoryRouter>
@@ -228,8 +228,8 @@ describe("New Wash wizard — navigation", () => {
       </MemoryRouter>,
     );
     const stepper = screen.getByLabelText("New Wash steps");
-    const stepButtons = stepper.querySelectorAll("button small");
-    expect(stepButtons).toHaveLength(6);
+    const indicators = stepper.querySelectorAll('[role="listitem"]');
+    expect(indicators).toHaveLength(6);
   });
 
   it("Services Continue opens Review directly", async () => {
@@ -279,28 +279,22 @@ describe("New Wash wizard — navigation", () => {
     expect(backBtn).toBeDisabled();
   });
 
-  it("stepper buttons allow going back but not forward past current step", async () => {
+  it("Continue at Services opens Review", async () => {
     const { default: NewWashPage } = await import("./new-wash");
-    setDraft(3); // start at photo step
+    setDraft(4);
     render(
       <MemoryRouter>
         <NewWashPage />
       </MemoryRouter>,
     );
 
-    const buttons = screen.getAllByRole("button");
-    const stepButtons = buttons.filter(
-      (b) => b.querySelector("small") !== null,
-    );
+    expect(screen.getByText("Choose services")).toBeTruthy();
 
-    // At step 3, only indices 0-3 should have aria-current set or be clickable
-    // Clicking step 4 (Services) should not change anything — index 4 > step 3
-    fireEvent.click(stepButtons[4]!);
-    expect(screen.getByText("Capture photo & location")).toBeTruthy();
+    const continueBtn = screen.getByText("Continue").closest("button")!;
+    expect(continueBtn).not.toBeDisabled();
+    fireEvent.click(continueBtn);
 
-    // Clicking step 0 should go to Customer
-    fireEvent.click(stepButtons[0]!);
-    expect(screen.getByText("Who is this wash for?")).toBeTruthy();
+    expect(screen.getByText("Review and create")).toBeTruthy();
   });
 
   it("Continue button changes to Create at Review step", async () => {

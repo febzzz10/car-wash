@@ -1,8 +1,6 @@
 import {
   Camera,
   Check,
-  ChevronLeft,
-  ChevronRight,
   MapPin,
   Plus,
   RotateCcw,
@@ -23,6 +21,7 @@ import {
   SearchField,
   SkeletonRows,
 } from "../components/ui";
+import { Stepper, Step } from "../components/stepper";
 import VehicleMakeAutocomplete from "../components/vehicle-make-autocomplete";
 import VehicleModelAutocomplete from "../components/vehicle-model-autocomplete";
 import VehicleTypeSelect from "../components/vehicle-type-select";
@@ -251,22 +250,6 @@ export default function NewWashPage() {
   return (
     <>
       <PageHeader eyebrow="New wash" title="Build a wash job" />
-      <div aria-label="New Wash steps" className="stepper">
-        {stepLabels.map((label, index) => (
-          <button
-            aria-current={step === index ? "step" : undefined}
-            className={`${step === index ? "active" : ""} ${index < step ? "complete" : ""}`}
-            key={label}
-            onClick={() => {
-              if (index <= step) setStep(index);
-            }}
-            type="button"
-          >
-            <span>{index < step ? <Check size={15} /> : index + 1}</span>
-            <small>{label}</small>
-          </button>
-        ))}
-      </div>
       <div className="wizard-layout">
         <Card className="wizard-panel">
           {error === null ? null : (
@@ -274,6 +257,30 @@ export default function NewWashPage() {
               {error}
             </div>
           )}
+          <Stepper
+            canProceed={canContinue()}
+            currentStep={step}
+            finalAction={
+              <div className="button-row">
+                <Button
+                  busy={busy}
+                  onClick={() => void createJob("DRAFT")}
+                  tone="secondary"
+                >
+                  Save draft
+                </Button>
+                <Button busy={busy} onClick={() => void createJob()}>
+                  Create {startImmediately ? "and start" : "waiting"} job
+                </Button>
+              </div>
+            }
+            isSubmitting={busy}
+            onBack={() => setStep((value) => Math.max(0, value - 1))}
+            onNext={() =>
+              setStep((value) => Math.min(stepLabels.length - 1, value + 1))
+            }
+          >
+            <Step label="Customer">
           {step === 0 ? (
             <SelectionStep
               heading="Who is this wash for?"
@@ -336,6 +343,8 @@ export default function NewWashPage() {
               ) : null}
             </SelectionStep>
           ) : null}
+            </Step>
+            <Step label="Vehicle">
           {step === 1 ? (
             <SelectionStep
               heading="Select a vehicle"
@@ -376,6 +385,8 @@ export default function NewWashPage() {
               )}
             </SelectionStep>
           ) : null}
+            </Step>
+            <Step label="Assign">
           {step === 2 ? (
             <SelectionStep
               heading="Assign the wash"
@@ -424,9 +435,13 @@ export default function NewWashPage() {
               </label>
             </SelectionStep>
           ) : null}
+            </Step>
+            <Step label="Live photo &amp; location">
           {step === 3 ? (
             <PhotoLocationStep evidence={evidence} onChange={setEvidence} />
           ) : null}
+            </Step>
+            <Step label="Services">
           {step === 4 ? (
             <SelectionStep
               heading="Choose services"
@@ -470,6 +485,8 @@ export default function NewWashPage() {
               )}
             </SelectionStep>
           ) : null}
+            </Step>
+            <Step label="Review">
           {step === 5 ? (
             <ReviewStep
               addOns={selectedAddOns}
@@ -487,38 +504,8 @@ export default function NewWashPage() {
               vehicle={selectedVehicle}
             />
           ) : null}
-          <div className="wizard-actions">
-            <Button
-              disabled={step === 0}
-              onClick={() => setStep((value) => Math.max(0, value - 1))}
-              tone="secondary"
-            >
-              <ChevronLeft size={18} /> Back
-            </Button>
-            {step < stepLabels.length - 1 ? (
-              <Button
-                disabled={!canContinue()}
-                onClick={() =>
-                  setStep((value) => Math.min(stepLabels.length - 1, value + 1))
-                }
-              >
-                Continue <ChevronRight size={18} />
-              </Button>
-            ) : (
-              <div className="button-row">
-                <Button
-                  busy={busy}
-                  onClick={() => void createJob("DRAFT")}
-                  tone="secondary"
-                >
-                  Save draft
-                </Button>
-                <Button busy={busy} onClick={() => void createJob()}>
-                  Create {startImmediately ? "and start" : "waiting"} job
-                </Button>
-              </div>
-            )}
-          </div>
+            </Step>
+          </Stepper>
         </Card>
         <aside className="wizard-summary">
           <p className="eyebrow">Wash summary</p>

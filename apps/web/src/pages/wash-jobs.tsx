@@ -101,7 +101,7 @@ export default function WashJobsPage() {
                 <tr>
                   <th>Job</th>
                   <th>Customer & vehicle</th>
-                  <th>Service</th>
+                  <th>Assigned staff</th>
                   <th>Status</th>
                   <th>Payment</th>
                   <th className="align-right">Amount</th>
@@ -123,7 +123,17 @@ export default function WashJobsPage() {
                       </strong>
                       <small>{job.customer_name_snapshot}</small>
                     </td>
-                    <td>{job.primary_service_name_snapshot}</td>
+                    <td>
+                      {job.assigned_user_name_snapshot !== null &&
+                      job.assigned_user_name_snapshot !== undefined &&
+                      job.assigned_user_name_snapshot.trim() !== "" ? (
+                        <span className="queue-assignee">
+                          {job.assigned_user_name_snapshot}
+                        </span>
+                      ) : (
+                        <span className="muted">Unassigned</span>
+                      )}
+                    </td>
                     <td>
                       <StatusBadge value={job.status} />
                     </td>

@@ -1,27 +1,27 @@
 # PROJECT_STATE.md — Current WashPro Implementation State
 
-*Last updated: 2026-08-04*
+*Last updated: 2026-08-05*
 
 ## Active deployments
 
 | Worker | Version ID | Commit |
 |--------|------------|--------|
-| washpro-web | `dd35a92c-9b54-4ac9-b7ed-324c7408e47f` | `7fce5c7` |
+| washpro-web | `097524a0-d436-4ce7-8042-390864fd7825` | `e16f3a8` |
 | car-wash | `02567612-9e2b-4107-a936-682f458f3101` | `7fce5c7` |
 
 ## Production URL
 
 `https://washpro-web.xpersscarwash.workers.dev`
 
-## Test results (last run: 2026-08-04)
+## Test results (last run: 2026-08-05)
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 22 | 471 | ✅ All pass |
+| @washpro/web | 23 | 477 | ✅ All pass |
 | @washpro/api | 28 | 253 | ✅ All pass |
 | @washpro/contracts | 1 | 28 | ✅ All pass |
 | @washpro/domain | 8 | 53 | ✅ All pass |
-| **Total** | **59** | **805** | **✅ All pass** |
+| **Total** | **60** | **811** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -62,6 +62,8 @@ All packages: ✅ 0 errors
 16. **Customer vehicle photos** (deployed 2026-08-04, commit `44c216a`, api `e605f58f-2796-4cf7-a72d-f7e6cca4b892`, web `7f3ed1a3-53f5-4d6b-bea1-f8e11a6fb9fe`): Enhanced `GET /customers/:id/history` to include enriched vehicle photos from wash jobs — size (via `file_assets.size`), registration number, make/model, job reference, captured timestamp, photo type, and mime type. New `GET /api/v1/uploads/photos/:id` serves authenticated photo bytes with organization-scoped ownership checks. `VehiclePhotosCard` component on customer detail page groups photos by vehicle registration, shows newest first within each group, and supports broken-image fallback and lightbox preview via existing `Dialog`. `formatBytes()` utility for human-readable file sizes. 22 new tests across API (10) and web (12) — all 801 tests pass. Global `cache-control: no-store` middleware applies; route sets only `Content-Type`.
 
 17. **Photo capture-place display** (deployed 2026-08-04, commit `7fce5c7`, api `02567612-9e2b-4107-a936-682f458f3101`, web `dd35a92c-9b54-4ac9-b7ed-324c7408e47f`): Each vehicle-photo card on the Customer Profile now shows the reverse-geocoded capture place from `wash_jobs.location_place` (existing column, existing JOIN). Place displays between date/time and file size with a MapPin icon, only when non-null. No browser reverse-geocoding, no coordinates exposed, no customer-address fallback. 4 new tests (api 1, web 3) including a broken-thumbnail place-survival regression test — all 805 tests pass.
+
+18. **Wash queue Assigned staff column** (not yet deployed): The queue page replaced the "Service" column with "Assigned staff", rendering `wash_jobs.assigned_user_name_snapshot` (already returned by the existing `SELECT *` list query — no backend change). Rows with a null/blank snapshot display muted "Unassigned". Long names clamp to two lines via `.queue-assignee` CSS. 13 new page tests in `apps/web/src/pages/wash-jobs.test.tsx` covering header swap, assigned/unassigned rendering, no staff-ID leak, snapshot names, and preserved search/filter/refresh/navigation behavior.
 
 ## Known issues
 

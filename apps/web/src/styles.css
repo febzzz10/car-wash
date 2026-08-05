@@ -808,7 +808,8 @@ tbody tr:hover {
 .row-link:hover {
   background: var(--water-100);
 }
-.queue-assignee {
+.queue-assignee,
+.payment-assignee {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;

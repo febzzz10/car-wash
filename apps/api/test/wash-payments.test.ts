@@ -107,6 +107,18 @@ beforeEach(async () => {
       }),
     ),
     env.DB.prepare(
+      "INSERT OR IGNORE INTO file_assets (id, organization_id, branch_id, bucket_name, object_key, mime_type, size_bytes, asset_type, access_level, upload_status, uploaded_by_user_id, created_at, ready_at, metadata_json) VALUES ('asset-live-wash-4', 'org-wash', 'branch-wash', 'UPLOADS', 'org-wash/live4.jpg', 'image/jpeg', 4, 'VEHICLE_LIVE_PHOTO', 'PRIVATE', 'READY', 'admin-wash', ?, ?, ?)",
+    ).bind(
+      timestamp,
+      timestamp,
+      JSON.stringify({
+        captureSource: "CAMERA",
+        capturedAt: new Date().toISOString(),
+        height: 480,
+        width: 640,
+      }),
+    ),
+    env.DB.prepare(
       "INSERT OR IGNORE INTO coupons (id, organization_id, code, code_normalized, discount_type, discount_value, minimum_bill_minor, start_at, expires_at, total_usage_limit, usage_limit_per_customer, created_by_user_id, created_at, updated_at) VALUES ('coupon-wash', 'org-wash', 'WELCOME10', 'WELCOME10', 'FIXED', 1000, 5000, '2026-01-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 10, 1, 'admin-wash', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
@@ -211,6 +223,92 @@ describe("wash, timer, payment, and refund workflow", () => {
     expect(paymentData.data.appliedBenefits.referral).not.toBeNull();
     expect(paymentData.data.appliedBenefits.referral!.discountMinor).toBeGreaterThan(0);
     expect(paymentData.data.appliedBenefits.referral!.code).toBe("RAVI500");
+  });
+
+  it("includes the assigned staff snapshot from the related wash job in the payments list", async () => {
+    const headers = await mutationHeaders();
+    const create = await app.request(
+      "/api/v1/wash-jobs",
+      {
+        body: JSON.stringify({
+          assignedUserId: "staff-wash",
+          customerId: "customer-wash",
+          idempotencyKey: "assigned-snapshot-create-0001",
+          initialStatus: "WAITING",
+          location: {
+            place: "Test Location, Kochi",
+            capturedAt: new Date().toISOString(),
+          },
+          photoAssetId: "asset-live-wash-4",
+          primaryServiceId: "service-primary",
+          vehicleId: "vehicle-wash",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(create.status).toBe(201);
+    const created = await create.json<{
+      data: { id: string; total_amount_minor: number; version: number };
+    }>();
+    let version = created.data.version;
+    for (const action of ["start", "complete"] as const) {
+      const response = await app.request(
+        `/api/v1/wash-jobs/${created.data.id}/${action}`,
+        {
+          body: JSON.stringify({ version }),
+          headers,
+          method: "POST",
+        },
+        env,
+      );
+      expect(response.status).toBe(200);
+      version = (await response.json<{ data: { version: number } }>()).data
+        .version;
+    }
+
+    for (const [amountMinor, idempotencyKey, method] of [
+      [5000, "assigned-snapshot-pay-0001", "UPI"],
+      [created.data.total_amount_minor - 5000, "assigned-snapshot-pay-0002", "CASH"],
+    ] as const) {
+      const payment = await app.request(
+        "/api/v1/payments",
+        {
+          body: JSON.stringify({
+            amountMinor,
+            idempotencyKey,
+            method,
+            washJobId: created.data.id,
+          }),
+          headers,
+          method: "POST",
+        },
+        env,
+      );
+      expect(payment.status).toBe(201);
+    }
+
+    const list = await app.request(
+      "/api/v1/payments",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    expect(list.status).toBe(200);
+    const body = await list.json<{
+      data: {
+        assigned_user_name_snapshot: string | null;
+        id: string;
+        wash_job_id: string;
+      }[];
+    }>();
+    const rows = body.data.filter(
+      (row) => row.wash_job_id === created.data.id,
+    );
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.assigned_user_name_snapshot).toBe("Wash Staff");
+    }
   });
 
   it("creates priced snapshots and preserves timer and financial integrity", async () => {

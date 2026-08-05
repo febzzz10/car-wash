@@ -21,6 +21,7 @@ import { paymentMethodLabel } from "../lib/payment-methods";
 
 interface PaymentRecord {
   readonly amount_minor: number;
+  readonly assigned_user_name_snapshot?: string | null;
   readonly created_at: string;
   readonly customer_name_snapshot: string;
   readonly external_transaction_reference?: string | null;
@@ -70,6 +71,7 @@ export default function PaymentsPage() {
                 <tr>
                   <th>Job</th>
                   <th>Customer & vehicle</th>
+                  <th>Assigned staff</th>
                   <th>Method</th>
                   <th>Paid at</th>
                   <th>Status</th>
@@ -92,6 +94,17 @@ export default function PaymentsPage() {
                     <td>
                       <strong>{payment.vehicle_registration_snapshot}</strong>
                       <small>{payment.customer_name_snapshot}</small>
+                    </td>
+                    <td>
+                      {payment.assigned_user_name_snapshot !== null &&
+                      payment.assigned_user_name_snapshot !== undefined &&
+                      payment.assigned_user_name_snapshot.trim() !== "" ? (
+                        <span className="payment-assignee">
+                          {payment.assigned_user_name_snapshot}
+                        </span>
+                      ) : (
+                        <span className="muted">Unassigned</span>
+                      )}
                     </td>
                     <td>
                       {paymentMethodLabel(payment.payment_method)}

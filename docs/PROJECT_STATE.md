@@ -17,11 +17,11 @@
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 23 | 477 | ✅ All pass |
-| @washpro/api | 28 | 253 | ✅ All pass |
+| @washpro/web | 24 | 493 | ✅ All pass |
+| @washpro/api | 28 | 254 | ✅ All pass |
 | @washpro/contracts | 1 | 28 | ✅ All pass |
 | @washpro/domain | 8 | 53 | ✅ All pass |
-| **Total** | **60** | **811** | **✅ All pass** |
+| **Total** | **61** | **828** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -64,6 +64,8 @@ All packages: ✅ 0 errors
 17. **Photo capture-place display** (deployed 2026-08-04, commit `7fce5c7`, api `02567612-9e2b-4107-a936-682f458f3101`, web `dd35a92c-9b54-4ac9-b7ed-324c7408e47f`): Each vehicle-photo card on the Customer Profile now shows the reverse-geocoded capture place from `wash_jobs.location_place` (existing column, existing JOIN). Place displays between date/time and file size with a MapPin icon, only when non-null. No browser reverse-geocoding, no coordinates exposed, no customer-address fallback. 4 new tests (api 1, web 3) including a broken-thumbnail place-survival regression test — all 805 tests pass.
 
 18. **Wash queue Assigned staff column** (not yet deployed): The queue page replaced the "Service" column with "Assigned staff", rendering `wash_jobs.assigned_user_name_snapshot` (already returned by the existing `SELECT *` list query — no backend change). Rows with a null/blank snapshot display muted "Unassigned". Long names clamp to two lines via `.queue-assignee` CSS. 13 new page tests in `apps/web/src/pages/wash-jobs.test.tsx` covering header swap, assigned/unassigned rendering, no staff-ID leak, snapshot names, and preserved search/filter/refresh/navigation behavior.
+
+19. **Payments Assigned staff column** (not yet deployed): The Payments listing added an "Assigned staff" column between "Customer & vehicle" and "Method", rendering the related wash job's `assigned_user_name_snapshot`. `GET /api/v1/payments` now selects `w.assigned_user_name_snapshot` (single JOIN, no N+1, org/branch isolation unchanged). Rows with a null/blank/whitespace snapshot display muted "Unassigned"; long names clamp to two lines via `.payment-assignee` (shares the queue assignee clamp CSS). Multiple payments for one job each show the same snapshot. 16 new page tests in `apps/web/src/pages/payments.test.tsx` and 1 new API integration test in `apps/api/test/wash-payments.test.ts` (with a dedicated `asset-live-wash-4` fixture — photo assets are single-use per job).
 
 ## Known issues
 

@@ -96,7 +96,8 @@ paymentRoutes.get("/", requirePermission("payments.create"), async (c) => {
   const auth = c.get("auth");
   const result = await c.env.DB.prepare(
     `SELECT p.*, w.job_reference, w.customer_name_snapshot,
-      w.vehicle_registration_snapshot, w.payment_status
+      w.vehicle_registration_snapshot, w.payment_status,
+      w.assigned_user_name_snapshot
      FROM payments p INNER JOIN wash_jobs w ON w.id = p.wash_job_id
      WHERE p.organization_id = ? AND p.branch_id = ?
      ORDER BY p.created_at DESC LIMIT 250`,

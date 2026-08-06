@@ -17,11 +17,11 @@
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 24 | 493 | ✅ All pass |
-| @washpro/api | 28 | 254 | ✅ All pass |
+| @washpro/web | 25 | 525 | ✅ All pass |
+| @washpro/api | 28 | 257 | ✅ All pass |
 | @washpro/contracts | 1 | 28 | ✅ All pass |
 | @washpro/domain | 8 | 53 | ✅ All pass |
-| **Total** | **61** | **828** | **✅ All pass** |
+| **Total** | **62** | **863** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -66,6 +66,8 @@ All packages: ✅ 0 errors
 18. **Wash queue Assigned staff column** (not yet deployed): The queue page replaced the "Service" column with "Assigned staff", rendering `wash_jobs.assigned_user_name_snapshot` (already returned by the existing `SELECT *` list query — no backend change). Rows with a null/blank snapshot display muted "Unassigned". Long names clamp to two lines via `.queue-assignee` CSS. 13 new page tests in `apps/web/src/pages/wash-jobs.test.tsx` covering header swap, assigned/unassigned rendering, no staff-ID leak, snapshot names, and preserved search/filter/refresh/navigation behavior.
 
 19. **Payments Assigned staff column** (not yet deployed): The Payments listing added an "Assigned staff" column between "Customer & vehicle" and "Method", rendering the related wash job's `assigned_user_name_snapshot`. `GET /api/v1/payments` now selects `w.assigned_user_name_snapshot` (single JOIN, no N+1, org/branch isolation unchanged). Rows with a null/blank/whitespace snapshot display muted "Unassigned"; long names clamp to two lines via `.payment-assignee` (shares the queue assignee clamp CSS). Multiple payments for one job each show the same snapshot. 16 new page tests in `apps/web/src/pages/payments.test.tsx` and 1 new API integration test in `apps/api/test/wash-payments.test.ts` (with a dedicated `asset-live-wash-4` fixture — photo assets are single-use per job).
+
+20. **Payments admin filters: date range + assigned staff** (not yet deployed): `GET /api/v1/payments` accepts optional `from`, `to` (validated with `z.iso.date()`, business-local day boundaries via the `business.timezone` setting, default `Asia/Kolkata`, `to` day exclusive) and `assignedUserId` (stable staff ID). The `UNASSIGNED` sentinel was removed because `wash_jobs.assigned_user_id` is `NOT NULL` and can never be unassigned. Any filter parameter requires `ADMIN` (403 `AUTH_PERMISSION_DENIED` for staff), and the staff ID is verified against the requesting org+branch (404 `RESOURCE_NOT_FOUND`). Unfiltered access still only needs `payments.create`. The new admin-only `GET /api/v1/payments/filter-options` endpoint returns org+branch staff (name + active flag, disabled included). The Payments page renders an admin-only filter toolbar (From, To, Assigned staff select with All staff and real staff options, Apply filters and Clear filters buttons) driving the `useApiData` URL via `useSearchParams`; staff always get the unfiltered `/payments`. No default range; filters sync to the URL only when applied. Filter identity uses `assigned_user_id`; display uses `assigned_user_name_snapshot`. Rows with a null/blank/whitespace snapshot defensively display muted "Unassigned". `.payments-filters` CSS grid replaces the old `.filters-form .filters-actions` row. 6 new API integration tests and 8 new web page tests added.
 
 ## Known issues
 

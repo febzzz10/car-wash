@@ -5,10 +5,15 @@ import { app } from "../src/app";
 import { createCsrfToken, hashSessionToken } from "../src/security/tokens";
 
 const rawToken = "wash-payment-integration-session";
+const rawStaffToken = "wash-payment-staff-session";
 const timestamp = "2026-07-23T12:30:00.000Z";
 
 beforeEach(async () => {
   const tokenHash = await hashSessionToken(rawToken, env.SESSION_PEPPER);
+  const staffTokenHash = await hashSessionToken(
+    rawStaffToken,
+    env.SESSION_PEPPER,
+  );
   await env.DB.batch([
     env.DB.prepare(
       "INSERT OR IGNORE INTO organizations (id, display_name, created_at, updated_at) VALUES ('org-wash', 'Wash Flow', ?, ?)",
@@ -23,8 +28,17 @@ beforeEach(async () => {
       "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, permissions_json, created_at, updated_at) VALUES ('staff-wash', 'org-wash', 'branch-wash', 'Wash Staff', 'wash-staff', 'wash-staff', 'unused', 'STAFF', 'ACTIVE', '[\"wash_jobs.create\"]', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
+      "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, permissions_json, created_at, updated_at) VALUES ('staff-wash-2', 'org-wash', 'branch-wash', 'Shift B', 'wash-second', 'wash-second', 'unused', 'STAFF', 'ACTIVE', '[\"wash_jobs.create\"]', ?, ?)",
+    ).bind(timestamp, timestamp),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, created_at, updated_at) VALUES ('staff-wash-disabled', 'org-wash', 'branch-wash', 'Retired Staff', 'wash-retired', 'wash-retired', 'unused', 'STAFF', 'DISABLED', ?, ?)",
+    ).bind(timestamp, timestamp),
+    env.DB.prepare(
       "INSERT OR IGNORE INTO user_sessions (id, organization_id, user_id, token_hash, status, created_at, last_seen_at, expires_at) VALUES ('session-wash', 'org-wash', 'admin-wash', ?, 'ACTIVE', ?, ?, '2099-01-01T00:00:00.000Z')",
     ).bind(tokenHash, timestamp, timestamp),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO user_sessions (id, organization_id, user_id, token_hash, status, created_at, last_seen_at, expires_at) VALUES ('session-wash-staff', 'org-wash', 'staff-wash-2', ?, 'ACTIVE', ?, ?, '2099-01-01T00:00:00.000Z')",
+    ).bind(staffTokenHash, timestamp, timestamp),
     env.DB.prepare(
       "INSERT OR IGNORE INTO customers (id, organization_id, home_branch_id, full_name, name_search, phone, phone_normalized, registered_at, created_at, updated_at) VALUES ('customer-wash', 'org-wash', 'branch-wash', 'Nila Das', 'nila das', '9876543210', '+919876543210', ?, ?, ?)",
     ).bind(timestamp, timestamp, timestamp),
@@ -108,6 +122,30 @@ beforeEach(async () => {
     ),
     env.DB.prepare(
       "INSERT OR IGNORE INTO file_assets (id, organization_id, branch_id, bucket_name, object_key, mime_type, size_bytes, asset_type, access_level, upload_status, uploaded_by_user_id, created_at, ready_at, metadata_json) VALUES ('asset-live-wash-4', 'org-wash', 'branch-wash', 'UPLOADS', 'org-wash/live4.jpg', 'image/jpeg', 4, 'VEHICLE_LIVE_PHOTO', 'PRIVATE', 'READY', 'admin-wash', ?, ?, ?)",
+    ).bind(
+      timestamp,
+      timestamp,
+      JSON.stringify({
+        captureSource: "CAMERA",
+        capturedAt: new Date().toISOString(),
+        height: 480,
+        width: 640,
+      }),
+    ),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO file_assets (id, organization_id, branch_id, bucket_name, object_key, mime_type, size_bytes, asset_type, access_level, upload_status, uploaded_by_user_id, created_at, ready_at, metadata_json) VALUES ('asset-live-wash-5', 'org-wash', 'branch-wash', 'UPLOADS', 'org-wash/live5.jpg', 'image/jpeg', 4, 'VEHICLE_LIVE_PHOTO', 'PRIVATE', 'READY', 'admin-wash', ?, ?, ?)",
+    ).bind(
+      timestamp,
+      timestamp,
+      JSON.stringify({
+        captureSource: "CAMERA",
+        capturedAt: new Date().toISOString(),
+        height: 480,
+        width: 640,
+      }),
+    ),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO file_assets (id, organization_id, branch_id, bucket_name, object_key, mime_type, size_bytes, asset_type, access_level, upload_status, uploaded_by_user_id, created_at, ready_at, metadata_json) VALUES ('asset-live-wash-6', 'org-wash', 'branch-wash', 'UPLOADS', 'org-wash/live6.jpg', 'image/jpeg', 4, 'VEHICLE_LIVE_PHOTO', 'PRIVATE', 'READY', 'admin-wash', ?, ?, ?)",
     ).bind(
       timestamp,
       timestamp,
@@ -219,9 +257,17 @@ describe("wash, timer, payment, and refund workflow", () => {
       env,
     );
     expect(payment.status).toBe(201);
-    const paymentData = await payment.json<{ data: { appliedBenefits: { referral: { discountMinor: number; code: string } | null } } }>();
+    const paymentData = await payment.json<{
+      data: {
+        appliedBenefits: {
+          referral: { discountMinor: number; code: string } | null;
+        };
+      };
+    }>();
     expect(paymentData.data.appliedBenefits.referral).not.toBeNull();
-    expect(paymentData.data.appliedBenefits.referral!.discountMinor).toBeGreaterThan(0);
+    expect(
+      paymentData.data.appliedBenefits.referral!.discountMinor,
+    ).toBeGreaterThan(0);
     expect(paymentData.data.appliedBenefits.referral!.code).toBe("RAVI500");
   });
 
@@ -270,7 +316,11 @@ describe("wash, timer, payment, and refund workflow", () => {
 
     for (const [amountMinor, idempotencyKey, method] of [
       [5000, "assigned-snapshot-pay-0001", "UPI"],
-      [created.data.total_amount_minor - 5000, "assigned-snapshot-pay-0002", "CASH"],
+      [
+        created.data.total_amount_minor - 5000,
+        "assigned-snapshot-pay-0002",
+        "CASH",
+      ],
     ] as const) {
       const payment = await app.request(
         "/api/v1/payments",
@@ -302,9 +352,7 @@ describe("wash, timer, payment, and refund workflow", () => {
         wash_job_id: string;
       }[];
     }>();
-    const rows = body.data.filter(
-      (row) => row.wash_job_id === created.data.id,
-    );
+    const rows = body.data.filter((row) => row.wash_job_id === created.data.id);
     expect(rows).toHaveLength(2);
     for (const row of rows) {
       expect(row.assigned_user_name_snapshot).toBe("Wash Staff");
@@ -545,9 +593,13 @@ describe("wash, timer, payment, and refund workflow", () => {
     );
     if (create.status !== 201) {
       const errText = await create.clone().text();
-      throw new Error(`Wash job creation returned ${create.status}: ${errText}`);
+      throw new Error(
+        `Wash job creation returned ${create.status}: ${errText}`,
+      );
     }
-    const created = await create.json<{ data: { id: string; version: number } }>();
+    const created = await create.json<{
+      data: { id: string; version: number };
+    }>();
 
     let version = created.data.version;
     for (const action of ["start", "complete"] as const) {
@@ -624,9 +676,13 @@ describe("wash, timer, payment, and refund workflow", () => {
     );
     if (create.status !== 201) {
       const errText = await create.clone().text();
-      throw new Error(`Wash job creation returned ${create.status}: ${errText}`);
+      throw new Error(
+        `Wash job creation returned ${create.status}: ${errText}`,
+      );
     }
-    const created = await create.json<{ data: { id: string; version: number } }>();
+    const created = await create.json<{
+      data: { id: string; version: number };
+    }>();
 
     let version = created.data.version;
     for (const action of ["start", "complete"] as const) {
@@ -676,5 +732,302 @@ describe("wash, timer, payment, and refund workflow", () => {
     expect(refund.status).toBe(403);
     const body = await refund.json<{ error: { code: string } }>();
     expect(body.error.code).toBe("REFUNDS_DISABLED");
+  });
+
+  it("filters payments by business-local date boundaries", async () => {
+    const headers = await mutationHeaders();
+    const create = await app.request(
+      "/api/v1/wash-jobs",
+      {
+        body: JSON.stringify({
+          assignedUserId: "staff-wash",
+          customerId: "customer-wash",
+          idempotencyKey: "date-filter-create-0001",
+          initialStatus: "WAITING",
+          location: {
+            place: "Test Location, Kochi",
+            capturedAt: new Date().toISOString(),
+          },
+          photoAssetId: "asset-live-wash-5",
+          primaryServiceId: "service-primary",
+          vehicleId: "vehicle-wash",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(create.status).toBe(201);
+    const created = await create.json<{ data: { id: string } }>();
+    const jobId = created.data.id;
+
+    const boundaryStart = "2026-07-22T18:30:00.000Z";
+    const boundaryEnd = "2026-07-23T18:30:00.000Z";
+    await env.DB.prepare(
+      `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, notes, idempotency_key, created_at) VALUES (?, 'org-wash', 'branch-wash', ?, 'PAYMENT', 3000, 0, 'UPI', 'SUCCESS', NULL, ?, 'staff-wash', NULL, ?, ?)`,
+    )
+      .bind(
+        "payment-date-filter-0001",
+        jobId,
+        boundaryStart,
+        "date-filter-pay-0001",
+        "2026-07-23T12:30:00.000Z",
+      )
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, notes, idempotency_key, created_at) VALUES (?, 'org-wash', 'branch-wash', ?, 'PAYMENT', 100, 0, 'CASH', 'SUCCESS', NULL, ?, 'staff-wash', NULL, ?, ?)`,
+    )
+      .bind(
+        "payment-date-filter-0002",
+        jobId,
+        boundaryEnd,
+        "date-filter-pay-0002",
+        "2026-07-23T12:30:00.000Z",
+      )
+      .run();
+
+    const within = await app.request(
+      "/api/v1/payments?from=2026-07-23&to=2026-07-23",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    expect(within.status).toBe(200);
+    const withinBody = await within.json<{
+      data: { id: string; wash_job_id: string }[];
+    }>();
+    const withinRows = withinBody.data.filter((r) => r.wash_job_id === jobId);
+    expect(withinRows).toHaveLength(1);
+    expect(
+      withinRows.some((row) => row.id === "payment-date-filter-0001"),
+    ).toBe(true);
+
+    const nextDay = await app.request(
+      "/api/v1/payments?from=2026-07-24&to=2026-07-24",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    expect(nextDay.status).toBe(200);
+    const nextDayBody = await nextDay.json<{
+      data: { id: string; wash_job_id: string }[];
+    }>();
+    const nextDayRows = nextDayBody.data.filter((r) => r.wash_job_id === jobId);
+    expect(nextDayRows).toHaveLength(1);
+    expect(
+      nextDayRows.some((row) => row.id === "payment-date-filter-0002"),
+    ).toBe(true);
+
+    const wide = await app.request(
+      "/api/v1/payments?from=2026-07-20&to=2026-07-31",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    expect(wide.status).toBe(200);
+    const wideBody = await wide.json<{
+      data: { id: string; wash_job_id: string }[];
+    }>();
+    expect(wideBody.data.filter((r) => r.wash_job_id === jobId)).toHaveLength(
+      2,
+    );
+  });
+
+  it("rejects invalid or reversed date ranges in the payments list", async () => {
+    const headers = await mutationHeaders();
+    const badDate = await app.request(
+      "/api/v1/payments?from=2026-02-30&to=2026-07-23",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    expect(badDate.status).toBe(422);
+    expect((await badDate.json<{ error: { code: string } }>()).error.code).toBe(
+      "VALIDATION_ERROR",
+    );
+
+    const reversed = await app.request(
+      "/api/v1/payments?from=2026-07-24&to=2026-07-23",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    expect(reversed.status).toBe(422);
+    expect(
+      (await reversed.json<{ error: { code: string } }>()).error.code,
+    ).toBe("VALIDATION_ERROR");
+  });
+
+  it("filters payments by the assigned staff user ID", async () => {
+    const headers = await mutationHeaders();
+    const create = await app.request(
+      "/api/v1/wash-jobs",
+      {
+        body: JSON.stringify({
+          assignedUserId: "staff-wash-2",
+          customerId: "customer-wash",
+          idempotencyKey: "assigned-filter-create-0001",
+          initialStatus: "WAITING",
+          location: {
+            place: "Test Location, Kochi",
+            capturedAt: new Date().toISOString(),
+          },
+          photoAssetId: "asset-live-wash-6",
+          primaryServiceId: "service-primary",
+          vehicleId: "vehicle-wash",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(create.status).toBe(201);
+    const created = await create.json<{ data: { id: string } }>();
+
+    const payment = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 5000,
+          idempotencyKey: "assigned-filter-pay-0001",
+          method: "UPI",
+          washJobId: created.data.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(payment.status).toBe(201);
+
+    const filtered = await app.request(
+      "/api/v1/payments?assignedUserId=staff-wash-2",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    expect(filtered.status).toBe(200);
+    const filteredBody = await filtered.json<{
+      data: {
+        assigned_user_name_snapshot: string | null;
+        id: string;
+        wash_job_id: string;
+      }[];
+    }>();
+    expect(filteredBody.data.length).toBeGreaterThan(0);
+    expect(
+      filteredBody.data.some((row) => row.wash_job_id === created.data.id),
+    ).toBe(true);
+    for (const row of filteredBody.data) {
+      expect(row.assigned_user_name_snapshot).toBe("Shift B");
+    }
+
+    const otherStaff = await app.request(
+      "/api/v1/payments?assignedUserId=staff-wash",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    const otherBody = await otherStaff.json<{
+      data: { id: string; wash_job_id: string }[];
+    }>();
+    expect(
+      otherBody.data.some((row) => row.wash_job_id === created.data.id),
+    ).toBe(false);
+  });
+
+  it("rejects the UNASSIGNED sentinel as a validation error", async () => {
+    const headers = await mutationHeaders();
+    const response = await app.request(
+      "/api/v1/payments?assignedUserId=UNASSIGNED",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    expect(response.status).toBe(422);
+    expect(
+      (await response.json<{ error: { code: string } }>()).error.code,
+    ).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects unknown assigned staff IDs", async () => {
+    const headers = await mutationHeaders();
+    const response = await app.request(
+      "/api/v1/payments?assignedUserId=missing-staff-1",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    expect(response.status).toBe(404);
+    expect(
+      (await response.json<{ error: { code: string } }>()).error.code,
+    ).toBe("RESOURCE_NOT_FOUND");
+  });
+
+  it("rejects filter parameters from staff members", async () => {
+    await env.DB.prepare(
+      "UPDATE users SET permissions_json = ? WHERE id = 'staff-wash-2'",
+    )
+      .bind(JSON.stringify(["payments.create", "wash_jobs.create"]))
+      .run();
+    const staffHeaders = { cookie: `__Host-washpro_session=${rawStaffToken}` };
+    const unfiltered = await app.request("/api/v1/payments", {
+      headers: staffHeaders,
+    }, env);
+    expect(unfiltered.status).toBe(200);
+    for (const query of [
+      "from=2026-07-23",
+      "to=2026-07-23",
+      "assignedUserId=staff-wash",
+      "from=2026-07-01&to=2026-07-31&assignedUserId=staff-wash",
+    ]) {
+      const denied = await app.request(`/api/v1/payments?${query}`, {
+        headers: staffHeaders,
+      }, env);
+      expect(denied.status).toBe(403);
+      expect(
+        (await denied.json<{ error: { code: string } }>()).error.code,
+      ).toBe("AUTH_PERMISSION_DENIED");
+    }
+  });
+
+  it("returns branch-scoped staff options for administrators", async () => {
+    const headers = await mutationHeaders();
+    const response = await app.request("/api/v1/payments/filter-options", {
+      headers: { cookie: headers["cookie"] ?? "" },
+    }, env);
+    expect(response.status).toBe(200);
+    const body = await response.json<{
+      data: {
+        assignedStaff: {
+          active: boolean;
+          id: string;
+          name: string;
+        }[];
+      };
+    }>();
+    expect(body.data.assignedStaff.map((staff) => staff.name)).toEqual([
+      "Retired Staff",
+      "Shift B",
+      "Wash Staff",
+    ]);
+    const byId = new Map(
+      body.data.assignedStaff.map((staff) => [staff.id, staff]),
+    );
+    expect(byId.get("staff-wash")).toMatchObject({
+      active: true,
+      name: "Wash Staff",
+    });
+    expect(byId.get("staff-wash-2")).toMatchObject({
+      active: true,
+      name: "Shift B",
+    });
+    expect(byId.get("staff-wash-disabled")).toMatchObject({
+      active: false,
+      name: "Retired Staff",
+    });
+    expect(byId.has("admin-wash")).toBe(false);
+  });
+
+  it("denies filter options for staff members", async () => {
+    const staffHeaders = { cookie: `__Host-washpro_session=${rawStaffToken}` };
+    const denied = await app.request("/api/v1/payments/filter-options", {
+      headers: staffHeaders,
+    }, env);
+    expect(denied.status).toBe(403);
+    expect(
+      (await denied.json<{ error: { code: string } }>()).error.code,
+    ).toBe("AUTH_PERMISSION_DENIED");
   });
 });

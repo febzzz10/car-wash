@@ -599,7 +599,7 @@ describe("WashJobDetailPage — read-only assignment display", () => {
 
   it("displays 'Assigned staff not recorded' when name is null", async () => {
     mockPageData(
-      mockJobData({ assigned_user_full_name: null, assigned_user_id: null }),
+      mockJobData({ assigned_user_full_name: null, assigned_user_id: "staff-1" }),
     );
     render(<WashJobDetailPage />);
     await waitFor(() => {

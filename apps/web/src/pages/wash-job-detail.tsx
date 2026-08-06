@@ -57,7 +57,7 @@ interface PhotoEvidence {
 }
 interface JobDetail extends WashJobRecord {
   readonly customer_id: string;
-  readonly assigned_user_id?: string | null;
+  readonly assigned_user_id: string;
   readonly assigned_user_full_name?: string | null;
   readonly items: readonly JobItem[];
   readonly locations: readonly LocationEvidence[];

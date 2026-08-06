@@ -90,6 +90,14 @@ export function dateTime(value: string | null | undefined): string {
   }).format(new Date(value));
 }
 
+export function date(value: string | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  return new Intl.DateTimeFormat(dateLocale(), {
+    dateStyle: "medium",
+    timeZone: validTimeZone(activePreferences.timeZone),
+  }).format(new Date(value));
+}
+
 export function duration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);

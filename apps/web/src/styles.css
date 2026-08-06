@@ -27,9 +27,14 @@
   --shadow-sm: 0 1px 2px rgb(6 21 37 / 6%), 0 4px 12px rgb(6 21 37 / 4%);
   --shadow-md: 0 12px 30px rgb(6 21 37 / 10%);
   --touch: 44px;
-  --font-heading: "Geist", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-body: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-heading:
+    "Geist", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-body:
+    "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono:
+    "Geist Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -1090,7 +1095,10 @@ textarea:focus {
   min-height: 130px;
   padding: 14px 10px;
   position: relative;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .vehicle-type-card:hover {
@@ -1110,7 +1118,9 @@ textarea:focus {
 }
 
 .vehicle-type-card--selected:focus-within {
-  box-shadow: 0 0 0 1px var(--water-500), 0 0 0 4px rgb(21 151 229 / 12%);
+  box-shadow:
+    0 0 0 1px var(--water-500),
+    0 0 0 4px rgb(21 151 229 / 12%);
 }
 
 .vehicle-type-card--error {
@@ -1195,7 +1205,10 @@ textarea:focus {
   min-height: 118px;
   padding: 12px 10px;
   position: relative;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .payment-method-card:hover {
@@ -1215,7 +1228,9 @@ textarea:focus {
 }
 
 .payment-method-card--selected:focus-within {
-  box-shadow: 0 0 0 1px var(--water-500), 0 0 0 4px rgb(21 151 229 / 12%);
+  box-shadow:
+    0 0 0 1px var(--water-500),
+    0 0 0 4px rgb(21 151 229 / 12%);
 }
 
 .payment-method-card--error {
@@ -1337,7 +1352,6 @@ textarea:focus {
     width: min(100%, 230px);
   }
 }
-
 
 .autocomplete-wrapper {
   position: relative;
@@ -2166,14 +2180,13 @@ legend {
   width: 100%;
 }
 .vehicle-photo-thumb--broken {
-  background:
-    repeating-linear-gradient(
-      45deg,
-      var(--canvas),
-      var(--canvas) 8px,
-      var(--water-100) 8px,
-      var(--water-100) 16px
-    );
+  background: repeating-linear-gradient(
+    45deg,
+    var(--canvas),
+    var(--canvas) 8px,
+    var(--water-100) 8px,
+    var(--water-100) 16px
+  );
 }
 .vehicle-photo-type {
   font-size: 0.7rem;
@@ -2373,6 +2386,30 @@ legend {
   gap: 12px;
   grid-template-columns: repeat(3, minmax(150px, 220px));
   justify-content: start;
+}
+.payments-filters {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(150px, 220px));
+  justify-content: start;
+  margin-bottom: 10px;
+}
+.payments-filters__field {
+  display: contents;
+}
+.payments-filters__actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  padding-top: 6px;
+}
+.payments-filter-summary {
+  color: var(--ink-500);
+  font-size: 0.72rem;
+  margin: -2px 0 14px;
 }
 .report-controls {
   border-bottom: 1px solid var(--line);
@@ -2703,6 +2740,104 @@ legend {
   max-width: 900px;
   padding: 20px;
 }
+.error-page {
+  align-items: center;
+  background: var(--canvas);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px 16px calc(24px + env(safe-area-inset-bottom));
+}
+.error-page__card {
+  animation: error-page-in 0.22s ease-out;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  max-width: 520px;
+  padding: 44px 38px 30px;
+  text-align: center;
+  width: 100%;
+}
+@keyframes error-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.error-page__brand {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  justify-content: center;
+  margin-bottom: 26px;
+}
+.error-page__brand strong {
+  font-family: var(--font-heading);
+  font-size: 1.02rem;
+  letter-spacing: -0.02em;
+}
+.error-page__mark {
+  align-items: center;
+  background: var(--water-100);
+  border-radius: 50%;
+  color: var(--water-700);
+  display: inline-flex;
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 900;
+  height: 58px;
+  justify-content: center;
+  margin-bottom: 18px;
+  width: 58px;
+}
+.error-page__card h1 {
+  font-size: clamp(1.5rem, 2.4vw, 1.95rem);
+  margin-bottom: 12px;
+}
+.error-page__message {
+  color: var(--ink-500);
+  font-size: 0.88rem;
+  line-height: 1.65;
+  margin: 0 auto;
+  max-width: 340px;
+}
+.error-page__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 26px;
+}
+.error-page__actions .button {
+  flex: 1 1 auto;
+  max-width: 190px;
+}
+.error-page__login {
+  font-family: var(--font-heading);
+  font-size: 0.76rem;
+  font-weight: 700;
+  margin-top: 16px;
+  min-height: var(--touch);
+}
+@media (max-width: 480px) {
+  .error-page {
+    padding: 20px 14px calc(16px + env(safe-area-inset-bottom));
+  }
+  .error-page__card {
+    padding: 36px 22px 24px;
+  }
+  .error-page__actions {
+    flex-direction: column;
+  }
+  .error-page__actions .button {
+    max-width: none;
+    width: 100%;
+  }
+}
 
 @media (max-width: 1120px) {
   .metric-grid {
@@ -2964,7 +3099,8 @@ legend {
     grid-template-columns: 1fr;
   }
   .filters-form,
-  .report-controls {
+  .report-controls,
+  .payments-filters {
     grid-template-columns: 1fr;
     width: 100%;
   }

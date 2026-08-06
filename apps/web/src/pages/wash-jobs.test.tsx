@@ -57,7 +57,7 @@ vi.mock("../hooks/use-api-data", () => ({
       version: 4,
     };
     const unassignedJob = {
-      assigned_user_id: null,
+      assigned_user_id: "staff-8",
       assigned_user_name_snapshot: null,
       balance_minor: 25000,
       created_at: "2026-07-01T11:00:00.000Z",
@@ -75,7 +75,7 @@ vi.mock("../hooks/use-api-data", () => ({
       version: 1,
     };
     const blankSnapshotJob = {
-      assigned_user_id: null,
+      assigned_user_id: "staff-7",
       assigned_user_name_snapshot: "",
       balance_minor: 30000,
       created_at: "2026-07-02T08:00:00.000Z",

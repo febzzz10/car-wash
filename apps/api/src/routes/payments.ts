@@ -90,22 +90,179 @@ function parseStringArray(value: string): string[] {
   }
 }
 
+const paymentListQuerySchema = z.object({
+  assignedUserId: z
+    .string()
+    .trim()
+    .min(8)
+    .max(64)
+    .refine((v) => v !== "UNASSIGNED", {
+      message: "UNASSIGNED is not a valid staff filter.",
+    })
+    .optional(),
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+});
+
+function zonedMidnightUtc(date: string, timeZone: string): number {
+  const [yearText, monthText, dayText] = date.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const probe = new Date(Date.UTC(year, month - 1, day, 12));
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(probe);
+  const get = (type: string): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const wallClock = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
+  const offsetMs = wallClock - probe.getTime();
+  return Date.UTC(year, month - 1, day) - offsetMs;
+}
+
+function addDays(date: string, days: number): string {
+  const [yearText, monthText, dayText] = date.split("-");
+  const next = new Date(
+    Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText) + days),
+  );
+  return next.toISOString().slice(0, 10);
+}
+
 export const paymentRoutes = new Hono<AppBindings>();
 
 paymentRoutes.get("/", requirePermission("payments.create"), async (c) => {
   const auth = c.get("auth");
+  const parsed = paymentListQuerySchema.safeParse(c.req.query());
+  if (!parsed.success)
+    throw new ApiError(
+      422,
+      "VALIDATION_ERROR",
+      "Enter a valid payment filter.",
+    );
+  const { assignedUserId, from, to } = parsed.data;
+  if (
+    from !== undefined ||
+    to !== undefined ||
+    assignedUserId !== undefined
+  ) {
+    if (auth.role !== "ADMIN")
+      throw new ApiError(
+        403,
+        "AUTH_PERMISSION_DENIED",
+        "You do not have permission to perform this action.",
+      );
+  }
+  if (from !== undefined && to !== undefined && from > to)
+    throw new ApiError(
+      422,
+      "VALIDATION_ERROR",
+      "Enter a valid payment date range.",
+    );
+  const assignedUserFilter =
+    assignedUserId !== undefined && assignedUserId !== ""
+      ? assignedUserId
+      : null;
+
+  let fromUtc: string | null = null;
+  let toExclusiveUtc: string | null = null;
+  if (from !== undefined || to !== undefined) {
+    const settings = await loadSettings(
+      c.env,
+      auth.organizationId,
+      auth.branchId,
+    );
+    const timeZone = stringSetting(
+      settings,
+      "business.timezone",
+      "Asia/Kolkata",
+    );
+    if (from !== undefined)
+      fromUtc = new Date(zonedMidnightUtc(from, timeZone)).toISOString();
+    if (to !== undefined)
+      toExclusiveUtc = new Date(
+        zonedMidnightUtc(addDays(to, 1), timeZone),
+      ).toISOString();
+  }
+
+  if (assignedUserFilter !== null) {
+    const staff = await c.env.DB.prepare(
+      "SELECT 1 FROM users WHERE id = ? AND organization_id = ? AND default_branch_id = ?",
+    )
+      .bind(assignedUserFilter, auth.organizationId, auth.branchId)
+      .first();
+    if (staff === null)
+      throw new ApiError(
+        404,
+        "RESOURCE_NOT_FOUND",
+        "Assigned staff member not found.",
+      );
+  }
+
   const result = await c.env.DB.prepare(
     `SELECT p.*, w.job_reference, w.customer_name_snapshot,
       w.vehicle_registration_snapshot, w.payment_status,
       w.assigned_user_name_snapshot
      FROM payments p INNER JOIN wash_jobs w ON w.id = p.wash_job_id
      WHERE p.organization_id = ? AND p.branch_id = ?
+       AND (? IS NULL OR p.paid_at >= ?)
+       AND (? IS NULL OR p.paid_at < ?)
+       AND (? IS NULL OR w.assigned_user_id = ?)
      ORDER BY p.created_at DESC LIMIT 250`,
   )
-    .bind(auth.organizationId, auth.branchId)
+    .bind(
+      auth.organizationId,
+      auth.branchId,
+      fromUtc,
+      fromUtc,
+      toExclusiveUtc,
+      toExclusiveUtc,
+      assignedUserFilter,
+      assignedUserFilter,
+    )
     .all();
   return c.json({ data: result.results, success: true });
 });
+
+paymentRoutes.get(
+  "/filter-options",
+  requireAdmin,
+  requirePermission("payments.create"),
+  async (c) => {
+    const auth = c.get("auth");
+    const result = await c.env.DB.prepare(
+      `SELECT id, full_name, status
+       FROM users
+       WHERE organization_id = ? AND default_branch_id = ? AND role = 'STAFF'
+       ORDER BY full_name`,
+    )
+      .bind(auth.organizationId, auth.branchId)
+      .all<{ id: string; full_name: string; status: string }>();
+    return c.json({
+      data: {
+        assignedStaff: result.results.map((user) => ({
+          id: user.id,
+          name: user.full_name,
+          active: user.status === "ACTIVE",
+        })),
+      },
+      success: true,
+    });
+  },
+);
 
 paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
   const parsed = paymentInputSchema.safeParse(

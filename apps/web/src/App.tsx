@@ -9,7 +9,8 @@ import {
 
 import { useAuth } from "./auth";
 import { AppShell } from "./components/app-shell";
-import { Button, ErrorState, SkeletonRows } from "./components/ui";
+import { ErrorPage } from "./components/error-page";
+import { ErrorState, SkeletonRows } from "./components/ui";
 
 export class RouteErrorBoundary extends Component<
   { readonly children: ReactNode },
@@ -27,17 +28,11 @@ export class RouteErrorBoundary extends Component<
   }
   override render() {
     if (this.state.error === null) return this.props.children;
-    const hideMessage = !import.meta.env.DEV;
     return (
-      <div className="route-error">
-        <h1>Something went wrong while loading this page.</h1>
-        {hideMessage ? null : <p>{this.state.error.message}</p>}
-        <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
-          <Button onClick={() => window.location.reload()}>Reload</Button>
-          <a className="button button--secondary" href="/dashboard">Dashboard</a>
-          <a className="button button--secondary" href="/login">Login</a>
-        </div>
-      </div>
+      <ErrorPage
+        error={this.state.error}
+        onRetry={() => this.setState({ error: null })}
+      />
     );
   }
 }

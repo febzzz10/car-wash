@@ -19,8 +19,8 @@ describe("PaymentMethodSelect", () => {
     expect(cards).toHaveLength(4);
     expect(cards[0]!.closest("label")).toHaveTextContent("Cash");
     expect(cards[1]!.closest("label")).toHaveTextContent("UPI");
-    expect(cards[2]!.closest("label")).toHaveTextContent("Bank UPI");
-    expect(cards[3]!.closest("label")).toHaveTextContent("Paytm");
+    expect(cards[2]!.closest("label")).toHaveTextContent("Paytm");
+    expect(cards[3]!.closest("label")).toHaveTextContent("Bank UPI");
   });
 
   it("has correct values for each radio", () => {
@@ -28,8 +28,8 @@ describe("PaymentMethodSelect", () => {
     const cards = getCards();
     expect(cards[0]).toHaveAttribute("value", "CASH");
     expect(cards[1]).toHaveAttribute("value", "UPI");
-    expect(cards[2]).toHaveAttribute("value", "BANK_UPI");
-    expect(cards[3]).toHaveAttribute("value", "PAYTM");
+    expect(cards[2]).toHaveAttribute("value", "PAYTM");
+    expect(cards[3]).toHaveAttribute("value", "BANK_UPI");
   });
 
   it("shows no selection when value is empty", () => {
@@ -42,7 +42,7 @@ describe("PaymentMethodSelect", () => {
   it("checks the selected option via value prop", () => {
     render(<PaymentMethodSelect onChange={() => {}} value="BANK_UPI" />);
     expect(getCards()[0]).not.toBeChecked();
-    expect(getCards()[2]).toBeChecked();
+    expect(getCards()[3]).toBeChecked();
   });
 
   it("shows check indicator on selected card", () => {
@@ -54,7 +54,7 @@ describe("PaymentMethodSelect", () => {
   it("selects an option on click and calls onChange", () => {
     const onChange = vi.fn();
     render(<PaymentMethodSelect onChange={onChange} />);
-    fireEvent.click(getCards()[3]!.closest("label")!);
+    fireEvent.click(getCards()[2]!.closest("label")!);
     expect(onChange).toHaveBeenCalledWith("PAYTM");
     expect(onChange).toHaveBeenCalledTimes(1);
   });
@@ -65,6 +65,14 @@ describe("PaymentMethodSelect", () => {
     getCards()[1]!.focus();
     fireEvent.click(getCards()[1]!);
     expect(onChange).toHaveBeenCalledWith("UPI");
+  });
+
+  it("selects Bank UPI on click", () => {
+    const onChange = vi.fn();
+    render(<PaymentMethodSelect onChange={onChange} />);
+    fireEvent.click(getCards()[3]!.closest("label")!);
+    expect(onChange).toHaveBeenCalledWith("BANK_UPI");
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 
   it("all radios share a group name", () => {

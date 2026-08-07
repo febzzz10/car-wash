@@ -16,8 +16,8 @@ export interface PaymentMethodOption {
 export const PAYMENT_METHOD_OPTIONS: readonly PaymentMethodOption[] = [
   { image: cashImage, label: "Cash", value: "CASH" },
   { image: upiImage, label: "UPI", value: "UPI" },
-  { image: bankUpiImage, label: "Bank UPI", value: "BANK_UPI" },
   { image: paytmImage, label: "Paytm", value: "PAYTM" },
+  { image: bankUpiImage, label: "Bank UPI", value: "BANK_UPI" },
 ] as const;
 
 export function isCanonicalPaymentMethod(

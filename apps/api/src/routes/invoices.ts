@@ -1004,7 +1004,6 @@ invoiceRoutes.post(
       ...(invoice.referral_code_snapshot === null
         ? []
         : [`Referral code: ${invoice.referral_code_snapshot}`]),
-      `Secure invoice: ${secureLink}`,
     ].join("\n");
     const phone = invoice.customer_phone_snapshot.replace(/\D/gu, "");
     const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;

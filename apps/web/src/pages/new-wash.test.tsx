@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
@@ -14,6 +15,7 @@ const CUSTOMER_FIXTURE: readonly {
   readonly id: string;
   readonly full_name: string;
   readonly phone: string;
+  readonly phone_normalized: string;
   readonly total_visits_cached: number;
   readonly matching_registrations: readonly string[];
 }[] = [
@@ -21,6 +23,7 @@ const CUSTOMER_FIXTURE: readonly {
     id: "c1",
     full_name: "Test Customer",
     phone: "9876543210",
+    phone_normalized: "+919876543210",
     total_visits_cached: 3,
     matching_registrations: ["KL01TEST"],
   },
@@ -1303,5 +1306,489 @@ describe("New Wash — location is required at Step 3", () => {
     await vi.waitFor(() => {
       expect(screen.getByText("Location Fort Kochi")).toBeTruthy();
     });
+  });
+});
+
+function openAddCustomerDialog() {
+  fireEvent.click(screen.getByRole("button", { name: /Add customer/ }));
+}
+
+function dialogPhoneInput(): HTMLInputElement {
+  return screen.getByLabelText("Phone") as HTMLInputElement;
+}
+
+function dialogAddCustomerButton(): HTMLElement {
+  return within(screen.getByRole("dialog")).getByRole("button", {
+    name: "Add customer",
+  });
+}
+
+const SEARCH_RESULT_ARUN = {
+  id: "c-arun",
+  full_name: "Arun",
+  phone: "8590384225",
+  phone_normalized: "+918590384225",
+  total_visits_cached: 3,
+  matching_registrations: undefined as readonly string[] | undefined,
+};
+const SEARCH_RESULT_ARUN_KUMAR = {
+  id: "c-arun-kumar",
+  full_name: "Arun Kumar",
+  phone: "8590123456",
+  phone_normalized: "+918590123456",
+  total_visits_cached: 0,
+  matching_registrations: undefined as readonly string[] | undefined,
+};
+
+describe("New Wash — Add customer phone lookup", () => {
+  it("does not trigger a lookup when the phone field is empty", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    const callsBefore = vi.mocked(api).mock.calls.filter(
+      ([path]) => typeof path === "string" && path.includes("?search="),
+    ).length;
+    fireEvent.change(dialogPhoneInput(), { target: { value: "" } });
+    await vi.waitFor(
+      () => {
+        const searchCalls = vi.mocked(api).mock.calls.filter(
+          ([path]) => typeof path === "string" && path.includes("?search="),
+        );
+        expect(searchCalls.length).toBe(callsBefore);
+      },
+      { timeout: 500 },
+    );
+  });
+
+  it("does not trigger a lookup below 3 phone digits", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "85" } });
+    await new Promise((r) => setTimeout(r, 300));
+    const searchCalls = vi.mocked(api).mock.calls.filter(
+      ([path]) => typeof path === "string" && path.includes("?search="),
+    );
+    expect(searchCalls.length).toBe(0);
+  });
+
+  it("triggers a phone lookup after 3+ digits", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "8590" } });
+    await vi.waitFor(
+      () => {
+        const calls = vi.mocked(api).mock.calls.filter(
+          ([path]) =>
+            typeof path === "string" && path.includes("customers?search=8590"),
+        );
+        expect(calls.length).toBe(1);
+      },
+      { timeout: 500 },
+    );
+  });
+
+  it("debounces requests at approximately 200ms", async () => {
+    vi.useFakeTimers();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "859" } });
+    fireEvent.change(dialogPhoneInput(), { target: { value: "8590" } });
+    fireEvent.change(dialogPhoneInput(), { target: { value: "85903" } });
+    await vi.advanceTimersByTimeAsync(50);
+    let calls = vi
+      .mocked(api)
+      .mock.calls.filter(
+        ([path]) => typeof path === "string" && path.includes("?search="),
+      );
+    expect(calls.length).toBe(0);
+    await vi.advanceTimersByTimeAsync(200);
+    calls = vi
+      .mocked(api)
+      .mock.calls.filter(
+        ([path]) => typeof path === "string" && path.includes("?search="),
+      );
+    expect(calls.length).toBe(1);
+    vi.useRealTimers();
+  });
+
+  it("displays partial matches with customer name and phone", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "8590" } });
+    await vi.waitFor(
+      () => {
+        expect(screen.getByText("Arun")).toBeTruthy();
+        expect(screen.getByText("Arun Kumar")).toBeTruthy();
+        expect(screen.getByText(/8590384225/)).toBeTruthy();
+        expect(screen.getByText("8590123456")).toBeTruthy();
+      },
+      { timeout: 500 },
+    );
+  });
+
+  it("shows visit count when available", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "8590384225" } });
+    await vi.waitFor(
+      () => {
+        expect(screen.getByText(/3 visits/)).toBeTruthy();
+      },
+      { timeout: 500 },
+    );
+  });
+
+  it("does not show visit count when zero", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN_KUMAR] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "8590123456" } });
+    await vi.waitFor(
+      () => {
+        expect(screen.queryByText("0 visits")).toBeNull();
+      },
+      { timeout: 500 },
+    );
+  });
+
+  it("detects an exact normalized phone match and shows Existing customer found", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(
+      () => {
+        expect(screen.getByText("Existing customer found")).toBeTruthy();
+        expect(screen.getByText("Arun")).toBeTruthy();
+      },
+      { timeout: 500 },
+    );
+  });
+
+  it("disables the Add customer button for an exact duplicate", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(
+      () => {
+        expect(dialogAddCustomerButton()).toBeDisabled();
+      },
+      { timeout: 500 },
+    );
+  });
+
+  it("a partial match does NOT disable Add Customer", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "8590" } });
+    await vi.waitFor(
+      () => {
+        expect(screen.getByText("Arun")).toBeTruthy();
+        expect(screen.queryByText("Existing customer found")).toBeNull();
+        expect(dialogAddCustomerButton()).not.toBeDisabled();
+      },
+      { timeout: 500 },
+    );
+  });
+
+  it("clicking Use existing customer selects the customer and closes the dialog", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    customerData = [{ ...CUSTOMER_FIXTURE[0]!, id: "c-arun", full_name: "Arun", phone: "8590384225", phone_normalized: "+918590384225" }];
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(
+      () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: /Use existing customer/ }),
+        );
+      },
+      { timeout: 500 },
+    );
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /Use existing customer/ }),
+      ).toBeNull();
+    });
+    expect(screen.getByRole("button", { name: /Arun/ })).toBeTruthy();
+  });
+
+  it("does not POST /customers when an existing customer is selected via Use existing", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    customerData = [{ ...CUSTOMER_FIXTURE[0]!, id: "c-arun", full_name: "Arun", phone: "8590384225", phone_normalized: "+918590384225" }];
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(
+      () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: /Use existing customer/ }),
+        );
+      },
+      { timeout: 500 },
+    );
+    const postCalls = vi.mocked(api).mock.calls.filter(
+      ([path, init]) =>
+        path === "/customers" &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    expect(postCalls.length).toBe(0);
+  });
+
+  it("clicking a partial-match suggestion selects the customer and closes the dialog", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR] as any);
+    customerData = [CUSTOMER_FIXTURE[0]!, SEARCH_RESULT_ARUN as any];
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "8590" } });
+    await vi.waitFor(
+      () => {
+        fireEvent.click(screen.getByText("Arun").closest("button")!);
+      },
+      { timeout: 500 },
+    );
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Arun Kumar")).toBeNull();
+    });
+  });
+
+  it("clears exact-match state when the phone input is cleared", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(
+      () => {
+        expect(screen.getByText("Existing customer found")).toBeTruthy();
+      },
+      { timeout: 500 },
+    );
+    fireEvent.change(dialogPhoneInput(), { target: { value: "" } });
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Existing customer found")).toBeNull();
+      expect(dialogAddCustomerButton()).not.toBeDisabled();
+    });
+  });
+
+  it("clears old exact-match state when the phone input is edited", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(
+      () => {
+        expect(screen.getByText("Existing customer found")).toBeTruthy();
+      },
+      { timeout: 500 },
+    );
+    vi.mocked(api).mockResolvedValueOnce([] as any);
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "9999999999" },
+    });
+    await vi.waitFor(
+      () => {
+        expect(screen.queryByText("Existing customer found")).toBeNull();
+        expect(dialogAddCustomerButton()).not.toBeDisabled();
+      },
+      { timeout: 500 },
+    );
+  });
+
+  it("ignores stale lookup results when a newer request finishes first", async () => {
+    vi.useFakeTimers();
+    let resolveStale: (value: unknown) => void = () => {};
+    const stalePromise = new Promise((resolve) => {
+      resolveStale = resolve;
+    });
+    vi.mocked(api).mockResolvedValueOnce(stalePromise as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "8590" } });
+    await vi.advanceTimersByTimeAsync(200);
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    resolveStale([{ ...SEARCH_RESULT_ARUN_KUMAR, id: "stale", full_name: "Stale Customer" }]);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(screen.queryByText("Stale Customer")).toBeNull();
+    await vi.waitFor(() => {
+      expect(screen.getByText("Arun")).toBeTruthy();
+    });
+    vi.useRealTimers();
+  });
+
+  it("does not show an error when a lookup is aborted", async () => {
+    vi.useFakeTimers();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "9876" } });
+    await vi.advanceTimersByTimeAsync(200);
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "9876543210" },
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(screen.queryByText("Searching existing customers…")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("preserves normal customer creation when no match exists", async () => {
+    vi.mocked(api).mockResolvedValueOnce([] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "9999999999" },
+    });
+    await vi.waitFor(
+      () => {
+        expect(screen.queryByText("Existing customer found")).toBeNull();
+        expect(dialogAddCustomerButton()).not.toBeDisabled();
+      },
+      { timeout: 500 },
+    );
+  });
+
+  it("recovers from duplicate-POST race: re-searches and shows the existing customer", async () => {
+    const dupError = Object.assign(
+      new Error("A customer with this phone number already exists."),
+      { code: "DUPLICATE_CUSTOMER", status: 409 },
+    );
+    let step = 0;
+    vi.mocked(api).mockImplementation((path, _init) => {
+      step += 1;
+      if (typeof path !== "string") return Promise.resolve([]);
+      if (path === "/customers") return Promise.reject(dupError);
+      if (path.includes("customers?search=")) {
+        if (step === 1) return Promise.resolve([]);
+        return Promise.resolve([SEARCH_RESULT_ARUN]);
+      }
+      return Promise.resolve([]);
+    });
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(
+      () => {
+        expect(screen.queryByText(/Existing customer found/)).toBeNull();
+      },
+      { timeout: 500 },
+    );
+    fireEvent.change(screen.getByLabelText("Full name"), {
+      target: { value: "Arun" },
+    });
+    const user = userEvent.setup();
+    await user.click(dialogAddCustomerButton());
+    await vi.waitFor(
+      () => {
+        expect(screen.getByText(/Existing customer found/)).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
+    const postCalls = vi
+      .mocked(api)
+      .mock.calls.filter(([p]) => p === "/customers");
+    expect(postCalls.length).toBe(1);
+    expect(screen.getByText("Arun")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Use existing customer/ }),
+    ).toBeTruthy();
+    expect(dialogAddCustomerButton()).toBeDisabled();
+  });
+
+  it("shows Searching existing customers… while lookup is in-flight", async () => {
+    let resolveLookup: (value: unknown) => void = () => {};
+    const pendingPromise = new Promise((resolve) => {
+      resolveLookup = resolve;
+    });
+    vi.mocked(api).mockResolvedValueOnce(pendingPromise as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), { target: { value: "8590" } });
+    await vi.waitFor(
+      () => {
+        expect(
+          screen.getByText("Searching existing customers…"),
+        ).toBeTruthy();
+      },
+      { timeout: 500 },
+    );
+    resolveLookup([SEARCH_RESULT_ARUN]);
+    await new Promise((r) => setTimeout(r, 300));
+  });
+
+  it("does not restore stale lookup state on dialog reopen", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(
+      () => {
+        expect(screen.getByText("Existing customer found")).toBeTruthy();
+      },
+      { timeout: 500 },
+    );
+    fireEvent.click(screen.getByText("Cancel").closest("button")!);
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Existing customer found")).toBeNull();
+    });
+    openAddCustomerDialog();
+    expect(screen.queryByText("Existing customer found")).toBeNull();
+    expect((dialogPhoneInput() as HTMLInputElement).value).toBe("");
+  });
+
+  it("does not load recent customers on dialog open (staff privacy)", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    const emptySearchCalls = vi.mocked(api).mock.calls.filter(
+      ([path]) =>
+        typeof path === "string" &&
+        path.includes("?search="),
+    );
+    expect(emptySearchCalls.length).toBe(0);
+    expect(screen.queryByText("Searching existing customers…")).toBeNull();
   });
 });

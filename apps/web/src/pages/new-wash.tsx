@@ -9,7 +9,7 @@ import {
   UserRoundSearch,
   VideoOff,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth";
@@ -36,6 +36,7 @@ import {
   STEP_IDS,
   WASH_DRAFT_STORAGE_KEY,
 } from "../lib/wizard-draft";
+import { normalizePhone } from "@washpro/domain";
 import type {
   CustomerRecord,
   ServicePriceRecord,
@@ -601,6 +602,10 @@ export default function NewWashPage() {
           setCustomerDialog(false);
           customers.reload();
         }}
+        onSelected={(customer) => {
+          setCustomerId(customer.id);
+          setCustomerDialog(false);
+        }}
         open={customerDialog}
       />
       <NewVehicleDialog
@@ -1044,16 +1049,98 @@ function ReviewStep({
 function NewCustomerDialog({
   onClose,
   onCreated,
+  onSelected,
   open,
 }: {
   readonly onClose: () => void;
   readonly onCreated: (customer: CustomerRecord) => void;
+  readonly onSelected: (customer: CustomerRecord) => void;
   readonly open: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phoneValue, setPhoneValue] = useState("");
+  const [phoneLookupResults, setPhoneLookupResults] = useState<
+    readonly CustomerRecord[] | null
+  >(null);
+  const [phoneLookupLoading, setPhoneLookupLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const lookupSeq = useRef(0);
+
+  const exactMatchCustomer = useMemo(() => {
+    if (phoneLookupResults === null || phoneValue.trim() === "") return null;
+    let normalized: string;
+    try {
+      normalized = normalizePhone(phoneValue);
+    } catch {
+      return null;
+    }
+    return (
+      phoneLookupResults.find(
+        (c) => c.phone_normalized === normalized,
+      ) ?? null
+    );
+  }, [phoneLookupResults, phoneValue]);
+
+  const hasExactDuplicate = exactMatchCustomer !== null;
+
+  const performLookup = useCallback(
+    async (query: string, seq: number) => {
+      if (abortRef.current !== null) abortRef.current.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setPhoneLookupLoading(true);
+      try {
+        const digits = query.replace(/\D/g, "");
+        const result = await api<readonly CustomerRecord[]>(
+          `/customers?search=${encodeURIComponent(digits)}`,
+          { signal: controller.signal },
+        );
+        if (seq !== lookupSeq.current) return;
+        setPhoneLookupResults(
+          result.length === 0 ? null : result.slice(0, 5),
+        );
+      } catch (reason) {
+        if (reason instanceof DOMException && reason.name === "AbortError")
+          return;
+        if (seq !== lookupSeq.current) return;
+        setPhoneLookupResults(null);
+      } finally {
+        if (seq === lookupSeq.current) setPhoneLookupLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setPhoneValue("");
+    setPhoneLookupResults(null);
+    setPhoneLookupLoading(false);
+    setError(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    const digits = phoneValue.replace(/\D/g, "");
+    if (digits.length < 3) {
+      setPhoneLookupResults(null);
+      setPhoneLookupLoading(false);
+      return;
+    }
+    const seq = ++lookupSeq.current;
+    debounceRef.current = setTimeout(() => {
+      void performLookup(phoneValue, seq);
+    }, 200);
+    return () => {
+      if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    };
+  }, [phoneValue, performLookup]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (hasExactDuplicate) return;
     setBusy(true);
     setError(null);
     const data = new FormData(event.currentTarget);
@@ -1072,10 +1159,21 @@ function NewCustomerDialog({
       setError(
         reason instanceof Error ? reason.message : "Customer creation failed.",
       );
+      if (
+        reason instanceof Error &&
+        "code" in reason &&
+        (reason as { code: string }).code === "DUPLICATE_CUSTOMER"
+      ) {
+        const digits = phoneValue.replace(/\D/g, "");
+        if (digits.length >= 3) {
+          void performLookup(phoneValue, ++lookupSeq.current);
+        }
+      }
     } finally {
       setBusy(false);
     }
   }
+
   return (
     <Dialog onClose={onClose} open={open} title="Add customer">
       <form className="dialog-form" onSubmit={(event) => void submit(event)}>
@@ -1086,8 +1184,67 @@ function NewCustomerDialog({
         </label>
         <label>
           <span>Phone</span>
-          <input inputMode="tel" name="phone" required />
+          <input
+            inputMode="tel"
+            name="phone"
+            onChange={(e) => setPhoneValue(e.target.value)}
+            required
+            value={phoneValue}
+          />
         </label>
+        {phoneLookupLoading ? (
+          <p className="step-intro" role="status">
+            Searching existing customers…
+          </p>
+        ) : null}
+        {hasExactDuplicate ? (
+          <div className="card">
+            <div className="review-grid">
+              <div>
+                <span>Existing customer found</span>
+                <strong>{exactMatchCustomer.full_name}</strong>
+                <small>{exactMatchCustomer.phone}</small>
+                {exactMatchCustomer.total_visits_cached > 0 ? (
+                  <small>{exactMatchCustomer.total_visits_cached} visits</small>
+                ) : null}
+              </div>
+            </div>
+            <div className="dialog-actions">
+              <Button
+                onClick={() => {
+                  onSelected(exactMatchCustomer);
+                }}
+                tone="primary"
+                type="button"
+              >
+                Use existing customer
+              </Button>
+            </div>
+          </div>
+        ) : phoneLookupResults !== null && phoneLookupResults.length > 0 ? (
+          <div className="choice-list">
+            {phoneLookupResults.map((customer) => (
+              <button
+                className="choice-card"
+                key={customer.id}
+                onClick={() => {
+                  onSelected(customer);
+                }}
+                type="button"
+              >
+                <span>
+                  <strong>{customer.full_name}</strong>
+                  <small>
+                    {customer.phone}
+                    {customer.total_visits_cached > 0
+                      ? ` · ${customer.total_visits_cached} visits`
+                      : ""}
+                  </small>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <label>
           <span>Email (optional)</span>
           <input name="email" type="email" />
@@ -1100,7 +1257,7 @@ function NewCustomerDialog({
           <Button onClick={onClose} tone="secondary" type="button">
             Cancel
           </Button>
-          <Button busy={busy} type="submit">
+          <Button busy={busy} disabled={hasExactDuplicate} type="submit">
             Add customer
           </Button>
         </div>

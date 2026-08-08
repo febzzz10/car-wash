@@ -12,6 +12,7 @@ export interface CustomerRecord {
   readonly customer_code?: string | null;
   readonly full_name: string;
   readonly phone: string;
+  readonly phone_normalized: string;
   readonly email?: string | null;
   readonly status: string;
   readonly total_visits_cached: number;

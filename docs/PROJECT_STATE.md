@@ -1,27 +1,27 @@
 # PROJECT_STATE.md — Current WashPro Implementation State
 
-*Last updated: 2026-08-05*
+*Last updated: 2026-08-08*
 
 ## Active deployments
 
 | Worker | Version ID | Commit |
 |--------|------------|--------|
-| washpro-web | `097524a0-d436-4ce7-8042-390864fd7825` | `e16f3a8` |
+| washpro-web | `24b4da47-3253-41c0-99f1-77db4358ad3e` | `7b7171b` |
 | car-wash | `02567612-9e2b-4107-a936-682f458f3101` | `7fce5c7` |
 
 ## Production URL
 
 `https://washpro-web.xpersscarwash.workers.dev`
 
-## Test results (last run: 2026-08-05)
+## Test results (last full run: 2026-08-05 — web suite re-run 2026-08-08: 549/549, 25/25 files ✅)
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 25 | 525 | ✅ All pass |
+| @washpro/web | 25 | 549 | ✅ All pass |
 | @washpro/api | 28 | 257 | ✅ All pass |
 | @washpro/contracts | 1 | 28 | ✅ All pass |
 | @washpro/domain | 8 | 53 | ✅ All pass |
-| **Total** | **62** | **863** | **✅ All pass** |
+| **Total** | **62** | **887** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -70,6 +70,8 @@ All packages: ✅ 0 errors
 20. **Payments admin filters: date range + assigned staff** (not yet deployed): `GET /api/v1/payments` accepts optional `from`, `to` (validated with `z.iso.date()`, business-local day boundaries via the `business.timezone` setting, default `Asia/Kolkata`, `to` day exclusive) and `assignedUserId` (stable staff ID). The `UNASSIGNED` sentinel was removed because `wash_jobs.assigned_user_id` is `NOT NULL` and can never be unassigned. Any filter parameter requires `ADMIN` (403 `AUTH_PERMISSION_DENIED` for staff), and the staff ID is verified against the requesting org+branch (404 `RESOURCE_NOT_FOUND`). Unfiltered access still only needs `payments.create`. The new admin-only `GET /api/v1/payments/filter-options` endpoint returns org+branch staff (name + active flag, disabled included). The Payments page renders an admin-only filter toolbar (From, To, Assigned staff select with All staff and real staff options, Apply filters and Clear filters buttons) driving the `useApiData` URL via `useSearchParams`; staff always get the unfiltered `/payments`. No default range; filters sync to the URL only when applied. Filter identity uses `assigned_user_id`; display uses `assigned_user_name_snapshot`. Rows with a null/blank/whitespace snapshot defensively display muted "Unassigned". `.payments-filters` CSS grid replaces the old `.filters-form .filters-actions` row. 6 new API integration tests and 8 new web page tests added.
 
 21. **New Wash location is mandatory** (not yet deployed): Step 4 "Live photo & location" now requires both a live photo and a reverse-geocoded location place before the wizard can advance. Shared `hasCompleteEvidence()` rule (photoAssetId + non-blank place + capturedAt) drives the Continue button, a new `goNext()` navigation guard (with a location-error message shown in a lifted `locationError` state), and the Save draft / Create job guard. The create-job payload always sends the trimmed place and capturedAt once complete; `createJobSchema` in `apps/api/src/routes/wash-jobs.ts` now requires `location` with required `place` (trimmed, 1–500 chars, `COORDINATE_ONLY` rejected) and `capturedAt` (ISO datetime) for every initial status including DRAFT, and the write path uses the validated values directly. `wash_jobs.location_place` stays nullable so historical rows remain readable — no migration. Location error copy uses distinct messages (permission denied "Location permission is required to continue."; general failure "Unable to capture your location. Please try again."; reverse-geocode failure "Unable to determine a readable place. Please try again."); "Capturing location…" status text shows while pending. 15 new API tests (10 in `first-payment-benefits.test.ts` — added 6 location-required cases and valid `location` fields to the 7 strict-schema fixtures — plus the existing pool was enlarged from 50 to 64 single-use photo assets to absorb the extra creations) and 12 new web tests in `new-wash.test.tsx`. All 901 automated tests pass.
+
+22. **Mobile table horizontal overflow** (deployed 2026-08-08, commit `7b7171b`, web `24b4da47-3253-41c0-99f1-77db4358ad3e`): The Wash Queue page horizontally scrolled as a whole on mobile (page/header/toolbar slid sideways with blank space on the right). Root cause: an `.sr-only` `position: absolute` label in the far-right "Open" table header cell had no positioned ancestor, so its containing block was the document root — it sat outside the `overflow-x: auto` clip, pushing `documentElement.scrollWidth` to 744px at a 360px viewport. Fix: added `position: relative` to the shared `.table-wrap` rule in `styles.css` (one line), making `.table-wrap` the positioned containing block so absolutely positioned descendants are clipped by the scroll container. Same `.sr-only`-in-`.table-wrap` pattern also exists on Customers, Invoices, and Vehicles, all covered by the shared rule. 2 structural regression tests added in `wash-jobs.test.tsx` (table inside `.table-wrap`; toolbar structure). Web suite 549/549 passing; typecheck, build, `git diff --check` clean. Production-verified by the owner at 360/390/430px on Wash Queue (0 document overflow, contained table scroll, last column reachable, row navigation OK) and ~390px on Customers/Invoices/Vehicles (no page overflow, contained scroll, interactions OK). Web-only deploy; no API change, no migration.
 
 ## Known issues
 

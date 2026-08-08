@@ -506,7 +506,7 @@ The authenticated user ID and IP address exist temporarily in server memory whil
 - Only `place` + `capturedAt` are stored in state (`Evidence` type).
 - Legacy records show "Legacy location recorded" with safe timestamp on wash-job-detail and customer-detail pages.
 - Accuracy, distance, GPS labels, and coordinates are never displayed.
-- Live photo is required. Location is optional.
+- Live photo is required. Location is required too — the wizard cannot advance past Step 3 ("Live photo & location") and `createJobSchema` rejects creation without it.
 - OSM attribution: "Location data © OpenStreetMap contributors" in app-shell sidebar.
 
 ### Draft rules

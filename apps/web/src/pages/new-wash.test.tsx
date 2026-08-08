@@ -186,6 +186,7 @@ afterEach(() => {
   cleanup();
   sessionStorage.clear();
   vi.clearAllMocks();
+  vi.mocked(api).mockReset();
   vi.mocked(useAuth).mockImplementation(() => adminUser());
   customerData = CUSTOMER_FIXTURE;
 });
@@ -661,7 +662,7 @@ describe("New Wash — wizard summary panel", () => {
     ).toBeTruthy();
   });
 
-  it("evidence sidebar shows photo needed and place optional at step 0", async () => {
+  it("evidence sidebar shows photo needed and location required at step 0", async () => {
     const { default: NewWashPage } = await import("./new-wash");
     render(
       <MemoryRouter>
@@ -670,8 +671,9 @@ describe("New Wash — wizard summary panel", () => {
     );
     const liveMatches = screen.getAllByText(/Live photo/);
     expect(liveMatches.length).toBeGreaterThanOrEqual(2);
-    const placeMatches = screen.getAllByText(/Place/);
-    expect(placeMatches.length).toBeGreaterThanOrEqual(1);
+    const locationMatches = screen.getAllByText(/Location/);
+    expect(locationMatches.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/required/).textContent).toContain("required");
   });
 });
 
@@ -980,5 +982,326 @@ describe("New Wash — admin customer list", () => {
     expect(screen.getByText("Test Customer")).toBeTruthy();
     fireEvent.change(customerInput(), { target: { value: "" } });
     expect(screen.getByText("Test Customer")).toBeTruthy();
+  });
+});
+
+type GeoPosition = {
+  readonly coords: { readonly latitude: number; readonly longitude: number };
+  readonly timestamp: number;
+};
+type GeoFailure = { readonly code: number; readonly PERMISSION_DENIED: number };
+
+function stubGeolocation(options: {
+  readonly onPosition?: GeoPosition;
+  readonly onError?: GeoFailure;
+}) {
+  Object.defineProperty(navigator, "geolocation", {
+    configurable: true,
+    value: {
+      getCurrentPosition(
+        success: (position: GeoPosition) => void,
+        failure: (error: GeoFailure) => void,
+      ) {
+        if (options.onPosition !== undefined) success(options.onPosition);
+        if (options.onError !== undefined) failure(options.onError);
+      },
+    },
+  });
+}
+
+function setDraftAtStep3(draft: {
+  readonly photoAssetId?: string;
+  readonly place?: string;
+  readonly capturedAt?: string;
+}) {
+  sessionStorage.setItem(
+    WASH_DRAFT_STORAGE_KEY,
+    JSON.stringify({
+      version: 3,
+      step: 3,
+      stepId: "photo-location",
+      customerId: "c1",
+      vehicleId: "v1",
+      servicePriceId: "p1",
+      addOnServiceIds: [],
+      assignedUserId: "s1",
+      startImmediately: false,
+      ...draft,
+    }),
+  );
+}
+
+describe("New Wash — location is required at Step 3", () => {
+  it("Continue stays disabled when only the photo is captured", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({ photoAssetId: "photo-1" });
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    const continueBtn = screen.getByText("Continue").closest("button")!;
+    expect(continueBtn).toBeDisabled();
+    expect(screen.getByText("Capture place")).toBeTruthy();
+  });
+
+  it("Continue stays disabled when only a location is present", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({
+      place: "Test Location",
+      capturedAt: "2026-07-30T10:00:00Z",
+    });
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    const continueBtn = screen.getByText("Continue").closest("button")!;
+    expect(continueBtn).toBeDisabled();
+  });
+
+  it("Continue is enabled when both photo and location are complete", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({
+      photoAssetId: "photo-1",
+      place: "Test Location",
+      capturedAt: "2026-07-30T10:00:00Z",
+    });
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    const continueBtn = screen.getByText("Continue").closest("button")!;
+    expect(continueBtn).not.toBeDisabled();
+  });
+
+  it("shows Capturing location… and blocks repeat clicks while pending", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({ photoAssetId: "photo-1" });
+    let success: ((position: GeoPosition) => void) | undefined;
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition: (ok: (position: GeoPosition) => void) => {
+          success = ok;
+        },
+      },
+    });
+    vi.mocked(api).mockResolvedValueOnce({ place: "Test Location" } as never);
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Capture place").closest("button")!);
+    expect(screen.getByText("Capturing location…")).toBeTruthy();
+    expect(screen.getByText("Capture place").closest("button")!).toBeDisabled();
+    success!({
+      coords: { latitude: 9.98, longitude: 76.28 },
+      timestamp: 1_752_700_000_000,
+    });
+    await vi.waitFor(() => {
+      expect(screen.getByText("Continue").closest("button")!).not.toBeDisabled();
+    });
+  });
+
+  it("captures a readable place and enables Continue", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({ photoAssetId: "photo-1" });
+    stubGeolocation({
+      onPosition: {
+        coords: { latitude: 9.98, longitude: 76.28 },
+        timestamp: 1_752_700_000_000,
+      },
+    });
+    vi.mocked(api).mockResolvedValueOnce({ place: "Fort Kochi" } as never);
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Capture place").closest("button")!);
+    await vi.waitFor(() => {
+      const geocodeCall = vi
+        .mocked(api)
+        .mock.calls.find(([path]) => path === "/geocode/reverse");
+      expect(geocodeCall).toBeDefined();
+    });
+    const body = JSON.parse(
+      (vi.mocked(api).mock.calls.find(([path]) => path === "/geocode/reverse")![1] as RequestInit).body as string,
+    );
+    expect(body.latitude).toBe(9.98);
+    expect(body.longitude).toBe(76.28);
+    await vi.waitFor(() => {
+      expect(screen.getByText("Location Fort Kochi")).toBeTruthy();
+      expect(screen.getByText("Continue").closest("button")!).not.toBeDisabled();
+    });
+  });
+
+  it("shows permission-denied error and keeps Continue disabled", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({ photoAssetId: "photo-1" });
+    stubGeolocation({
+      onError: { code: 1, PERMISSION_DENIED: 1 },
+    });
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Capture place").closest("button")!);
+    expect(
+      screen.getByText("Location permission is required to continue."),
+    ).toBeTruthy();
+    expect(screen.getByText("Continue").closest("button")!).toBeDisabled();
+  });
+
+  it("shows generic geolocation failure error", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({ photoAssetId: "photo-1" });
+    stubGeolocation({
+      onError: { code: 2, PERMISSION_DENIED: 1 },
+    });
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Capture place").closest("button")!);
+    expect(
+      screen.getByText("Unable to capture your location. Please try again."),
+    ).toBeTruthy();
+  });
+
+  it("shows a readable-place error when reverse geocoding fails", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({ photoAssetId: "photo-1" });
+    stubGeolocation({
+      onPosition: {
+        coords: { latitude: 9.98, longitude: 76.28 },
+        timestamp: 1_752_700_000_000,
+      },
+    });
+    vi.mocked(api).mockRejectedValueOnce(new Error("GEOCODING_UNAVAILABLE"));
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Capture place").closest("button")!);
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("Unable to determine a readable place. Please try again."),
+      ).toBeTruthy();
+    });
+  });
+
+  it("rejects an api-provided blank place", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({ photoAssetId: "photo-1" });
+    stubGeolocation({
+      onPosition: {
+        coords: { latitude: 9.98, longitude: 76.28 },
+        timestamp: 1_752_700_000_000,
+      },
+    });
+    vi.mocked(api).mockResolvedValueOnce({ place: "   " } as never);
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Capture place").closest("button")!);
+    await vi.waitFor(() => {
+      expect(screen.getByText(/Please try again/)).toBeTruthy();
+    });
+  });
+
+  it("clears a previous location error on successful capture", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({ photoAssetId: "photo-1" });
+    stubGeolocation({
+      onError: { code: 1, PERMISSION_DENIED: 1 },
+    });
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Capture place").closest("button")!);
+    expect(screen.getByText("Location permission is required to continue.")).toBeTruthy();
+    stubGeolocation({
+      onPosition: {
+        coords: { latitude: 9.98, longitude: 76.28 },
+        timestamp: 1_752_700_000_000,
+      },
+    });
+    vi.mocked(api).mockResolvedValueOnce({ place: "Fort Kochi" } as never);
+    fireEvent.click(screen.getByText("Capture place").closest("button")!);
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByText("Location permission is required to continue."),
+      ).toBeNull();
+    });
+  });
+
+  it("keeps the location after retake and requires a fresh photo before continuing", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({
+      photoAssetId: "photo-1",
+      place: "Test Location",
+      capturedAt: "2026-07-30T10:00:00Z",
+    });
+    vi.mocked(api).mockResolvedValue(undefined as never);
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Continue").closest("button")!).not.toBeDisabled();
+    fireEvent.click(screen.getByText("Retake photo").closest("button")!);
+    await vi.waitFor(() => {
+      expect(screen.getByText("Continue").closest("button")!).toBeDisabled();
+    });
+    expect(screen.getByText("Allow camera")).toBeTruthy();
+    expect(screen.getByText("Location Test Location")).toBeTruthy();
+  });
+
+  it("advances to Services after Continue on a complete step", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({
+      photoAssetId: "photo-1",
+      place: "Test Location",
+      capturedAt: "2026-07-30T10:00:00Z",
+    });
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Continue").closest("button")!);
+    expect(screen.getByText("Choose services")).toBeTruthy();
+  });
+
+  it("displays the captured place in the wizard summary", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraftAtStep3({ photoAssetId: "photo-1" });
+    stubGeolocation({
+      onPosition: {
+        coords: { latitude: 9.98, longitude: 76.28 },
+        timestamp: 1_752_700_000_000,
+      },
+    });
+    vi.mocked(api).mockResolvedValueOnce({ place: "Fort Kochi" } as never);
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("Capture place").closest("button")!);
+    await vi.waitFor(() => {
+      expect(screen.getByText("Location Fort Kochi")).toBeTruthy();
+    });
   });
 });

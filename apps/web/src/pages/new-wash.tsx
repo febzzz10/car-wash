@@ -69,6 +69,14 @@ interface Evidence {
   readonly capturedAt?: string | undefined;
 }
 
+function hasCompleteEvidence(evidence: Evidence): boolean {
+  return (
+    evidence.photoAssetId !== undefined &&
+    Boolean(evidence.place?.trim()) &&
+    evidence.capturedAt !== undefined
+  );
+}
+
 export default function NewWashPage() {
   const restored = useMemo(
     () => parseWizardDraft(sessionStorage.getItem(WASH_DRAFT_STORAGE_KEY)),
@@ -101,6 +109,7 @@ export default function NewWashPage() {
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [customerDialog, setCustomerDialog] = useState(false);
   const [vehicleDialog, setVehicleDialog] = useState(false);
   const { user } = useAuth();
@@ -198,17 +207,27 @@ export default function NewWashPage() {
         customerId !== "",
         vehicleId !== "",
         assignedUserId !== "",
-        evidence.photoAssetId !== undefined,
+        hasCompleteEvidence(evidence),
         primaryServiceId !== "",
         true,
       ][step] ?? false
     );
   }
 
+  function goNext() {
+    if (step === 3 && !hasCompleteEvidence(evidence)) {
+      if (!evidence.place?.trim() || !evidence.capturedAt) {
+        setLocationError("Capture the location place before continuing.");
+      }
+      return;
+    }
+    setStep((value) => Math.min(stepLabels.length - 1, value + 1));
+  }
+
   async function createJob(
     requestedStatus?: "DRAFT" | "WAITING" | "IN_PROGRESS",
   ) {
-    if (evidence.photoAssetId === undefined) return;
+    if (!hasCompleteEvidence(evidence)) return;
     setBusy(true);
     setError(null);
     try {
@@ -220,10 +239,10 @@ export default function NewWashPage() {
           idempotencyKey: crypto.randomUUID(),
           initialStatus:
             requestedStatus ?? (startImmediately ? "IN_PROGRESS" : "WAITING"),
-          location:
-            evidence.place !== undefined && evidence.capturedAt !== undefined
-              ? { place: evidence.place.trim(), capturedAt: evidence.capturedAt }
-              : {},
+          location: {
+            place: evidence.place!.trim(),
+            capturedAt: evidence.capturedAt!,
+          },
           photoAssetId: evidence.photoAssetId,
           primaryServiceId,
           vehicleId,
@@ -425,7 +444,12 @@ export default function NewWashPage() {
             </SelectionStep>
           ) : null}
           {step === 3 ? (
-            <PhotoLocationStep evidence={evidence} onChange={setEvidence} />
+            <PhotoLocationStep
+              evidence={evidence}
+              locationError={locationError}
+              onChange={setEvidence}
+              onLocationErrorChange={setLocationError}
+            />
           ) : null}
           {step === 4 ? (
             <SelectionStep
@@ -496,12 +520,7 @@ export default function NewWashPage() {
               <ChevronLeft size={18} /> Back
             </Button>
             {step < stepLabels.length - 1 ? (
-              <Button
-                disabled={!canContinue()}
-                onClick={() =>
-                  setStep((value) => Math.min(stepLabels.length - 1, value + 1))
-                }
-              >
+              <Button disabled={!canContinue()} onClick={() => goNext()}>
                 Continue <ChevronRight size={18} />
               </Button>
             ) : (
@@ -566,9 +585,11 @@ export default function NewWashPage() {
               <Camera size={17} /> Live photo{" "}
               {evidence.photoAssetId === undefined ? "needed" : "captured"}
             </span>
-            <span className={evidence.place === undefined ? "" : "done"}>
-              <MapPin size={17} /> Place{" "}
-              {evidence.place === undefined ? "optional" : "captured"}
+            <span className={evidence.place?.trim() ? "done" : ""}>
+              <MapPin size={17} /> Location{" "}
+              {evidence.place?.trim()
+                ? evidence.place.trim()
+                : "required"}
             </span>
           </div>
         </aside>
@@ -663,10 +684,14 @@ function SummaryLine({
 
 function PhotoLocationStep({
   evidence,
+  locationError,
   onChange,
+  onLocationErrorChange,
 }: {
   readonly evidence: Evidence;
+  readonly locationError: string | null;
   readonly onChange: (evidence: Evidence) => void;
+  readonly onLocationErrorChange: (message: string | null) => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -674,9 +699,8 @@ function PhotoLocationStep({
   const [camBusy, setCamBusy] = useState(false);
   const [camError, setCamError] = useState<string | null>(null);
   const [locBusy, setLocBusy] = useState(false);
-  const [locError, setLocError] = useState<string | null>(null);
   const photoDone = evidence.photoAssetId !== undefined;
-  const locationDone = evidence.place !== undefined;
+  const locationDone = Boolean(evidence.place?.trim());
   useEffect(
     () => () => stream.current?.getTracks().forEach((track) => track.stop()),
     [],
@@ -785,11 +809,11 @@ function PhotoLocationStep({
   async function captureLocation() {
     if (locBusy) return;
     if (!("geolocation" in navigator)) {
-      setLocError("Geolocation is not available in this browser.");
+      onLocationErrorChange("Geolocation is not available in this browser.");
       return;
     }
     setLocBusy(true);
-    setLocError(null);
+    onLocationErrorChange(null);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const capturedAt = Number.isFinite(position.timestamp)
@@ -803,22 +827,30 @@ function PhotoLocationStep({
             }),
             method: "POST",
           });
+          if (!result.place.trim()) {
+            onLocationErrorChange(
+              "Unable to determine a readable place. Please try again.",
+            );
+            return;
+          }
           onChange({
             ...evidence,
             place: result.place,
             capturedAt,
           });
         } catch {
-          setLocError("Unable to identify the current place.");
+          onLocationErrorChange(
+            "Unable to determine a readable place. Please try again.",
+          );
         } finally {
           setLocBusy(false);
         }
       },
       (failure) => {
-        setLocError(
+        onLocationErrorChange(
           failure.code === failure.PERMISSION_DENIED
-            ? "Location permission was denied."
-            : "Unable to get the current location.",
+            ? "Location permission is required to continue."
+            : "Unable to capture your location. Please try again.",
         );
         setLocBusy(false);
       },
@@ -828,7 +860,7 @@ function PhotoLocationStep({
   return (
     <SelectionStep
       heading="Capture photo & location"
-      intro="Take a live rear-camera photo of the vehicle. Optionally capture the location to record a place name."
+      intro="Take a live rear-camera photo of the vehicle and capture the current location. Both are required to continue."
     >
       <div className="camera-stage">
         {evidence.photoPreview !== undefined ? (
@@ -880,15 +912,20 @@ function PhotoLocationStep({
             </div>
           ) : (
             <p className="step-intro">
-              Optionally capture your current location to record a readable place
-              name.
+              Capture your current location to record a readable place name. This
+              is required to continue.
             </p>
           )}
-          {locError === null ? null : (
+          {locationError === null ? null : (
             <div className="form-alert" role="alert">
-              {locError}
+              {locationError}
             </div>
           )}
+          {locBusy ? (
+            <p className="step-intro" role="status">
+              Capturing location…
+            </p>
+          ) : null}
           {!locationDone ? (
             <Button busy={locBusy} onClick={() => void captureLocation()}>
               <MapPin size={18} /> Capture place

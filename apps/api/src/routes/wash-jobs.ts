@@ -39,15 +39,9 @@ const createJobSchema = z.object({
       .refine(
         (val) => !COORDINATE_ONLY.test(val),
         { message: "Location place must be a human-readable place name, not raw coordinates." },
-      )
-      .optional(),
-    capturedAt: z.iso.datetime({ offset: true }).optional(),
-  }).strict().refine(
-    (data) =>
-      (data.place !== undefined && data.capturedAt !== undefined) ||
-      (data.place === undefined && data.capturedAt === undefined),
-    { message: "Both place and capturedAt must be provided together, or both omitted." },
-  ),
+      ),
+    capturedAt: z.iso.datetime({ offset: true }),
+  }).strict(),
   notes: z.string().trim().max(2000).optional(),
   photoAssetId: idSchema,
   primaryServiceId: idSchema,
@@ -376,8 +370,8 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
       bill.totalAmountMinor,
       taxRate,
       status === "IN_PROGRESS" ? now.toISOString() : null,
-      parsed.data.location.place || null,
-      parsed.data.location.capturedAt ?? null,
+      parsed.data.location.place,
+      parsed.data.location.capturedAt,
       parsed.data.notes ?? null,
       null /* manual_discount_reason — benefits removed */,
       rounding,

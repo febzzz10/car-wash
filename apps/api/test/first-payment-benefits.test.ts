@@ -16,7 +16,7 @@ function photoMetadata() {
   });
 }
 
-const PHOTO_ASSET_COUNT = 50;
+const PHOTO_ASSET_COUNT = 64;
 
 beforeEach(async () => {
   const tokenHash = await hashSessionToken(rawToken, env.SESSION_PEPPER);
@@ -1780,7 +1780,10 @@ describe("wash job creation — strict schema", () => {
         customerId: "customer-wash",
         idempotencyKey: "reject-benefits-01",
         initialStatus: "WAITING",
-        location: {},
+        location: {
+          place: "Test Location, Kochi",
+          capturedAt: "2026-08-08T10:00:00.000Z",
+        },
         photoAssetId: getPhotoAssetId(),
         primaryServiceId: "service-primary",
         vehicleId: "vehicle-wash",
@@ -1801,7 +1804,10 @@ describe("wash job creation — strict schema", () => {
         customerId: "customer-wash",
         idempotencyKey: "reject-benefits-02",
         initialStatus: "WAITING",
-        location: {},
+        location: {
+          place: "Test Location, Kochi",
+          capturedAt: "2026-08-08T10:00:00.000Z",
+        },
         photoAssetId: getPhotoAssetId(),
         primaryServiceId: "service-primary",
         vehicleId: "vehicle-wash",
@@ -1822,7 +1828,10 @@ describe("wash job creation — strict schema", () => {
         customerId: "customer-wash",
         idempotencyKey: "reject-benefits-03",
         initialStatus: "WAITING",
-        location: {},
+        location: {
+          place: "Test Location, Kochi",
+          capturedAt: "2026-08-08T10:00:00.000Z",
+        },
         photoAssetId: getPhotoAssetId(),
         primaryServiceId: "service-primary",
         vehicleId: "vehicle-wash",
@@ -1843,7 +1852,10 @@ describe("wash job creation — strict schema", () => {
         customerId: "customer-wash",
         idempotencyKey: "reject-benefits-04",
         initialStatus: "WAITING",
-        location: {},
+        location: {
+          place: "Test Location, Kochi",
+          capturedAt: "2026-08-08T10:00:00.000Z",
+        },
         photoAssetId: getPhotoAssetId(),
         primaryServiceId: "service-primary",
         vehicleId: "vehicle-wash",
@@ -1861,7 +1873,10 @@ describe("wash job creation — strict schema", () => {
       body: JSON.stringify({
         addOnServiceIds: [], assignedUserId: "staff-wash", customerId: "customer-wash",
         idempotencyKey: "reject-benefits-05", initialStatus: "WAITING",
-        location: {}, photoAssetId: getPhotoAssetId(), primaryServiceId: "service-primary",
+        location: {
+          place: "Test Location, Kochi",
+          capturedAt: "2026-08-08T10:00:00.000Z",
+        }, photoAssetId: getPhotoAssetId(), primaryServiceId: "service-primary",
         vehicleId: "vehicle-wash",
         rewardAmountMinor: 500,
       }),
@@ -1876,7 +1891,10 @@ describe("wash job creation — strict schema", () => {
       body: JSON.stringify({
         addOnServiceIds: [], assignedUserId: "staff-wash", customerId: "customer-wash",
         idempotencyKey: "reject-benefits-06", initialStatus: "WAITING",
-        location: {}, photoAssetId: getPhotoAssetId(), primaryServiceId: "service-primary",
+        location: {
+          place: "Test Location, Kochi",
+          capturedAt: "2026-08-08T10:00:00.000Z",
+        }, photoAssetId: getPhotoAssetId(), primaryServiceId: "service-primary",
         vehicleId: "vehicle-wash",
         manualDiscountReason: "test",
       }),
@@ -1891,13 +1909,139 @@ describe("wash job creation — strict schema", () => {
       body: JSON.stringify({
         addOnServiceIds: [], assignedUserId: "staff-wash", customerId: "customer-wash",
         idempotencyKey: "reject-benefits-07", initialStatus: "WAITING",
-        location: {}, photoAssetId: getPhotoAssetId(), primaryServiceId: "service-primary",
+        location: {
+          place: "Test Location, Kochi",
+          capturedAt: "2026-08-08T10:00:00.000Z",
+        }, photoAssetId: getPhotoAssetId(), primaryServiceId: "service-primary",
         vehicleId: "vehicle-wash",
         benefits: { replaceExisting: true, manualDiscountMinor: 0 },
       }),
       headers, method: "POST",
     }, env);
     expect(res.status).toBe(422);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7b. Location is required for every wash-job creation
+// ---------------------------------------------------------------------------
+describe("wash job creation — location required", () => {
+  const validLocation = {
+    place: "Test Location, Kochi",
+    capturedAt: "2026-08-08T10:00:00.000Z",
+  };
+
+  async function createWithoutLocation(status: string): Promise<Response> {
+    const headers = await mutationHeaders();
+    return app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [],
+        assignedUserId: "staff-wash",
+        customerId: "customer-wash",
+        idempotencyKey: `loc-required-${status.toLowerCase()}-${idemSuffix()}`,
+        initialStatus: status,
+        photoAssetId: getPhotoAssetId(),
+        primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+      }),
+      headers,
+      method: "POST",
+    }, env);
+  }
+
+  it("rejects DRAFT creation without location", async () => {
+    const res = await createWithoutLocation("DRAFT");
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects WAITING creation without location", async () => {
+    const res = await createWithoutLocation("WAITING");
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects IN_PROGRESS creation without location", async () => {
+    const res = await createWithoutLocation("IN_PROGRESS");
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects a whitespace-only place", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [],
+        assignedUserId: "staff-wash",
+        customerId: "customer-wash",
+        idempotencyKey: `loc-blank-${idemSuffix()}`,
+        initialStatus: "DRAFT",
+        location: { place: "   ", capturedAt: "2026-08-08T10:00:00.000Z" },
+        photoAssetId: getPhotoAssetId(),
+        primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+      }),
+      headers,
+      method: "POST",
+    }, env);
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects a coordinate-only place", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [],
+        assignedUserId: "staff-wash",
+        customerId: "customer-wash",
+        idempotencyKey: `loc-coords-${idemSuffix()}`,
+        initialStatus: "DRAFT",
+        location: { place: "9.8116, 76.2999", capturedAt: "2026-08-08T10:00:00.000Z" },
+        photoAssetId: getPhotoAssetId(),
+        primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+      }),
+      headers,
+      method: "POST",
+    }, env);
+    expect(res.status).toBe(422);
+  });
+
+  it("accepts DRAFT creation with a valid location", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [],
+        assignedUserId: "staff-wash",
+        customerId: "customer-wash",
+        idempotencyKey: `loc-valid-draft-${idemSuffix()}`,
+        initialStatus: "DRAFT",
+        location: validLocation,
+        photoAssetId: getPhotoAssetId(),
+        primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+      }),
+      headers,
+      method: "POST",
+    }, env);
+    expect(res.status).toBe(201);
+  });
+
+  it("accepts IN_PROGRESS creation with a valid location", async () => {
+    const headers = await mutationHeaders();
+    const res = await app.request("/api/v1/wash-jobs", {
+      body: JSON.stringify({
+        addOnServiceIds: [],
+        assignedUserId: "staff-wash",
+        customerId: "customer-wash",
+        idempotencyKey: `loc-inprogress-${idemSuffix()}`,
+        initialStatus: "IN_PROGRESS",
+        location: validLocation,
+        photoAssetId: getPhotoAssetId(),
+        primaryServiceId: "service-primary",
+        vehicleId: "vehicle-wash",
+      }),
+      headers,
+      method: "POST",
+    }, env);
+    expect(res.status).toBe(201);
   });
 });
 

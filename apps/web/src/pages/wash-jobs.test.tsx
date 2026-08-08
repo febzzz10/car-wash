@@ -241,4 +241,18 @@ describe("Wash queue — Assigned staff column", () => {
     fireEvent.change(searchInput(), { target: { value: "zzz-nomatch" } });
     expect(screen.getByText("Nothing in this queue")).toBeInTheDocument();
   });
+
+  it("wraps the queue table in the shared horizontal-scroll container", () => {
+    renderPage();
+    const wrap = screen.getByRole("table").closest(".table-wrap");
+    expect(wrap).not.toBeNull();
+    expect(wrap?.firstElementChild?.tagName).toBe("TABLE");
+  });
+
+  it("keeps the toolbar structure: tab strip, search field, and refresh button", () => {
+    renderPage();
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+    expect(searchInput()).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /refresh queue/i })).toBeInTheDocument();
+  });
 });

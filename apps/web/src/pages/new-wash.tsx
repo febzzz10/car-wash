@@ -113,6 +113,8 @@ export default function NewWashPage() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [customerDialog, setCustomerDialog] = useState(false);
   const [vehicleDialog, setVehicleDialog] = useState(false);
+  const [explicitCustomer, setExplicitCustomer] =
+    useState<CustomerRecord | null>(null);
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
   const searching = search.trim() !== "";
@@ -166,9 +168,15 @@ export default function NewWashPage() {
     vehicleId,
   ]);
 
-  const selectedCustomer = customers.data?.find(
-    (item) => item.id === customerId,
-  );
+  const selectedCustomer =
+    customers.data?.find((item) => item.id === customerId) ??
+    (explicitCustomer !== null && explicitCustomer.id === customerId
+      ? explicitCustomer
+      : undefined);
+
+  useEffect(() => {
+    if (customerId === "") setExplicitCustomer(null);
+  }, [customerId]);
   const availableVehicles = (vehicles.data ?? []).filter(
     (item) => item.customer_id === customerId && item.status === "ACTIVE",
   );
@@ -312,7 +320,7 @@ export default function NewWashPage() {
                   <Plus size={17} /> Add customer
                 </Button>
               </div>
-              {isAdmin || searching ? null : (
+              {isAdmin || searching || selectedCustomer !== undefined ? null : (
                 <p className="step-intro" role="status">
                   Search by customer name, phone, or vehicle registration number
                   to find a customer.
@@ -340,6 +348,7 @@ export default function NewWashPage() {
                         key={customer.id}
                         onClick={() => {
                           setCustomerId(customer.id);
+                          setExplicitCustomer(customer);
                           setVehicleId("");
                         }}
                         primary={customer.full_name}
@@ -353,6 +362,20 @@ export default function NewWashPage() {
                     ))}
                   </div>
                 )
+              ) : selectedCustomer !== undefined ? (
+                <div className="choice-list">
+                  <Choice
+                    active
+                    onClick={() => {}}
+                    primary={selectedCustomer.full_name}
+                    secondary={
+                      selectedCustomer.matching_registrations !== undefined &&
+                      selectedCustomer.matching_registrations.length > 0
+                        ? `${selectedCustomer.matching_registrations.join(", ")} · ${selectedCustomer.phone} · ${selectedCustomer.total_visits_cached} visits`
+                        : `${selectedCustomer.phone} · ${selectedCustomer.total_visits_cached} visits`
+                    }
+                  />
+                </div>
               ) : null}
             </SelectionStep>
           ) : null}
@@ -599,11 +622,13 @@ export default function NewWashPage() {
         onClose={() => setCustomerDialog(false)}
         onCreated={(customer) => {
           setCustomerId(customer.id);
+          setExplicitCustomer(customer);
           setCustomerDialog(false);
           customers.reload();
         }}
         onSelected={(customer) => {
           setCustomerId(customer.id);
+          setExplicitCustomer(customer);
           setCustomerDialog(false);
         }}
         open={customerDialog}

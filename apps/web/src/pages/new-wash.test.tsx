@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 import { WASH_DRAFT_STORAGE_KEY } from "../lib/wizard-draft";
@@ -1790,5 +1790,185 @@ describe("New Wash — Add customer phone lookup", () => {
     );
     expect(emptySearchCalls.length).toBe(0);
     expect(screen.queryByText("Searching existing customers…")).toBeNull();
+  });
+});
+
+describe("New Wash — staff selected customer visibility", () => {
+  beforeEach(() => {
+    asStaff();
+    customerData = [];
+  });
+
+  afterEach(() => {
+    vi.mocked(useAuth).mockImplementation(() => adminUser());
+    customerData = CUSTOMER_FIXTURE;
+  });
+
+  it("does not show recent customers with empty search", async () => {
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    expect(screen.queryByText("Test Customer")).toBeNull();
+    expect(screen.getByText(SEARCH_INSTRUCTION)).toBeTruthy();
+  });
+
+  it("shows selected existing customer on the Customer step after phone lookup selection", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(() => {
+      expect(screen.getByText("Existing customer found")).toBeTruthy();
+    }, { timeout: 500 });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Use existing customer/ }),
+    );
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Existing customer found")).toBeNull();
+    });
+    expect(screen.getAllByText("Arun").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/8590384225/)).toBeTruthy();
+    expect(screen.queryByText(SEARCH_INSTRUCTION)).toBeNull();
+  });
+
+  it("shows selected customer in Wash Summary after phone lookup selection", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(() => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /Use existing customer/ }),
+      );
+    }, { timeout: 500 });
+    const arunMatches = screen.getAllByText("Arun");
+    expect(arunMatches.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not trigger customers.reload() when selecting existing customer", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(() => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /Use existing customer/ }),
+      );
+    }, { timeout: 500 });
+    expect(mockReload).not.toHaveBeenCalled();
+  });
+
+  it("Continue is enabled after selecting existing customer", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(() => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /Use existing customer/ }),
+      );
+    }, { timeout: 500 });
+    const continueBtn = screen.getByText("Continue").closest("button")!;
+    expect(continueBtn).not.toBeDisabled();
+  });
+
+  it("selected customer survives Vehicle step and Back navigation", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(() => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /Use existing customer/ }),
+      );
+    }, { timeout: 500 });
+    fireEvent.click(screen.getByText("Continue").closest("button")!);
+    expect(screen.getByText("Select a vehicle")).toBeTruthy();
+    fireEvent.click(screen.getByText("Back").closest("button")!);
+    expect(screen.getByText("Who is this wash for?")).toBeTruthy();
+    expect(screen.getAllByText("Arun").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("newly created customer is visible for staff after dialog close", async () => {
+    vi.mocked(api).mockResolvedValueOnce({ id: "c-new", full_name: "New Person", phone: "9999999999", phone_normalized: "+919999999999", total_visits_cached: 1 } as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "9999999999" },
+    });
+    fireEvent.change(screen.getByLabelText("Full name"), {
+      target: { value: "New Person" },
+    });
+    fireEvent.click(dialogAddCustomerButton());
+    await vi.waitFor(() => {
+      expect(screen.getAllByText("New Person").length).toBeGreaterThanOrEqual(1);
+    }, { timeout: 500 });
+    expect(screen.queryByText(SEARCH_INSTRUCTION)).toBeNull();
+  });
+
+  it("selecting a customer via search input replaces the dialog-selected customer", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    customerData = [SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR] as any;
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(() => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /Use existing customer/ }),
+      );
+    }, { timeout: 500 });
+    expect(screen.getAllByText("Arun").length).toBeGreaterThanOrEqual(1);
+    fireEvent.change(customerInput(), { target: { value: "8590" } });
+    await vi.waitFor(() => {
+      expect(screen.getByText("Arun Kumar")).toBeTruthy();
+    }, { timeout: 500 });
+    fireEvent.click(screen.getByText("Arun Kumar").closest("button")!);
+  });
+
+  it("opening Add Customer and cancelling preserves existing selection", async () => {
+    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    openAddCustomerDialog();
+    fireEvent.change(dialogPhoneInput(), {
+      target: { value: "8590384225" },
+    });
+    await vi.waitFor(() => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /Use existing customer/ }),
+      );
+    }, { timeout: 500 });
+    expect(screen.getAllByText("Arun").length).toBeGreaterThanOrEqual(1);
+    openAddCustomerDialog();
+    fireEvent.click(screen.getByText("Cancel").closest("button")!);
+    await vi.waitFor(() => {
+      expect(screen.getAllByText("Arun").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("admin can still see the default customer list", async () => {
+    vi.mocked(useAuth).mockImplementation(() => adminUser());
+    customerData = CUSTOMER_FIXTURE;
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    expect(screen.getByText("Test Customer")).toBeTruthy();
   });
 });

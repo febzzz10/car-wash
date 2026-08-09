@@ -1208,7 +1208,7 @@ function NewCustomerDialog({
           <input name="fullName" required />
         </label>
         <label>
-          <span>Phone</span>
+          <span>WhatsApp / Phone Number</span>
           <input
             inputMode="tel"
             name="phone"

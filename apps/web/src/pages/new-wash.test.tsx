@@ -1314,7 +1314,7 @@ function openAddCustomerDialog() {
 }
 
 function dialogPhoneInput(): HTMLInputElement {
-  return screen.getByLabelText("Phone") as HTMLInputElement;
+  return screen.getByLabelText("WhatsApp / Phone Number") as HTMLInputElement;
 }
 
 function dialogAddCustomerButton(): HTMLElement {

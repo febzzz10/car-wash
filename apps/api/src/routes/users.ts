@@ -1,5 +1,9 @@
 import { PERMISSIONS } from "@washpro/contracts";
-import { normalizeEmail, normalizePhone } from "@washpro/domain";
+import {
+  normalizeEmail,
+  normalizeEmployeeCode,
+  normalizePhone,
+} from "@washpro/domain";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -12,6 +16,13 @@ import type { AppBindings } from "../types";
 const permissionSchema = z.enum(PERMISSIONS);
 const createUserSchema = z.object({
   email: z.string().trim().email().max(254).optional(),
+  employeeCode: z
+    .string()
+    .trim()
+    .min(1)
+    .max(20)
+    .regex(/^[A-Za-z0-9._-]+$/u, "Employee code can only contain letters, numbers, hyphens, underscores, and dots.")
+    .optional(),
   fullName: z.string().trim().min(2).max(120),
   permissions: z.array(permissionSchema).max(PERMISSIONS.length).default([]),
   phone: z.string().trim().min(7).max(24).optional(),
@@ -66,15 +77,15 @@ async function assertNotLastAdmin(
 export const userRoutes = new Hono<AppBindings>();
 userRoutes.use("*", requireAdmin, requirePermission("users.manage"));
 
-userRoutes.get("/", async (c) => {
-  const auth = c.get("auth");
-  const result = await c.env.DB.prepare(
-    `SELECT id, default_branch_id, full_name, username, email, phone, role, status, permissions_json, must_change_password, failed_login_count, locked_until, last_login_at, password_changed_at, disabled_at, disabled_reason, created_at, updated_at, version FROM users WHERE organization_id = ? ORDER BY CASE role WHEN 'ADMIN' THEN 0 ELSE 1 END, full_name`,
-  )
-    .bind(auth.organizationId)
-    .all();
-  return c.json({ data: result.results, success: true });
-});
+  userRoutes.get("/", async (c) => {
+    const auth = c.get("auth");
+    const result = await c.env.DB.prepare(
+      "SELECT id, default_branch_id, full_name, username, email, phone, employee_code, role, status, permissions_json, must_change_password, failed_login_count, locked_until, last_login_at, password_changed_at, disabled_at, disabled_reason, created_at, updated_at, version FROM users WHERE organization_id = ? ORDER BY CASE role WHEN 'ADMIN' THEN 0 ELSE 1 END, full_name",
+    )
+      .bind(auth.organizationId)
+      .all();
+    return c.json({ data: result.results, success: true });
+  });
 
 userRoutes.post("/", async (c) => {
   const parsed = createUserSchema.safeParse(
@@ -108,10 +119,19 @@ userRoutes.post("/", async (c) => {
       );
     }
   }
+  let employeeCode: string | null = null;
+  let employeeCodeNormalized: string | null = null;
+  if (parsed.data.employeeCode !== undefined) {
+    const normalized = normalizeEmployeeCode(parsed.data.employeeCode);
+    if (normalized !== null) {
+      employeeCode = normalized.name;
+      employeeCodeNormalized = normalized.normalizedName;
+    }
+  }
   try {
     await c.env.DB.batch([
       c.env.DB.prepare(
-        `INSERT INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, email, email_normalized, phone, phone_normalized, password_hash, role, status, permissions_json, must_change_password, password_changed_at, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, 1, ?, ?, ?, ?)`,
+        `INSERT INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, email, email_normalized, phone, phone_normalized, employee_code, employee_code_normalized, password_hash, role, status, permissions_json, must_change_password, password_changed_at, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, 1, ?, ?, ?, ?)`,
       ).bind(
         id,
         auth.organizationId,
@@ -125,6 +145,8 @@ userRoutes.post("/", async (c) => {
           : normalizeEmail(parsed.data.email),
         parsed.data.phone ?? null,
         phoneNormalized,
+        employeeCode,
+        employeeCodeNormalized,
         passwordHash,
         parsed.data.role,
         JSON.stringify(parsed.data.permissions),
@@ -138,6 +160,7 @@ userRoutes.post("/", async (c) => {
         auth,
         next: {
           email: parsed.data.email,
+          employeeCode,
           fullName: parsed.data.fullName,
           id,
           permissions: parsed.data.permissions,
@@ -156,12 +179,12 @@ userRoutes.post("/", async (c) => {
       throw new ApiError(
         409,
         "RESOURCE_CONFLICT",
-        "The username, email, or phone is already in use.",
+        "The username, email, phone, or employee code is already in use.",
       );
     throw error;
   }
   const created = await c.env.DB.prepare(
-    "SELECT id, default_branch_id, full_name, username, email, phone, role, status, permissions_json, must_change_password, created_at, updated_at, version FROM users WHERE id = ?",
+    "SELECT id, default_branch_id, full_name, username, email, phone, employee_code, role, status, permissions_json, must_change_password, created_at, updated_at, version FROM users WHERE id = ?",
   )
     .bind(id)
     .first();
@@ -171,7 +194,7 @@ userRoutes.post("/", async (c) => {
 userRoutes.get("/:id", async (c) => {
   const auth = c.get("auth");
   const user = await c.env.DB.prepare(
-    "SELECT id, default_branch_id, full_name, username, email, phone, role, status, permissions_json, must_change_password, failed_login_count, locked_until, last_login_at, password_changed_at, disabled_at, disabled_reason, created_at, updated_at, version FROM users WHERE id = ? AND organization_id = ?",
+    "SELECT id, default_branch_id, full_name, username, email, phone, employee_code, role, status, permissions_json, must_change_password, failed_login_count, locked_until, last_login_at, password_changed_at, disabled_at, disabled_reason, created_at, updated_at, version FROM users WHERE id = ? AND organization_id = ?",
   )
     .bind(c.req.param("id"), auth.organizationId)
     .first();
@@ -188,7 +211,7 @@ userRoutes.patch("/:id", async (c) => {
     throw new ApiError(422, "VALIDATION_ERROR", "Check the account changes.");
   const auth = c.get("auth");
   const previous = await c.env.DB.prepare(
-    "SELECT id, full_name, email, phone, role, status, permissions_json, version FROM users WHERE id = ? AND organization_id = ?",
+    "SELECT id, full_name, email, phone, employee_code, role, status, permissions_json, version FROM users WHERE id = ? AND organization_id = ?",
   )
     .bind(c.req.param("id"), auth.organizationId)
     .first<Record<string, unknown>>();
@@ -208,8 +231,20 @@ userRoutes.patch("/:id", async (c) => {
       );
     }
   }
+  let employeeCode: string | null | undefined;
+  let employeeCodeNormalized: string | null | undefined;
+  if (parsed.data.employeeCode !== undefined) {
+    const normalized = normalizeEmployeeCode(parsed.data.employeeCode);
+    if (normalized !== null) {
+      employeeCode = normalized.name;
+      employeeCodeNormalized = normalized.normalizedName;
+    } else {
+      employeeCode = null;
+      employeeCodeNormalized = null;
+    }
+  }
   const result = await c.env.DB.prepare(
-    `UPDATE users SET full_name = COALESCE(?, full_name), email = CASE WHEN ? = 1 THEN ? ELSE email END, email_normalized = CASE WHEN ? = 1 THEN ? ELSE email_normalized END, phone = CASE WHEN ? = 1 THEN ? ELSE phone END, phone_normalized = CASE WHEN ? = 1 THEN ? ELSE phone_normalized END, role = COALESCE(?, role), permissions_json = COALESCE(?, permissions_json), updated_at = ?, version = version + 1 WHERE id = ? AND organization_id = ? AND version = ?`,
+    `UPDATE users SET full_name = COALESCE(?, full_name), email = CASE WHEN ? = 1 THEN ? ELSE email END, email_normalized = CASE WHEN ? = 1 THEN ? ELSE email_normalized END, phone = CASE WHEN ? = 1 THEN ? ELSE phone END, phone_normalized = CASE WHEN ? = 1 THEN ? ELSE phone_normalized END, employee_code = CASE WHEN ? = 1 THEN ? ELSE employee_code END, employee_code_normalized = CASE WHEN ? = 1 THEN ? ELSE employee_code_normalized END, role = COALESCE(?, role), permissions_json = COALESCE(?, permissions_json), updated_at = ?, version = version + 1 WHERE id = ? AND organization_id = ? AND version = ?`,
   )
     .bind(
       parsed.data.fullName ?? null,
@@ -223,6 +258,10 @@ userRoutes.patch("/:id", async (c) => {
       parsed.data.phone ?? null,
       parsed.data.phone === undefined ? 0 : 1,
       phoneNormalized ?? null,
+      parsed.data.employeeCode === undefined ? 0 : 1,
+      employeeCode ?? null,
+      parsed.data.employeeCode === undefined ? 0 : 1,
+      employeeCodeNormalized ?? null,
       parsed.data.role ?? null,
       parsed.data.permissions === undefined
         ? null
@@ -240,7 +279,7 @@ userRoutes.patch("/:id", async (c) => {
       "The account changed on another device.",
     );
   const updated = await c.env.DB.prepare(
-    "SELECT id, full_name, email, phone, role, status, permissions_json, version FROM users WHERE id = ?",
+    "SELECT id, full_name, email, phone, employee_code, role, status, permissions_json, version FROM users WHERE id = ?",
   )
     .bind(c.req.param("id"))
     .first();

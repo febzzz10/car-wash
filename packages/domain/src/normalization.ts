@@ -40,6 +40,14 @@ export function normalizeCode(input: string): string {
   return input.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+export function normalizeEmployeeCode(
+  input: string,
+): { name: string; normalizedName: string } | null {
+  const name = input.trim().replace(WHITESPACE, " ");
+  if (name.length === 0) return null;
+  return { name, normalizedName: name.toLowerCase() };
+}
+
 export function normalizeVehicleModel(
   input: string,
 ): { name: string; normalizedName: string } | null {

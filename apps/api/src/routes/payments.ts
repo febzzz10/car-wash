@@ -6,6 +6,7 @@ import {
   calculateBill,
   derivePaymentSummary,
   normalizeCode,
+  normalizeEmployeeCode,
   validateCoupon,
   validateReferral,
 } from "@washpro/domain";
@@ -169,10 +170,10 @@ paymentRoutes.get("/", requirePermission("payments.create"), async (c) => {
   if (from !== undefined && to !== undefined && from > to)
     throw new ApiError(
       422,
-      "VALIDATION_ERROR",
-      "Enter a valid payment date range.",
+       "VALIDATION_ERROR",
+       "Enter a valid payment date range.",
     );
-  const assignedUserFilter =
+  const collectorFilter =
     assignedUserId !== undefined && assignedUserId !== ""
       ? assignedUserId
       : null;
@@ -198,29 +199,28 @@ paymentRoutes.get("/", requirePermission("payments.create"), async (c) => {
       ).toISOString();
   }
 
-  if (assignedUserFilter !== null) {
+  if (collectorFilter !== null) {
     const staff = await c.env.DB.prepare(
       "SELECT 1 FROM users WHERE id = ? AND organization_id = ? AND default_branch_id = ?",
     )
-      .bind(assignedUserFilter, auth.organizationId, auth.branchId)
+      .bind(collectorFilter, auth.organizationId, auth.branchId)
       .first();
     if (staff === null)
       throw new ApiError(
         404,
         "RESOURCE_NOT_FOUND",
-        "Assigned staff member not found.",
+        "Staff member not found.",
       );
   }
 
   const result = await c.env.DB.prepare(
     `SELECT p.*, w.job_reference, w.customer_name_snapshot,
-      w.vehicle_registration_snapshot, w.payment_status,
-      w.assigned_user_name_snapshot
+      w.vehicle_registration_snapshot, w.payment_status
      FROM payments p INNER JOIN wash_jobs w ON w.id = p.wash_job_id
      WHERE p.organization_id = ? AND p.branch_id = ?
        AND (? IS NULL OR p.paid_at >= ?)
        AND (? IS NULL OR p.paid_at < ?)
-       AND (? IS NULL OR w.assigned_user_id = ?)
+       AND (? IS NULL OR p.collected_by_user_id = ?)
      ORDER BY p.created_at DESC LIMIT 250`,
   )
     .bind(
@@ -230,8 +230,8 @@ paymentRoutes.get("/", requirePermission("payments.create"), async (c) => {
       fromUtc,
       toExclusiveUtc,
       toExclusiveUtc,
-      assignedUserFilter,
-      assignedUserFilter,
+      collectorFilter,
+      collectorFilter,
     )
     .all();
   return c.json({ data: result.results, success: true });
@@ -253,7 +253,7 @@ paymentRoutes.get(
       .all<{ id: string; full_name: string; status: string }>();
     return c.json({
       data: {
-        assignedStaff: result.results.map((user) => ({
+        staff: result.results.map((user) => ({
           id: user.id,
           name: user.full_name,
           active: user.status === "ACTIVE",
@@ -271,6 +271,47 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
   if (!parsed.success)
     throw new ApiError(422, "VALIDATION_ERROR", "Check the payment details.");
   const auth = c.get("auth");
+
+  // Resolve employee code → collector (optional for backward compat)
+  let collector: {
+    id: string;
+    full_name: string;
+    employee_code: string;
+    status: string;
+  } | null = null;
+  if (parsed.data.employeeCode !== undefined) {
+    const employeeNorm = normalizeEmployeeCode(parsed.data.employeeCode);
+    if (employeeNorm === null)
+      throw new ApiError(
+        422,
+        "EMPLOYEE_CODE_REQUIRED",
+        "Employee code is required.",
+      );
+    const found = await c.env.DB.prepare(
+      "SELECT id, full_name, employee_code, status FROM users WHERE organization_id = ? AND employee_code_normalized = ? AND role = 'STAFF'",
+    )
+      .bind(auth.organizationId, employeeNorm.normalizedName)
+      .first<{
+        id: string;
+        full_name: string;
+        employee_code: string;
+        status: string;
+      }>();
+    if (found === null)
+      throw new ApiError(
+        422,
+        "EMPLOYEE_CODE_NOT_FOUND",
+        "Employee code not found.",
+      );
+    if (found.status !== "ACTIVE")
+      throw new ApiError(
+        422,
+        "EMPLOYEE_INACTIVE",
+        "This employee account is inactive.",
+      );
+    collector = found;
+  }
+
   const replay = await c.env.DB.prepare(
     `SELECT p.*, w.payment_status, w.balance_minor
      FROM payments p INNER JOIN wash_jobs w ON w.id = p.wash_job_id
@@ -544,7 +585,7 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
 
     // Build idempotency + batch
     const now = new Date().toISOString();
-    const canonicalPayload = stableStringify({ washJobId: parsed.data.washJobId, amountMinor: parsed.data.amountMinor, tipMinor: parsed.data.tipMinor, method: parsed.data.method, transactionReference: parsed.data.transactionReference, notes: parsed.data.notes, expectedVersion: parsed.data.expectedVersion, benefits: parsed.data.benefits });
+    const canonicalPayload = stableStringify({ washJobId: parsed.data.washJobId, amountMinor: parsed.data.amountMinor, tipMinor: parsed.data.tipMinor, employeeCode: parsed.data.employeeCode, method: parsed.data.method, transactionReference: parsed.data.transactionReference, notes: parsed.data.notes, expectedVersion: parsed.data.expectedVersion, benefits: parsed.data.benefits });
     const requestHash = await sha256(canonicalPayload);
     const idemRecordId = crypto.randomUUID();
 
@@ -685,8 +726,8 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
     if (bill.totalAmountMinor > 0) {
       const paymentId = crypto.randomUUID();
       statements.push(c.env.DB.prepare(
-        `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, notes, idempotency_key, created_at) VALUES (?, ?, ?, ?, 'PAYMENT', ?, ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, ?)`
-      ).bind(paymentId, auth.organizationId, job.branch_id, job.id, parsed.data.amountMinor, parsed.data.tipMinor, parsed.data.method, parsed.data.transactionReference ?? null, now, auth.userId, parsed.data.notes ?? null, parsed.data.idempotencyKey, now));
+        `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, collected_by_user_id, collected_by_name_snapshot, collected_by_employee_code_snapshot, notes, idempotency_key, created_at) VALUES (?, ?, ?, ?, 'PAYMENT', ?, ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(paymentId, auth.organizationId, job.branch_id, job.id, parsed.data.amountMinor, parsed.data.tipMinor, parsed.data.method, parsed.data.transactionReference ?? null, now, auth.userId, collector?.id ?? null, collector?.full_name ?? null, collector?.employee_code ?? null, parsed.data.notes ?? null, parsed.data.idempotencyKey, now));
       paymentRecord = { id: paymentId, amount_minor: parsed.data.amountMinor, tip_minor: parsed.data.tipMinor };
     }
 
@@ -808,7 +849,7 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
       }
     }
     if (bill.totalAmountMinor > 0)
-      statements.push(auditStatement(c.env, { action: "PAYMENT_RECORDED", auth, next: { amountMinor: parsed.data.amountMinor, tipMinor: parsed.data.tipMinor, totalCollectedMinor: parsed.data.amountMinor + parsed.data.tipMinor, method: parsed.data.method, paymentId: paymentRecord?.id ?? "unknown" }, recordId: (paymentRecord?.id ?? job.id) as string, recordType: "PAYMENT", requestId: c.get("requestId") }));
+      statements.push(auditStatement(c.env, { action: "PAYMENT_RECORDED", auth, next: { amountMinor: parsed.data.amountMinor, tipMinor: parsed.data.tipMinor, totalCollectedMinor: parsed.data.amountMinor + parsed.data.tipMinor, method: parsed.data.method, paymentId: paymentRecord?.id ?? "unknown", collectedBy: collector !== null ? { id: collector.id, name: collector.full_name, employeeCode: collector.employee_code } : null }, recordId: (paymentRecord?.id ?? job.id) as string, recordType: "PAYMENT", requestId: c.get("requestId") }));
     else
       statements.push(auditStatement(c.env, { action: "FULLY_DISCOUNTED_COMPLETION", auth, next: { bill: { totalAmountMinor: bill.totalAmountMinor, totalDiscountMinor: bill.totalDiscountMinor } }, recordId: job.id, recordType: "WASH_JOB", requestId: c.get("requestId"), severity: "INFO" }));
 
@@ -868,7 +909,7 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
   const now = new Date().toISOString();
   const statements: D1PreparedStatement[] = [
     c.env.DB.prepare(
-      `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, notes, idempotency_key, created_at) VALUES (?, ?, ?, ?, 'PAYMENT', ?, ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, collected_by_user_id, collected_by_name_snapshot, collected_by_employee_code_snapshot, notes, idempotency_key, created_at) VALUES (?, ?, ?, ?, 'PAYMENT', ?, ?, ?, 'SUCCESS', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       id,
       auth.organizationId,
@@ -880,6 +921,9 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
       parsed.data.transactionReference ?? null,
       now,
       auth.userId,
+      collector?.id ?? null,
+      collector?.full_name ?? null,
+      collector?.employee_code ?? null,
       parsed.data.notes ?? null,
       parsed.data.idempotencyKey,
       now,
@@ -909,6 +953,7 @@ paymentRoutes.post("/", requirePermission("payments.create"), async (c) => {
           parsed.data.amountMinor + parsed.data.tipMinor,
         method: parsed.data.method,
         paymentId: id,
+        collectedBy: collector !== null ? { id: collector.id, name: collector.full_name, employeeCode: collector.employee_code } : null,
         summary,
       },
       recordId: id,

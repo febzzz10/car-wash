@@ -25,10 +25,10 @@ beforeEach(async () => {
       "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, created_at, updated_at) VALUES ('admin-wash', 'org-wash', 'branch-wash', 'Wash Admin', 'wash-admin', 'wash-admin', 'unused', 'ADMIN', 'ACTIVE', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
-      "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, permissions_json, created_at, updated_at) VALUES ('staff-wash', 'org-wash', 'branch-wash', 'Wash Staff', 'wash-staff', 'wash-staff', 'unused', 'STAFF', 'ACTIVE', '[\"wash_jobs.create\"]', ?, ?)",
+      "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, permissions_json, employee_code, employee_code_normalized, created_at, updated_at) VALUES ('staff-wash', 'org-wash', 'branch-wash', 'Wash Staff', 'wash-staff', 'wash-staff', 'unused', 'STAFF', 'ACTIVE', '[\"wash_jobs.create\"]', 'EMP001', 'emp001', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
-      "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, permissions_json, created_at, updated_at) VALUES ('staff-wash-2', 'org-wash', 'branch-wash', 'Shift B', 'wash-second', 'wash-second', 'unused', 'STAFF', 'ACTIVE', '[\"wash_jobs.create\"]', ?, ?)",
+      "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, permissions_json, employee_code, employee_code_normalized, created_at, updated_at) VALUES ('staff-wash-2', 'org-wash', 'branch-wash', 'Shift B', 'wash-second', 'wash-second', 'unused', 'STAFF', 'ACTIVE', '[\"wash_jobs.create\"]', 'EMP002', 'emp002', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
       "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, created_at, updated_at) VALUES ('staff-wash-disabled', 'org-wash', 'branch-wash', 'Retired Staff', 'wash-retired', 'wash-retired', 'unused', 'STAFF', 'DISABLED', ?, ?)",
@@ -157,6 +157,42 @@ beforeEach(async () => {
       }),
     ),
     env.DB.prepare(
+      "INSERT OR IGNORE INTO file_assets (id, organization_id, branch_id, bucket_name, object_key, mime_type, size_bytes, asset_type, access_level, upload_status, uploaded_by_user_id, created_at, ready_at, metadata_json) VALUES ('asset-live-wash-7', 'org-wash', 'branch-wash', 'UPLOADS', 'org-wash/live7.jpg', 'image/jpeg', 4, 'VEHICLE_LIVE_PHOTO', 'PRIVATE', 'READY', 'admin-wash', ?, ?, ?)",
+    ).bind(
+      timestamp,
+      timestamp,
+      JSON.stringify({
+        captureSource: "CAMERA",
+        capturedAt: new Date().toISOString(),
+        height: 480,
+        width: 640,
+      }),
+    ),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO file_assets (id, organization_id, branch_id, bucket_name, object_key, mime_type, size_bytes, asset_type, access_level, upload_status, uploaded_by_user_id, created_at, ready_at, metadata_json) VALUES ('asset-live-wash-8', 'org-wash', 'branch-wash', 'UPLOADS', 'org-wash/live8.jpg', 'image/jpeg', 4, 'VEHICLE_LIVE_PHOTO', 'PRIVATE', 'READY', 'admin-wash', ?, ?, ?)",
+    ).bind(
+      timestamp,
+      timestamp,
+      JSON.stringify({
+        captureSource: "CAMERA",
+        capturedAt: new Date().toISOString(),
+        height: 480,
+        width: 640,
+      }),
+    ),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO file_assets (id, organization_id, branch_id, bucket_name, object_key, mime_type, size_bytes, asset_type, access_level, upload_status, uploaded_by_user_id, created_at, ready_at, metadata_json) VALUES ('asset-live-wash-9', 'org-wash', 'branch-wash', 'UPLOADS', 'org-wash/live9.jpg', 'image/jpeg', 4, 'VEHICLE_LIVE_PHOTO', 'PRIVATE', 'READY', 'admin-wash', ?, ?, ?)",
+    ).bind(
+      timestamp,
+      timestamp,
+      JSON.stringify({
+        captureSource: "CAMERA",
+        capturedAt: new Date().toISOString(),
+        height: 480,
+        width: 640,
+      }),
+    ),
+    env.DB.prepare(
       "INSERT OR IGNORE INTO coupons (id, organization_id, code, code_normalized, discount_type, discount_value, minimum_bill_minor, start_at, expires_at, total_usage_limit, usage_limit_per_customer, created_by_user_id, created_at, updated_at) VALUES ('coupon-wash', 'org-wash', 'WELCOME10', 'WELCOME10', 'FIXED', 1000, 5000, '2026-01-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 10, 1, 'admin-wash', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
@@ -248,7 +284,7 @@ describe("wash, timer, payment, and refund workflow", () => {
           benefits: { replaceExisting: true, referralCode: "RAVI500" },
           expectedVersion: version,
           idempotencyKey: "referral-full-payment-0001",
-          method: "UPI",
+          employeeCode: "EMP001", method: "UPI",
           washJobId: created.data.id,
         }),
         headers,
@@ -327,6 +363,7 @@ describe("wash, timer, payment, and refund workflow", () => {
         {
           body: JSON.stringify({
             amountMinor,
+            employeeCode: "EMP001",
             idempotencyKey,
             method,
             washJobId: created.data.id,
@@ -347,7 +384,7 @@ describe("wash, timer, payment, and refund workflow", () => {
     expect(list.status).toBe(200);
     const body = await list.json<{
       data: {
-        assigned_user_name_snapshot: string | null;
+        collected_by_name_snapshot: string | null;
         id: string;
         wash_job_id: string;
       }[];
@@ -355,7 +392,7 @@ describe("wash, timer, payment, and refund workflow", () => {
     const rows = body.data.filter((row) => row.wash_job_id === created.data.id);
     expect(rows).toHaveLength(2);
     for (const row of rows) {
-      expect(row.assigned_user_name_snapshot).toBe("Wash Staff");
+      expect(row.collected_by_name_snapshot).toBe("Wash Staff");
     }
   });
 
@@ -475,7 +512,7 @@ describe("wash, timer, payment, and refund workflow", () => {
         body: JSON.stringify({
           amountMinor: 5000,
           idempotencyKey: "payment-key-partial-0001",
-          method: "UPI",
+          employeeCode: "EMP001", method: "UPI",
           washJobId: created.data.id,
         }),
         headers,
@@ -502,7 +539,7 @@ describe("wash, timer, payment, and refund workflow", () => {
         body: JSON.stringify({
           amountMinor: 5000,
           idempotencyKey: "payment-key-partial-0001",
-          method: "UPI",
+          employeeCode: "EMP001", method: "UPI",
           washJobId: created.data.id,
         }),
         headers,
@@ -521,7 +558,7 @@ describe("wash, timer, payment, and refund workflow", () => {
         body: JSON.stringify({
           amountMinor: 9160,
           idempotencyKey: "payment-key-final-00001",
-          method: "CASH",
+          employeeCode: "EMP001", method: "CASH",
           washJobId: created.data.id,
         }),
         headers,
@@ -618,7 +655,7 @@ describe("wash, timer, payment, and refund workflow", () => {
         body: JSON.stringify({
           amountMinor: 10000,
           idempotencyKey: "refund-false-pay-001",
-          method: "CASH",
+          employeeCode: "EMP001", method: "CASH",
           washJobId: created.data.id,
         }),
         headers,
@@ -701,7 +738,7 @@ describe("wash, timer, payment, and refund workflow", () => {
         body: JSON.stringify({
           amountMinor: 10000,
           idempotencyKey: "refund-absent-pay-001",
-          method: "CASH",
+          employeeCode: "EMP001", method: "CASH",
           washJobId: created.data.id,
         }),
         headers,
@@ -764,7 +801,7 @@ describe("wash, timer, payment, and refund workflow", () => {
     const boundaryStart = "2026-07-22T18:30:00.000Z";
     const boundaryEnd = "2026-07-23T18:30:00.000Z";
     await env.DB.prepare(
-      `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, notes, idempotency_key, created_at) VALUES (?, 'org-wash', 'branch-wash', ?, 'PAYMENT', 3000, 0, 'UPI', 'SUCCESS', NULL, ?, 'staff-wash', NULL, ?, ?)`,
+      `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, collected_by_user_id, collected_by_name_snapshot, collected_by_employee_code_snapshot, notes, idempotency_key, created_at) VALUES (?, 'org-wash', 'branch-wash', ?, 'PAYMENT', 3000, 0, 'UPI', 'SUCCESS', NULL, ?, 'staff-wash', NULL, NULL, NULL, NULL, ?, ?)`,
     )
       .bind(
         "payment-date-filter-0001",
@@ -775,7 +812,7 @@ describe("wash, timer, payment, and refund workflow", () => {
       )
       .run();
     await env.DB.prepare(
-      `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, notes, idempotency_key, created_at) VALUES (?, 'org-wash', 'branch-wash', ?, 'PAYMENT', 100, 0, 'CASH', 'SUCCESS', NULL, ?, 'staff-wash', NULL, ?, ?)`,
+      `INSERT INTO payments (id, organization_id, branch_id, wash_job_id, transaction_type, amount_minor, tip_minor, payment_method, status, external_transaction_reference, paid_at, received_by_user_id, collected_by_user_id, collected_by_name_snapshot, collected_by_employee_code_snapshot, notes, idempotency_key, created_at) VALUES (?, 'org-wash', 'branch-wash', ?, 'PAYMENT', 100, 0, 'CASH', 'SUCCESS', NULL, ?, 'staff-wash', NULL, NULL, NULL, NULL, ?, ?)`,
     )
       .bind(
         "payment-date-filter-0002",
@@ -885,7 +922,7 @@ describe("wash, timer, payment, and refund workflow", () => {
         body: JSON.stringify({
           amountMinor: 5000,
           idempotencyKey: "assigned-filter-pay-0001",
-          method: "UPI",
+          employeeCode: "EMP002", method: "UPI",
           washJobId: created.data.id,
         }),
         headers,
@@ -903,7 +940,7 @@ describe("wash, timer, payment, and refund workflow", () => {
     expect(filtered.status).toBe(200);
     const filteredBody = await filtered.json<{
       data: {
-        assigned_user_name_snapshot: string | null;
+        collected_by_name_snapshot: string | null;
         id: string;
         wash_job_id: string;
       }[];
@@ -913,7 +950,7 @@ describe("wash, timer, payment, and refund workflow", () => {
       filteredBody.data.some((row) => row.wash_job_id === created.data.id),
     ).toBe(true);
     for (const row of filteredBody.data) {
-      expect(row.assigned_user_name_snapshot).toBe("Shift B");
+      expect(row.collected_by_name_snapshot).toBe("Shift B");
     }
 
     const otherStaff = await app.request(
@@ -990,20 +1027,20 @@ describe("wash, timer, payment, and refund workflow", () => {
     expect(response.status).toBe(200);
     const body = await response.json<{
       data: {
-        assignedStaff: {
+        staff: {
           active: boolean;
           id: string;
           name: string;
         }[];
       };
     }>();
-    expect(body.data.assignedStaff.map((staff) => staff.name)).toEqual([
+    expect(body.data.staff.map((staff) => staff.name)).toEqual([
       "Retired Staff",
       "Shift B",
       "Wash Staff",
     ]);
     const byId = new Map(
-      body.data.assignedStaff.map((staff) => [staff.id, staff]),
+      body.data.staff.map((staff) => [staff.id, staff]),
     );
     expect(byId.get("staff-wash")).toMatchObject({
       active: true,
@@ -1029,5 +1066,197 @@ describe("wash, timer, payment, and refund workflow", () => {
     expect(
       (await denied.json<{ error: { code: string } }>()).error.code,
     ).toBe("AUTH_PERMISSION_DENIED");
+  });
+
+  it("accepts payment without employeeCode for backward compatibility", async () => {
+    const headers = await mutationHeaders();
+    const create = await app.request(
+      "/api/v1/wash-jobs",
+      {
+        body: JSON.stringify({
+          addOnServiceIds: [],
+          assignedUserId: "staff-wash-2",
+          customerId: "customer-wash",
+          idempotencyKey: "backward-compat-create-0001",
+          initialStatus: "WAITING",
+          location: { place: "Test Location, Kochi", capturedAt: new Date().toISOString() },
+          photoAssetId: "asset-live-wash-7",
+          primaryServiceId: "service-primary",
+          vehicleId: "vehicle-wash",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(create.status).toBe(201);
+    const created = await create.json<{ data: { id: string } }>();
+
+    const payment = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 5000,
+          idempotencyKey: "backward-compat-pay-0001",
+          method: "UPI",
+          washJobId: created.data.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(payment.status).toBe(201);
+
+    const list = await app.request(
+      "/api/v1/payments",
+      { headers: { cookie: headers["cookie"] ?? "" } },
+      env,
+    );
+    const listBody = await list.json<{
+      data: { collected_by_name_snapshot: string | null; wash_job_id: string }[];
+    }>();
+    const row = listBody.data.find((r) => r.wash_job_id === created.data.id);
+    expect(row).toBeDefined();
+    expect(row!.collected_by_name_snapshot).toBeNull();
+  });
+
+  it("payment does not modify wash job assigned staff", async () => {
+    const headers = await mutationHeaders();
+    const create = await app.request(
+      "/api/v1/wash-jobs",
+      {
+        body: JSON.stringify({
+          addOnServiceIds: [],
+          assignedUserId: "staff-wash",
+          customerId: "customer-wash",
+          idempotencyKey: "assignment-pay-create-0001",
+          initialStatus: "WAITING",
+          location: {
+            place: "Test Location, Kochi",
+            capturedAt: new Date().toISOString(),
+          },
+          photoAssetId: "asset-live-wash-8",
+          primaryServiceId: "service-primary",
+          vehicleId: "vehicle-wash",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(create.status).toBe(201);
+    const created = await create.json<{ data: { id: string } }>();
+
+    const payment = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 3000,
+          employeeCode: "EMP002",
+          idempotencyKey: "assignment-pay-0001",
+          method: "CASH",
+          washJobId: created.data.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(payment.status).toBe(201);
+
+    const jobAfter = await env.DB.prepare(
+      "SELECT assigned_user_id, assigned_user_name_snapshot FROM wash_jobs WHERE id = ?",
+    )
+      .bind(created.data.id)
+      .first<{ assigned_user_id: string; assigned_user_name_snapshot: string }>();
+    expect(jobAfter!.assigned_user_id).toBe("staff-wash");
+
+    const payRow = await env.DB.prepare(
+      "SELECT collected_by_user_id, collected_by_name_snapshot FROM payments WHERE wash_job_id = ? AND status = 'SUCCESS'",
+    )
+      .bind(created.data.id)
+      .first<{ collected_by_user_id: string; collected_by_name_snapshot: string }>();
+    expect(payRow!.collected_by_user_id).toBe("staff-wash-2");
+    expect(payRow!.collected_by_name_snapshot).toBe("Shift B");
+  });
+
+  it("rejects inactive employee code in payment", async () => {
+    const headers = await mutationHeaders();
+    await env.DB.prepare(
+      "UPDATE users SET employee_code = 'EMPINACTIVE', employee_code_normalized = 'empinactive', status = 'DISABLED' WHERE id = 'staff-wash-disabled'",
+    ).run();
+
+    const create = await app.request(
+      "/api/v1/wash-jobs",
+      {
+        body: JSON.stringify({
+          addOnServiceIds: [],
+          assignedUserId: "staff-wash",
+          customerId: "customer-wash",
+          idempotencyKey: "inactive-pay-create-0001",
+          initialStatus: "WAITING",
+          location: {
+            place: "Test Location, Kochi",
+            capturedAt: new Date().toISOString(),
+          },
+          photoAssetId: "asset-live-wash-9",
+          primaryServiceId: "service-primary",
+          vehicleId: "vehicle-wash",
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(create.status).toBe(201);
+    const created = await create.json<{ data: { id: string } }>();
+
+    const payment = await app.request(
+      "/api/v1/payments",
+      {
+        body: JSON.stringify({
+          amountMinor: 1000,
+          employeeCode: "EMPINACTIVE",
+          idempotencyKey: "inactive-pay-0001",
+          method: "CASH",
+          washJobId: created.data.id,
+        }),
+        headers,
+        method: "POST",
+      },
+      env,
+    );
+    expect(payment.status).toBe(422);
+    const err = await payment.json<{ error: { code: string; message: string } }>();
+    expect(err.error.code).toBe("EMPLOYEE_INACTIVE");
+    expect(err.error.message).toBe("This employee account is inactive.");
+  });
+
+  it("employee lookup distinguishes inactive from not-found", async () => {
+    const headers = await mutationHeaders();
+    await env.DB.prepare(
+      "UPDATE users SET employee_code = 'EMPOFF', employee_code_normalized = 'empoff', status = 'DISABLED' WHERE id = 'staff-wash-disabled'",
+    ).run();
+
+    const inactive = await app.request(
+      "/api/v1/staff/by-employee-code?code=EMPOFF",
+      { headers },
+      env,
+    );
+    expect(inactive.status).toBe(422);
+    expect(
+      (await inactive.json<{ error: { code: string } }>()).error.code,
+    ).toBe("EMPLOYEE_INACTIVE");
+
+    const unknown = await app.request(
+      "/api/v1/staff/by-employee-code?code=NONEXISTENT",
+      { headers },
+      env,
+    );
+    expect(unknown.status).toBe(422);
+    expect(
+      (await unknown.json<{ error: { code: string } }>()).error.code,
+    ).toBe("EMPLOYEE_CODE_NOT_FOUND");
   });
 });

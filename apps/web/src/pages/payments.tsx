@@ -23,7 +23,8 @@ const dateOnlyPattern = /^(\d{4})-(\d{2})-(\d{2})$/u;
 
 interface PaymentRecord {
   readonly amount_minor: number;
-  readonly assigned_user_name_snapshot?: string | null;
+  readonly collected_by_name_snapshot?: string | null;
+  readonly collected_by_employee_code_snapshot?: string | null;
   readonly created_at: string;
   readonly customer_name_snapshot: string;
   readonly external_transaction_reference?: string | null;
@@ -41,13 +42,13 @@ interface SettingRow {
   readonly setting_key: string;
   readonly value_text: string;
 }
-interface AssignedStaffOption {
+interface StaffOption {
   readonly active: boolean;
   readonly id: string;
   readonly name: string;
 }
 interface FilterOptions {
-  readonly assignedStaff: readonly AssignedStaffOption[];
+  readonly staff: readonly StaffOption[];
 }
 interface AppliedFilters {
   readonly assignedUserId: string | null;
@@ -169,8 +170,8 @@ export default function PaymentsPage() {
     }
   }, [applying, listPath, state.loading]);
 
-  const assignedOptions = optionsState.data?.assignedStaff ?? [];
-  const assignedLabel = assignedOptions.find(
+  const staffOptions = optionsState.data?.staff ?? [];
+  const collectorLabel = staffOptions.find(
     (option) => option.id === applied.assignedUserId,
   )?.name;
 
@@ -240,8 +241,8 @@ export default function PaymentsPage() {
   const summaryParts: string[] = [];
   if (appliedFrom !== null) summaryParts.push(`from ${date(appliedFrom)}`);
   if (appliedTo !== null) summaryParts.push(`to ${date(appliedTo)}`);
-  if (appliedAssigned !== null && assignedLabel !== undefined) {
-    summaryParts.push(`assigned to ${assignedLabel}`);
+  if (appliedAssigned !== null && collectorLabel !== undefined) {
+    summaryParts.push(`collected by ${collectorLabel}`);
   }
   const summary =
     summaryParts.length === 0
@@ -292,7 +293,7 @@ export default function PaymentsPage() {
             </div>
             <div className="payments-filters__field">
               <label htmlFor="paymentAssignedUserId">
-                <span>Assigned staff</span>
+                <span>Collected by</span>
                 <select
                   id="paymentAssignedUserId"
                   name="assignedUserId"
@@ -302,8 +303,8 @@ export default function PaymentsPage() {
                   }}
                   value={assignedIdDraft}
                 >
-                  <option value="">All staff</option>
-                  {assignedOptions.map((option) => (
+                  <option value="">All employees</option>
+                  {staffOptions.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.name}
                     </option>
@@ -372,7 +373,7 @@ export default function PaymentsPage() {
                 <tr>
                   <th>Job</th>
                   <th>Customer & vehicle</th>
-                  <th>Assigned staff</th>
+                   <th>Collected by</th>
                   <th>Method</th>
                   <th>Paid at</th>
                   <th>Status</th>
@@ -399,14 +400,14 @@ export default function PaymentsPage() {
                       <small>{payment.customer_name_snapshot}</small>
                     </td>
                     <td>
-                      {payment.assigned_user_name_snapshot !== null &&
-                      payment.assigned_user_name_snapshot !== undefined &&
-                      payment.assigned_user_name_snapshot.trim() !== "" ? (
+                      {payment.collected_by_name_snapshot !== null &&
+                      payment.collected_by_name_snapshot !== undefined &&
+                      payment.collected_by_name_snapshot.trim() !== "" ? (
                         <span className="payment-assignee">
-                          {payment.assigned_user_name_snapshot}
+                          {payment.collected_by_name_snapshot}
                         </span>
                       ) : (
-                        <span className="muted">Unassigned</span>
+                        <span className="muted">Not recorded</span>
                       )}
                     </td>
                     <td>

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeCode,
   normalizeEmail,
+  normalizeEmployeeCode,
   normalizeNameSearch,
   normalizePhone,
   normalizeRegistration,
@@ -170,5 +171,47 @@ describe("validateCurrencyCode", () => {
   it("rejects 'XYZ' (unsupported three-letter code)", () => {
     const result = validateCurrencyCode("XYZ");
     expect(result.valid).toBe(false);
+  });
+});
+
+describe("normalizeEmployeeCode", () => {
+  it("trims whitespace and preserves case", () => {
+    expect(normalizeEmployeeCode("  EMP007  ")).toEqual({
+      name: "EMP007",
+      normalizedName: "emp007",
+    });
+  });
+
+  it("lowercases for normalized name", () => {
+    expect(normalizeEmployeeCode("Emp007")).toEqual({
+      name: "Emp007",
+      normalizedName: "emp007",
+    });
+  });
+
+  it("collapses internal whitespace", () => {
+    expect(normalizeEmployeeCode("EMP   007")).toEqual({
+      name: "EMP 007",
+      normalizedName: "emp 007",
+    });
+  });
+
+  it("returns null for blank input", () => {
+    expect(normalizeEmployeeCode("   ")).toBeNull();
+    expect(normalizeEmployeeCode("")).toBeNull();
+  });
+
+  it("preserves hyphens", () => {
+    expect(normalizeEmployeeCode("CW-12")).toEqual({
+      name: "CW-12",
+      normalizedName: "cw-12",
+    });
+  });
+
+  it("preserves underscores", () => {
+    expect(normalizeEmployeeCode("STAFF_15")).toEqual({
+      name: "STAFF_15",
+      normalizedName: "staff_15",
+    });
   });
 });

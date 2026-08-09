@@ -44,7 +44,7 @@ vi.mock("../components/toast", () => ({
 }));
 
 const optionsFixture = {
-  assignedStaff: [
+  staff: [
     { active: true, id: "staff-1000020001", name: "Rahul Nair" },
     { active: false, id: "staff-1000020002", name: "Arun Pillai" },
   ],
@@ -76,7 +76,7 @@ vi.mock("../hooks/use-api-data", () => ({
     const assigned = (name: string, id: string) => ({
       amount_minor: 40000,
       assigned_user_id: "staff-1000020001",
-      assigned_user_name_snapshot: name,
+      collected_by_name_snapshot: name,
       created_at: "2026-07-10T07:30:00.000Z",
       customer_name_snapshot: "Arun Kumar",
       external_transaction_reference: null,
@@ -99,7 +99,7 @@ vi.mock("../hooks/use-api-data", () => ({
           ...assigned("", "pay-3"),
           amount_minor: 25000,
           assigned_user_id: "staff-1000020002",
-          assigned_user_name_snapshot: null,
+          collected_by_name_snapshot: null,
           customer_name_snapshot: "Meera Pillai",
           id: "pay-3",
           job_reference: "WP-0002",
@@ -113,7 +113,7 @@ vi.mock("../hooks/use-api-data", () => ({
           ...assigned("", "pay-4"),
           amount_minor: 30000,
           assigned_user_id: "staff-1000020002",
-          assigned_user_name_snapshot: "",
+          collected_by_name_snapshot: "",
           customer_name_snapshot: "Suresh Menon",
           id: "pay-4",
           job_reference: "WP-0003",
@@ -127,7 +127,7 @@ vi.mock("../hooks/use-api-data", () => ({
           ...assigned("", "pay-5"),
           amount_minor: 10000,
           assigned_user_id: "staff-1000020002",
-          assigned_user_name_snapshot: "   ",
+          collected_by_name_snapshot: "   ",
           customer_name_snapshot: "Lina Referred",
           id: "pay-5",
           job_reference: "WP-0004",
@@ -161,10 +161,10 @@ describe("Payments — Assigned staff column", () => {
     vi.mocked(useAuth).mockClear();
   });
 
-  it("shows the Assigned staff column header", () => {
+  it("shows the Collected by column header", () => {
     renderPage();
     expect(
-      screen.getByRole("columnheader", { name: /assigned staff/i }),
+      screen.getByRole("columnheader", { name: /collected by/i }),
     ).toBeInTheDocument();
   });
 
@@ -189,22 +189,22 @@ describe("Payments — Assigned staff column", () => {
     expect(within(row).getByText("Rahul Nair")).toBeInTheDocument();
   });
 
-  it("shows Unassigned for a payment with a null snapshot", () => {
+  it("shows Not recorded for a payment with a null snapshot", () => {
     renderPage();
     const row = screen.getByRole("row", { name: /WP-0002/ });
-    expect(within(row).getByText("Unassigned")).toBeInTheDocument();
+    expect(within(row).getByText("Not recorded")).toBeInTheDocument();
   });
 
-  it("shows Unassigned for a payment with an empty snapshot", () => {
+  it("shows Not recorded for a payment with an empty snapshot", () => {
     renderPage();
     const row = screen.getByRole("row", { name: /WP-0003/ });
-    expect(within(row).getByText("Unassigned")).toBeInTheDocument();
+    expect(within(row).getByText("Not recorded")).toBeInTheDocument();
   });
 
-  it("shows Unassigned for a payment with a whitespace-only snapshot", () => {
+  it("shows Not recorded for a payment with a whitespace-only snapshot", () => {
     renderPage();
     const row = screen.getByRole("row", { name: /WP-0004/ });
-    expect(within(row).getByText("Unassigned")).toBeInTheDocument();
+    expect(within(row).getByText("Not recorded")).toBeInTheDocument();
   });
 
   it("does not expose the staff ID in the table", () => {
@@ -293,7 +293,7 @@ describe("Payments — admin filter controls", () => {
     renderPage();
     expect(screen.getByLabelText("From")).toBeInTheDocument();
     expect(screen.getByLabelText("To")).toBeInTheDocument();
-    expect(screen.getByLabelText("Assigned staff")).toBeInTheDocument();
+    expect(screen.getByLabelText("Collected by")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Apply filters" }),
     ).toBeInTheDocument();
@@ -330,7 +330,7 @@ describe("Payments — admin filter controls", () => {
       refresh: async () => undefined,
     }));
     renderPage();
-    expect(screen.queryByLabelText("Assigned staff")).toBeNull();
+    expect(screen.queryByLabelText("Collected by")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Apply filters" }),
     ).toBeNull();
@@ -340,9 +340,9 @@ describe("Payments — admin filter controls", () => {
 
   it("populates the staff select from the options endpoint", () => {
     renderPage();
-    const select = screen.getByLabelText("Assigned staff") as HTMLSelectElement;
+    const select = screen.getByLabelText("Collected by") as HTMLSelectElement;
     expect(
-      within(select).getByRole("option", { name: "All staff" }),
+      within(select).getByRole("option", { name: "All employees" }),
     ).toBeInTheDocument();
     expect(
       within(select).getByRole("option", { name: "Rahul Nair" }),
@@ -362,7 +362,7 @@ describe("Payments — admin filter controls", () => {
     fireEvent.change(screen.getByLabelText("To"), {
       target: { value: "2026-07-31" },
     });
-    fireEvent.change(screen.getByLabelText("Assigned staff"), {
+    fireEvent.change(screen.getByLabelText("Collected by"), {
       target: { value: "staff-1000020001" },
     });
     expect(vi.mocked(useApiData)).not.toHaveBeenCalledWith(
@@ -386,7 +386,7 @@ describe("Payments — admin filter controls", () => {
 
   it("applies the chosen staff member by stable ID after Apply", () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Assigned staff"), {
+    fireEvent.change(screen.getByLabelText("Collected by"), {
       target: { value: "staff-1000020001" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
@@ -403,13 +403,13 @@ describe("Payments — admin filter controls", () => {
     fireEvent.change(screen.getByLabelText("To"), {
       target: { value: "2026-07-15" },
     });
-    fireEvent.change(screen.getByLabelText("Assigned staff"), {
+    fireEvent.change(screen.getByLabelText("Collected by"), {
       target: { value: "staff-1000020001" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
     expect(
       screen.getByText(
-        /Showing payments from .*1 Jul 2026.* to .*15 Jul 2026.* assigned to Rahul Nair/i,
+        /Showing payments from .*1 Jul 2026.* to .*15 Jul 2026.* collected by Rahul Nair/i,
       ),
     ).toBeInTheDocument();
   });
@@ -448,7 +448,7 @@ describe("Payments — admin filter controls", () => {
 
   it("clears filters back to the unfiltered list", () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Assigned staff"), {
+    fireEvent.change(screen.getByLabelText("Collected by"), {
       target: { value: "staff-1000020001" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
@@ -458,7 +458,7 @@ describe("Payments — admin filter controls", () => {
     expect(screen.getByLabelText("From")).toHaveValue("");
     expect(screen.getByLabelText("To")).toHaveValue("");
     expect(
-      (screen.getByLabelText("Assigned staff") as HTMLSelectElement).value,
+      (screen.getByLabelText("Collected by") as HTMLSelectElement).value,
     ).toBe("");
     expect(vi.mocked(useApiData)).toHaveBeenCalledWith("/payments");
     expect(
@@ -469,7 +469,7 @@ describe("Payments — admin filter controls", () => {
   it("shows the Apply button busy while the filtered request is pending", () => {
     renderPage();
     filteredQueryLoading = true;
-    fireEvent.change(screen.getByLabelText("Assigned staff"), {
+    fireEvent.change(screen.getByLabelText("Collected by"), {
       target: { value: "staff-1000020001" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
@@ -485,13 +485,13 @@ describe("Payments — admin filter controls", () => {
     expect(screen.getByLabelText("From")).toHaveValue("2026-07-01");
     expect(screen.getByLabelText("To")).toHaveValue("2026-07-15");
     expect(
-      (screen.getByLabelText("Assigned staff") as HTMLSelectElement).value,
+      (screen.getByLabelText("Collected by") as HTMLSelectElement).value,
     ).toBe("staff-1000020001");
     expect(vi.mocked(useApiData)).toHaveBeenCalledWith(
       "/payments?from=2026-07-01&to=2026-07-15&assignedUserId=staff-1000020001",
     );
     expect(
-      screen.getByText(/Showing payments from .* to .* assigned to Rahul Nair/i),
+      screen.getByText(/Showing payments from .* to .* collected by Rahul Nair/i),
     ).toBeInTheDocument();
   });
 

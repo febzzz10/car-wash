@@ -503,6 +503,26 @@ function mockJobData(
   };
 }
 
+function getEmployeeCodeInput() {
+  const forms = document.querySelectorAll("form");
+  for (const form of forms) {
+    const input = form.querySelector('input[name="employeeCode"]');
+    if (input instanceof HTMLInputElement) return input;
+  }
+  return null;
+}
+
+async function fillEmployeeCode() {
+  const input = getEmployeeCodeInput();
+  if (!input) throw new Error("Employee code input not found");
+  await userEvent.clear(input);
+  await userEvent.type(input, "EMP001");
+  fireEvent.blur(input);
+  await waitFor(() => {
+    expect(screen.getByText(/Test Staff/)).toBeInTheDocument();
+  });
+}
+
 function mockPageData(job: Record<string, unknown>) {
   vi.mocked(api).mockImplementation((path: string) => {
     if (path.startsWith("/wash-jobs/") && !path.includes("/timer")) {
@@ -700,12 +720,27 @@ describe("PaymentDialog", () => {
   function dialogEl() { return screen.getByRole("dialog"); }
   function formEl() { return dialogEl().querySelector("form")!; }
   function amountInput() { return formEl().querySelector('input[name="amount"]') as HTMLInputElement; }
+  function employeeCodeInput() { return formEl().querySelector('input[name="employeeCode"]') as HTMLInputElement; }
+
+  async function resolveEmployee() {
+    const input = employeeCodeInput();
+    await userEvent.clear(input);
+    await userEvent.type(input, "EMP001");
+    fireEvent.blur(input);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Staff/)).toBeInTheDocument();
+    });
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
     uuidSeq = 0;
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     try { vi.spyOn(crypto, "randomUUID").mockImplementation(() => `00000000-0000-0000-0000-${String(++uuidSeq).padStart(12, "0")}` as `${string}-${string}-${string}-${string}-${string}`); } catch { /* ignore */ }
@@ -782,10 +817,15 @@ describe("PaymentDialog", () => {
   it("submits correct payment payload", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog({ balance_minor: 50000, id: "job-abc" });
     fireEvent.change(amountInput(), { target: { value: "200" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -801,11 +841,14 @@ describe("PaymentDialog", () => {
   it("sends selected method", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
     fireEvent.click(screen.getByRole("radio", { name: "UPI" }));
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -847,11 +890,14 @@ describe("PaymentDialog", () => {
   it("sends transaction reference", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
     fireEvent.change(screen.getByRole("textbox", { name: /transaction reference/i }), { target: { value: "TXN-001" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -863,11 +909,14 @@ describe("PaymentDialog", () => {
   it("sends notes", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
     fireEvent.change(screen.getByRole("textbox", { name: /notes/i }), { target: { value: "Test note" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -879,10 +928,13 @@ describe("PaymentDialog", () => {
   it("omits notes when empty", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -894,10 +946,13 @@ describe("PaymentDialog", () => {
   it("calls onDone on successful submission", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     const { onDone } = renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(onDone).toHaveBeenCalledTimes(1); });
   });
@@ -905,10 +960,13 @@ describe("PaymentDialog", () => {
   it("shows error on API failure", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.reject(new Error("Insufficient balance"));
     });
     renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(screen.getByText("Insufficient balance")).toBeInTheDocument(); });
   });
@@ -916,10 +974,13 @@ describe("PaymentDialog", () => {
   it("does not call onDone on API failure", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.reject(new Error("Server error"));
     });
     const { onDone, onClose } = renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(screen.getByText(/Server error/)).toBeInTheDocument(); });
     expect(onDone).not.toHaveBeenCalled();
@@ -930,10 +991,13 @@ describe("PaymentDialog", () => {
     let resolve!: () => void;
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return new Promise(r => { resolve = () => r({ success: true, data: {} }); });
     });
     renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(screen.getByRole("button", { name: /record payment/i })).toBeDisabled(); });
     resolve!();
@@ -942,10 +1006,13 @@ describe("PaymentDialog", () => {
   it("idempotency key uses crypto.randomUUID", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -957,10 +1024,13 @@ describe("PaymentDialog", () => {
   it("reuses idempotency key for identical payload", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.reject(new Error("Conflict"));
     });
     const { onDone } = renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(screen.getByText("Conflict")).toBeInTheDocument(); });
     const calls1 = vi.mocked(api).mock.calls;
@@ -969,8 +1039,11 @@ describe("PaymentDialog", () => {
     const firstKey = JSON.parse(payCall1![1]!.body as string).idempotencyKey;
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(onDone).toHaveBeenCalled(); });
     const calls2 = vi.mocked(api).mock.calls;
@@ -984,14 +1057,18 @@ describe("PaymentDialog", () => {
     let called = 0;
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       called++;
       if (called === 1) return Promise.reject(new Error("First error"));
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog();
     fireEvent.change(amountInput(), { target: { value: "100" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(screen.getByText("First error")).toBeInTheDocument(); });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(screen.queryByText("First error")).not.toBeInTheDocument(); });
   });
@@ -1004,10 +1081,13 @@ describe("PaymentDialog", () => {
   it("submits with amount 0 when input is empty", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog();
     fireEvent.change(amountInput(), { target: { value: "" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -1027,12 +1107,15 @@ describe("PaymentDialog", () => {
   it("submits tipMinor when tip is filled", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog({ balance_minor: 50000, id: "job-tip" });
     fireEvent.change(amountInput(), { target: { value: "200" } });
     const tipInput = formEl().querySelector('input[name="tip"]') as HTMLInputElement;
     fireEvent.change(tipInput, { target: { value: "50" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -1046,10 +1129,13 @@ describe("PaymentDialog", () => {
   it("submits tipMinor 0 when tip is empty", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog({ balance_minor: 50000, id: "job-notip" });
     fireEvent.change(amountInput(), { target: { value: "300" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -1063,6 +1149,8 @@ describe("PaymentDialog", () => {
   it("tip does not affect amount validation", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog({ balance_minor: 10000, id: "job-tip-val" });
@@ -1092,12 +1180,25 @@ describe("PaymentDialog — UPI and Paytm QR codes", () => {
 
   function formEl() { return screen.getByRole("dialog").querySelector("form")!; }
   function amountInput() { return formEl().querySelector('input[name="amount"]') as HTMLInputElement; }
+  function employeeCodeInput() { return formEl().querySelector('input[name="employeeCode"]') as HTMLInputElement; }
+
+  async function resolveEmployee() {
+    const input = employeeCodeInput();
+    await userEvent.clear(input);
+    await userEvent.type(input, "EMP001");
+    fireEvent.blur(input);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Staff/)).toBeInTheDocument();
+    });
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
     uuidSeq = 0;
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     try { vi.spyOn(crypto, "randomUUID").mockImplementation(() => `00000000-0000-0000-0000-${String(++uuidSeq).padStart(12, "0")}` as `${string}-${string}-${string}-${string}-${string}`); } catch { /* ignore */ }
@@ -1280,11 +1381,14 @@ describe("PaymentDialog — UPI and Paytm QR codes", () => {
   it("submits method UPI when UPI is selected", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog({ balance_minor: 50000, id: "job-upi-qr" });
     selectUPI();
     fireEvent.change(amountInput(), { target: { value: "100" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -1296,11 +1400,14 @@ describe("PaymentDialog — UPI and Paytm QR codes", () => {
   it("submits method PAYTM when Paytm is selected", async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     renderDialog({ balance_minor: 50000, id: "job-paytm-qr" });
     selectPaytm();
     fireEvent.change(amountInput(), { target: { value: "200" } });
+    await resolveEmployee();
     fireEvent.submit(formEl());
     await waitFor(() => { expect(api).toHaveBeenCalled(); });
     const calls = vi.mocked(api).mock.calls;
@@ -1351,6 +1458,8 @@ describe("PaymentDialog — benefits regression", () => {
     vi.clearAllMocks();
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
   });
@@ -1450,6 +1559,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1486,6 +1597,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1522,6 +1635,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1561,6 +1676,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1591,6 +1708,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1615,6 +1734,8 @@ describe("PaymentDialog — benefits regression", () => {
         throw new ApiError(422, "COUPON_INVALID", "The coupon is not eligible.", { "benefits.couponCode": "The coupon code is invalid." });
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1639,6 +1760,8 @@ describe("PaymentDialog — benefits regression", () => {
         throw new ApiError(422, "REFERRAL_INVALID", "The referral is not eligible.", { "benefits.referralCode": "The referral code is invalid." });
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1669,6 +1792,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1697,6 +1822,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1712,6 +1839,7 @@ describe("PaymentDialog — benefits regression", () => {
     await userEvent.setup().clear(amountInp);
     await userEvent.setup().type(amountInp, "500");
     const form = document.querySelector("form")!;
+    await fillEmployeeCode();
     fireEvent.submit(form);
     await waitFor(() => {
       expect(screen.getByText(/Amount cannot exceed ₹490\.00/)).toBeInTheDocument();
@@ -1730,6 +1858,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1762,6 +1892,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1793,6 +1925,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1807,6 +1941,7 @@ describe("PaymentDialog — benefits regression", () => {
     await userEvent.setup().clear(couponInput);
     await userEvent.setup().type(couponInput, "NEWCODE");
     const form = document.querySelector("form")!;
+    await fillEmployeeCode();
     fireEvent.submit(form);
     await waitFor(() => {
       expect(screen.getByText(/Benefits have changed/i)).toBeInTheDocument();
@@ -1836,6 +1971,8 @@ describe("PaymentDialog — benefits regression", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1876,6 +2013,8 @@ describe("PaymentDialog — benefits regression", () => {
         return Promise.resolve({ success: true, data: {} });
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1888,6 +2027,7 @@ describe("PaymentDialog — benefits regression", () => {
       expect(document.querySelector('.payment-due')?.textContent).toContain("₹490.00");
     });
     const form = document.querySelector("form")!;
+    await fillEmployeeCode();
     fireEvent.submit(form);
     await waitFor(() => {
       expect(payPayload).not.toBeNull();
@@ -1912,6 +2052,8 @@ describe("PaymentDialog — benefits regression", () => {
         return Promise.resolve({ success: true, data: {} });
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(
@@ -1927,6 +2069,7 @@ describe("PaymentDialog — benefits regression", () => {
     await userEvent.setup().clear(amountInp);
     await userEvent.setup().type(amountInp, "200");
     const form = document.querySelector("form")!;
+    await fillEmployeeCode();
     fireEvent.submit(form);
     await waitFor(() => {
       expect(payPayload).not.toBeNull();
@@ -1976,6 +2119,8 @@ describe("PaymentDialog — manual discount toggle", () => {
     vi.clearAllMocks();
     vi.mocked(api).mockImplementation((path: string) => {
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     vi.mocked(mockUseAuth).mockReturnValue({
@@ -2025,6 +2170,8 @@ describe("PaymentDialog — manual discount toggle", () => {
         } as any);
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(<PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />);
@@ -2055,6 +2202,8 @@ describe("PaymentDialog — manual discount toggle", () => {
         return Promise.resolve({ success: true, data: {} });
       }
       if (typeof path === "string" && path.includes("/rewards")) return Promise.resolve([]);
+      if (typeof path === "string" && path.includes("/staff/by-employee-code"))
+        return Promise.resolve({ id: "staff-1", name: "Test Staff", employeeCode: "EMP001" });
       return Promise.resolve({ success: true, data: {} });
     });
     render(<PaymentDialog record={unlockedRecord} onClose={vi.fn()} onDone={vi.fn()} open={true} />);
@@ -2063,6 +2212,7 @@ describe("PaymentDialog — manual discount toggle", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: /verify benefits/i }));
     await waitFor(() => { expect(screen.getByRole("button", { name: /record payment/i })).toBeTruthy(); });
     const form = document.querySelector("form")!;
+    await fillEmployeeCode();
     fireEvent.submit(form);
     await waitFor(() => { expect(payPayload).not.toBeNull(); });
     const benefits = (payPayload as any).benefits as Record<string, unknown>;

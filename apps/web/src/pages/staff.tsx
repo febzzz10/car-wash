@@ -30,6 +30,7 @@ import { dateTime, titleCase } from "../lib/format";
 
 interface StaffRecord {
   readonly email?: string | null;
+  readonly employee_code?: string | null;
   readonly full_name: string;
   readonly id: string;
   readonly last_login_at?: string | null;
@@ -141,6 +142,7 @@ export default function StaffPage() {
               <thead>
                 <tr>
                   <th>User</th>
+                  <th>Employee code</th>
                   <th>Role</th>
                   <th>Status</th>
                   <th>Last login</th>
@@ -158,6 +160,13 @@ export default function StaffPage() {
                       <td>
                         <strong>{user.full_name}</strong>
                         <small>@{user.username}</small>
+                      </td>
+                      <td>
+                        <span className="identifier">
+                          {user.employee_code ?? (
+                            <span className="muted">Not assigned</span>
+                          )}
+                        </span>
                       </td>
                       <td>
                         <StatusBadge value={user.role} />
@@ -491,6 +500,7 @@ function StaffDialog({
       await api(user === null ? "/users" : `/users/${user.id}`, {
         ...jsonBody({
           email: values.get("email") || undefined,
+          employeeCode: values.get("employeeCode") || undefined,
           fullName: values.get("fullName"),
           permissions,
           phone: values.get("phone") || undefined,
@@ -530,6 +540,17 @@ function StaffDialog({
           <label>
             <span>Full name</span>
             <input defaultValue={user?.full_name} name="fullName" required />
+          </label>
+          <label>
+            <span>Employee code</span>
+            <input
+              autoComplete="off"
+              defaultValue={user?.employee_code ?? ""}
+              name="employeeCode"
+              pattern="[A-Za-z0-9._-]+"
+              placeholder="EMP001"
+              spellCheck={false}
+            />
           </label>
           <label>
             <span>Username</span>

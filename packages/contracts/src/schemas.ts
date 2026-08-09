@@ -166,6 +166,7 @@ export const paymentInputSchema = paymentBaseSchema
   .extend({
     amountMinor: moneyMinorSchema,
     tipMinor: moneyMinorSchema.default(0),
+    employeeCode: z.string().trim().min(1).max(20).regex(/^[A-Za-z0-9._-]+$/u, "Employee code can only contain letters, numbers, hyphens, underscores, and dots.").optional(),
     benefits: benefitsInputSchema.optional(),
     expectedVersion: z.number().int().positive().safe().optional(),
   })

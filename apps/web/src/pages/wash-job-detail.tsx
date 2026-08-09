@@ -736,6 +736,16 @@ export function PaymentDialog({
   const [tip, setTip] = useState("");
   const [failedQrImage, setFailedQrImage] = useState<string | null>(null);
 
+  const [employeeCode, setEmployeeCode] = useState("");
+  const [resolvedEmployee, setResolvedEmployee] = useState<{
+    id: string;
+    name: string;
+    employeeCode: string;
+  } | null>(null);
+  const [employeeLookupBusy, setEmployeeLookupBusy] = useState(false);
+  const [employeeError, setEmployeeError] = useState<string | null>(null);
+  const employeeLookupSeq = useRef(0);
+
   const lastAttempt = useRef<{ canonicalPayload: string; idempotencyKey: string } | null>(null);
 
   const effectiveBalanceMinor = verifiedBalanceMinor ?? record.balance_minor;
@@ -787,6 +797,7 @@ export function PaymentDialog({
       setPreview(null); setPreviewDirty(false); setPreviewError(null);
       setVerifiedBalanceMinor(null); setFieldErrors({}); setError(null); setAmountEdited(false);
       setTip(""); setFailedQrImage(null);
+      setEmployeeCode(""); setResolvedEmployee(null); setEmployeeError(null);
       lastAttempt.current = null;
     }
     wasOpen.current = open;
@@ -848,8 +859,38 @@ export function PaymentDialog({
     } finally { if (seq === previewSeq.current) setPreviewBusy(false); }
   }
 
+  async function lookupEmployee(code: string) {
+    const seq = ++employeeLookupSeq.current;
+    const trimmed = code.trim();
+    if (trimmed.length === 0) {
+      setResolvedEmployee(null);
+      setEmployeeError(null);
+      return;
+    }
+    setEmployeeLookupBusy(true);
+    setEmployeeError(null);
+    setResolvedEmployee(null);
+    try {
+      const r = await api<{ id: string; name: string; employeeCode: string }>(
+        `/staff/by-employee-code?code=${encodeURIComponent(trimmed)}`,
+      );
+      if (seq !== employeeLookupSeq.current) return;
+      setResolvedEmployee(r);
+      setEmployeeLookupBusy(false);
+    } catch (e) {
+      if (seq !== employeeLookupSeq.current) return;
+      setResolvedEmployee(null);
+      setEmployeeError(e instanceof Error ? e.message : "Employee code lookup failed.");
+      setEmployeeLookupBusy(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (resolvedEmployee === null) {
+      setError("Please enter a valid employee code.");
+      setBusy(false); return;
+    }
     const form = new FormData(event.currentTarget);
     const amountText = (form.get("amount") as string || "0").trim();
     const amountMinor = Math.round(parseFloat(amountText || "0") * 100);
@@ -877,7 +918,7 @@ export function PaymentDialog({
     }
 
     const payload: Record<string, unknown> = {
-      washJobId: record.id, amountMinor, tipMinor, method: isCanonicalPaymentMethod(method) ? method : "CASH",
+      washJobId: record.id, amountMinor, tipMinor, employeeCode: employeeCode.trim(), method: isCanonicalPaymentMethod(method) ? method : "CASH",
       transactionReference: (form.get("reference") as string) || undefined,
       notes: (form.get("notes") as string) || undefined,
       idempotencyKey: "",
@@ -898,7 +939,7 @@ export function PaymentDialog({
       payload.benefits = benefitsPayload;
     }
 
-    const canonical = JSON.stringify({ washJobId: payload.washJobId, amountMinor: payload.amountMinor, tipMinor: payload.tipMinor, method: payload.method, transactionReference: payload.transactionReference, notes: payload.notes, expectedVersion: payload.expectedVersion, benefits: payload.benefits });
+    const canonical = JSON.stringify({ washJobId: payload.washJobId, amountMinor: payload.amountMinor, tipMinor: payload.tipMinor, employeeCode: payload.employeeCode, method: payload.method, transactionReference: payload.transactionReference, notes: payload.notes, expectedVersion: payload.expectedVersion, benefits: payload.benefits });
     payload.idempotencyKey = lastAttempt.current?.canonicalPayload === canonical ? lastAttempt.current.idempotencyKey : crypto.randomUUID();
     if (lastAttempt.current?.canonicalPayload !== canonical) lastAttempt.current = { canonicalPayload: canonical, idempotencyKey: payload.idempotencyKey as string };
 
@@ -980,6 +1021,43 @@ export function PaymentDialog({
             <label><span>Amount</span><input defaultValue={effectiveBalanceMinor > 0 && !amountEdited ? (effectiveBalanceMinor / 100).toString() : undefined} key={`a-${effectiveBalanceMinor}`} max={(effectiveBalanceMinor / 100).toFixed(2)} min="0.01" name="amount" onChange={() => setAmountEdited(true)} required step="0.01" type="number" />{fieldErrors["amountMinor"] ? <span className="field-error">{fieldErrors["amountMinor"]}</span> : null}</label>
             <label><span>Tip (optional)</span><input max="1000000" min="0" name="tip" onChange={e => setTip(e.target.value)} placeholder="0.00" step="0.01" type="number" value={tip} /></label>
           </div>
+          <label>
+            <span>Employee code *</span>
+            <div className="input-with-icon">
+              <input
+                autoComplete="off"
+                className="font-mono"
+                disabled={busy}
+                name="employeeCode"
+                onChange={e => {
+                  setEmployeeCode(e.target.value);
+                  setResolvedEmployee(null);
+                  setEmployeeError(null);
+                }}
+                onBlur={() => {
+                  if (!resolvedEmployee && employeeCode.trim().length > 0) {
+                    void lookupEmployee(employeeCode);
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (employeeCode.trim().length > 0) void lookupEmployee(employeeCode);
+                  }
+                }}
+                placeholder="EMP001"
+                required
+                spellCheck={false}
+                value={employeeCode}
+              />
+              {employeeLookupBusy ? <span className="spinner" /> : null}
+            </div>
+            {resolvedEmployee ? (
+              <span className="resolved-employee">&#10003; {resolvedEmployee.name}</span>
+            ) : employeeError ? (
+              <span className="field-error">{employeeError}</span>
+            ) : null}
+          </label>
           <div>
             <span className="field-label">Method</span>
             <PaymentMethodSelect disabled={busy} error={fieldErrors["method"]} onChange={v => { setMethod(v); clearField("method"); }} value={method} />

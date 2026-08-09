@@ -119,6 +119,7 @@ describe("paymentInputSchema extended", () => {
   it("benefits omitted + amount zero is rejected", () => {
     const r = paymentInputSchema.safeParse({
       washJobId: "j".repeat(8), amountMinor: 0, method: "CASH", idempotencyKey: "k".repeat(16),
+      employeeCode: "EMP001",
     });
     expect(r.success).toBe(false);
   });
@@ -126,6 +127,7 @@ describe("paymentInputSchema extended", () => {
   it("benefits with replaceExisting + amount zero is accepted", () => {
     const r = paymentInputSchema.safeParse({
       washJobId: "j".repeat(8), amountMinor: 0, method: "CASH", idempotencyKey: "k".repeat(16),
+      employeeCode: "EMP001",
       expectedVersion: 1, benefits: { replaceExisting: true, manualDiscountMinor: 0 },
     });
     expect(r.success).toBe(true);
@@ -134,6 +136,7 @@ describe("paymentInputSchema extended", () => {
   it("expectedVersion required with replaceExisting", () => {
     const r = paymentInputSchema.safeParse({
       washJobId: "j".repeat(8), amountMinor: 5000, method: "CASH", idempotencyKey: "k".repeat(16),
+      employeeCode: "EMP001",
       benefits: { replaceExisting: true, manualDiscountMinor: 0 },
     });
     expect(r.success).toBe(false);
@@ -143,6 +146,7 @@ describe("paymentInputSchema extended", () => {
   it("benefits omitted preserves existing behavior", () => {
     const r = paymentInputSchema.safeParse({
       washJobId: "j".repeat(8), amountMinor: 5000, method: "CASH", idempotencyKey: "k".repeat(16),
+      employeeCode: "EMP001",
     });
     expect(r.success).toBe(true);
   });
@@ -158,6 +162,7 @@ describe("paymentInputSchema extended", () => {
   it("accepts tipMinor in valid range", () => {
     const r = paymentInputSchema.safeParse({
       washJobId: "j".repeat(8), amountMinor: 5000, tipMinor: 1000, method: "CASH",
+      employeeCode: "EMP001",
       idempotencyKey: "k".repeat(16),
     });
     expect(r.success).toBe(true);
@@ -167,6 +172,7 @@ describe("paymentInputSchema extended", () => {
   it("defaults tipMinor to 0 when omitted", () => {
     const r = paymentInputSchema.safeParse({
       washJobId: "j".repeat(8), amountMinor: 5000, method: "CASH", idempotencyKey: "k".repeat(16),
+      employeeCode: "EMP001",
     });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.tipMinor).toBe(0);
@@ -193,7 +199,7 @@ describe("payment method values", () => {
   it("accepts every canonical method", () => {
     for (const method of ["CASH", "UPI", "BANK_UPI", "PAYTM"] as const) {
       const r = paymentInputSchema.safeParse({
-        washJobId: "j".repeat(8), amountMinor: 5000, method, idempotencyKey: "k".repeat(16),
+        washJobId: "j".repeat(8), amountMinor: 5000, employeeCode: "EMP001", method, idempotencyKey: "k".repeat(16),
       });
       expect(r.success, method).toBe(true);
     }
@@ -202,7 +208,7 @@ describe("payment method values", () => {
   it("rejects legacy methods", () => {
     for (const method of ["CARD", "BANK_TRANSFER", "OTHER"] as const) {
       const r = paymentInputSchema.safeParse({
-        washJobId: "j".repeat(8), amountMinor: 5000, method, idempotencyKey: "k".repeat(16),
+        washJobId: "j".repeat(8), amountMinor: 5000, employeeCode: "EMP001", method, idempotencyKey: "k".repeat(16),
       });
       expect(r.success, method).toBe(false);
     }
@@ -210,7 +216,7 @@ describe("payment method values", () => {
 
   it("rejects arbitrary methods", () => {
     const r = paymentInputSchema.safeParse({
-      washJobId: "j".repeat(8), amountMinor: 5000, method: "CHEQUE", idempotencyKey: "k".repeat(16),
+      washJobId: "j".repeat(8), amountMinor: 5000, employeeCode: "EMP001", method: "CHEQUE", idempotencyKey: "k".repeat(16),
     });
     expect(r.success).toBe(false);
   });

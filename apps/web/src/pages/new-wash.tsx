@@ -120,8 +120,12 @@ export default function NewWashPage() {
   const maskPhone = useMaskedPhone();
   const isAdmin = user?.role === "ADMIN";
   const searching = search.trim() !== "";
+  const customersUrl =
+    isAdmin && !searching
+      ? "/customers?recent=1"
+      : `/customers?search=${encodeURIComponent(search.trim())}`;
   const customers = useApiData<readonly CustomerRecord[]>(
-    `/customers?search=${encodeURIComponent(search)}`,
+    customersUrl,
     isAdmin || searching,
   );
   const staff = useApiData<readonly StaffRecord[]>(
@@ -336,33 +340,46 @@ export default function NewWashPage() {
                     message={customers.error}
                     onRetry={customers.reload}
                   />
-                ) : !isAdmin && (customers.data?.length ?? 0) === 0 ? (
-                  <EmptyState
-                    icon={UserRoundSearch}
-                    message="Try a different name, phone number, or registration number."
-                    title="No customers found"
-                  />
+                ) : (customers.data?.length ?? 0) === 0 ? (
+                  isAdmin && !searching ? (
+                    <EmptyState
+                      icon={UserRoundSearch}
+                      message="Create your first customer to get started."
+                      title="No customers yet"
+                    />
+                  ) : (
+                    <EmptyState
+                      icon={UserRoundSearch}
+                      message="Try a different name, phone number, or registration number."
+                      title="No customers found"
+                    />
+                  )
                 ) : (
-                  <div className="choice-list">
-                    {customers.data?.map((customer) => (
-                      <Choice
-                        active={customer.id === customerId}
-                        key={customer.id}
-                        onClick={() => {
-                          setCustomerId(customer.id);
-                          setExplicitCustomer(customer);
-                          setVehicleId("");
-                        }}
-                        primary={customer.full_name}
-                        secondary={
-                          customer.matching_registrations !== undefined &&
-                          customer.matching_registrations.length > 0
-                            ? `${customer.matching_registrations.join(", ")} · ${maskPhone(customer.phone)} · ${customer.total_visits_cached} visits`
-                            : `${maskPhone(customer.phone)} · ${customer.total_visits_cached} visits`
-                        }
-                      />
-                    ))}
-                  </div>
+                  <>
+                    {isAdmin && !searching ? (
+                      <p className="section-heading">Recently added customers</p>
+                    ) : null}
+                    <div className="choice-list">
+                      {customers.data?.map((customer) => (
+                        <Choice
+                          active={customer.id === customerId}
+                          key={customer.id}
+                          onClick={() => {
+                            setCustomerId(customer.id);
+                            setExplicitCustomer(customer);
+                            setVehicleId("");
+                          }}
+                          primary={customer.full_name}
+                          secondary={
+                            customer.matching_registrations !== undefined &&
+                            customer.matching_registrations.length > 0
+                              ? `${customer.matching_registrations.join(", ")} · ${maskPhone(customer.phone)} · ${customer.total_visits_cached} visits`
+                              : `${maskPhone(customer.phone)} · ${customer.total_visits_cached} visits`
+                          }
+                        />
+                      ))}
+                    </div>
+                  </>
                 )
               ) : selectedCustomer !== undefined ? (
                 <div className="choice-list">

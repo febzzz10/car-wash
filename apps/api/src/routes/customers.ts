@@ -43,6 +43,30 @@ export const customerRoutes = new Hono<AppBindings>();
 customerRoutes.get("/", requirePermission("customers.read"), async (c) => {
   const auth = c.get("auth");
   const query = c.req.query("search")?.trim() ?? "";
+  const recent = c.req.query("recent") === "1";
+
+  if (recent) {
+    if (auth.role !== "ADMIN") {
+      throw new ApiError(
+        403,
+        "AUTH_PERMISSION_DENIED",
+        "Administrator access required.",
+      );
+    }
+    const result = await c.env.DB.prepare(
+      `SELECT id, customer_code, full_name, phone, phone_normalized, email,
+        address, notes, status, registered_at, last_visit_at,
+        total_visits_cached, total_spent_minor_cached, created_at, updated_at, version
+      FROM customers
+      WHERE organization_id = ? AND status = 'ACTIVE'
+      ORDER BY created_at DESC, id DESC
+      LIMIT 5`,
+    )
+      .bind(auth.organizationId)
+      .all();
+    return c.json({ data: result.results, success: true });
+  }
+
   const status = c.req.query("status") === "INACTIVE" ? "INACTIVE" : "ACTIVE";
   const like = `%${query.toLocaleLowerCase("en-IN").replace(/\s+/gu, " ")}%`;
   const digits = query.replace(/\D/gu, "");

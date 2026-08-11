@@ -17,7 +17,7 @@ const CUSTOMER_FIXTURE: readonly {
   readonly phone: string;
   readonly phone_normalized: string;
   readonly total_visits_cached: number;
-  readonly matching_registrations: readonly string[];
+  readonly matching_registrations?: readonly string[];
 }[] = [
   {
     id: "c1",
@@ -986,31 +986,122 @@ describe("New Wash — staff customer search privacy", () => {
       screen.getByRole("button", { name: /Add customer/ }),
     ).toBeTruthy();
   });
+
+  it("never shows the recently added customers section to staff", async () => {
+    asStaff();
+    const { default: NewWashPage } = await import("./new-wash");
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText("Recently added customers")).toBeNull();
+    expect(screen.queryByText("No customers yet")).toBeNull();
+  });
 });
 
 describe("New Wash — admin customer list", () => {
-  it("still shows the default/recent customer list when the search is empty", async () => {
+  const RECENT_FIVE = [
+    {
+      id: "r1",
+      full_name: "Grace",
+      phone: "9000000007",
+      phone_normalized: "+919000000007",
+      total_visits_cached: 0,
+    },
+    {
+      id: "r2",
+      full_name: "Finn",
+      phone: "9000000006",
+      phone_normalized: "+919000000006",
+      total_visits_cached: 1,
+    },
+    {
+      id: "r3",
+      full_name: "Eve",
+      phone: "9000000005",
+      phone_normalized: "+919000000005",
+      total_visits_cached: 2,
+    },
+    {
+      id: "r4",
+      full_name: "Dan",
+      phone: "9000000004",
+      phone_normalized: "+919000000004",
+      total_visits_cached: 0,
+    },
+    {
+      id: "r5",
+      full_name: "Cathy",
+      phone: "9000000003",
+      phone_normalized: "+919000000003",
+      total_visits_cached: 5,
+    },
+  ];
+
+  it("shows the Recently added customers heading with an empty search", async () => {
+    customerData = RECENT_FIVE;
     const { default: NewWashPage } = await import("./new-wash");
-    render(
-      <MemoryRouter>
-        <NewWashPage />
-      </MemoryRouter>,
-    );
-    expect(screen.getByText("Test Customer")).toBeTruthy();
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    expect(screen.getByText("Recently added customers")).toBeTruthy();
+    expect(screen.getByText("Grace")).toBeTruthy();
+    expect(screen.getByText("Finn")).toBeTruthy();
     expect(screen.queryByText(SEARCH_INSTRUCTION)).toBeNull();
   });
 
-  it("keeps the default list visible after clearing a search", async () => {
+  it("hides the recent list and shows search results when admin types", async () => {
+    customerData = [{ id: "search-result", full_name: "Rohit", phone: "8590384225", phone_normalized: "+918590384225", total_visits_cached: 0 }];
     const { default: NewWashPage } = await import("./new-wash");
-    render(
-      <MemoryRouter>
-        <NewWashPage />
-      </MemoryRouter>,
-    );
-    fireEvent.change(customerInput(), { target: { value: "Test" } });
-    expect(screen.getByText("Test Customer")).toBeTruthy();
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    expect(screen.getByText("Recently added customers")).toBeTruthy();
+    fireEvent.change(customerInput(), { target: { value: "Rohit" } });
+    expect(screen.queryByText("Recently added customers")).toBeNull();
+    expect(screen.queryByText("Grace")).toBeNull();
+    expect(screen.getByText("Rohit")).toBeTruthy();
+  });
+
+  it("restores the recent list when admin clears the search", async () => {
+    customerData = RECENT_FIVE;
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    fireEvent.change(customerInput(), { target: { value: "Rohit" } });
+    expect(screen.queryByText("Recently added customers")).toBeNull();
+    customerData = RECENT_FIVE;
     fireEvent.change(customerInput(), { target: { value: "" } });
-    expect(screen.getByText("Test Customer")).toBeTruthy();
+    expect(screen.getByText("Recently added customers")).toBeTruthy();
+    expect(screen.getByText("Grace")).toBeTruthy();
+  });
+
+  it("selecting a recent customer continues the wizard", async () => {
+    customerData = RECENT_FIVE;
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    const graceButtons = screen.getAllByText("Grace");
+    const graceCustomerButton = graceButtons.find(
+      (el) => el.closest("button") !== null,
+    )!.closest("button")!;
+    fireEvent.click(graceCustomerButton);
+    expect(screen.getAllByText("Grace").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Continue")).toBeTruthy();
+  });
+
+  it("shows No customers yet when the org has zero customers", async () => {
+    customerData = [];
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    expect(screen.getByText("No customers yet")).toBeTruthy();
+    expect(screen.queryByText("Recently added customers")).toBeNull();
+  });
+
+  it("shows the full five recent customer names in order", async () => {
+    customerData = RECENT_FIVE;
+    const { default: NewWashPage } = await import("./new-wash");
+    render(<MemoryRouter><NewWashPage /></MemoryRouter>);
+    expect(screen.getByText("Grace")).toBeTruthy();
+    expect(screen.getByText("Finn")).toBeTruthy();
+    expect(screen.getByText("Eve")).toBeTruthy();
+    expect(screen.getByText("Dan")).toBeTruthy();
+    expect(screen.getByText("Cathy")).toBeTruthy();
   });
 });
 

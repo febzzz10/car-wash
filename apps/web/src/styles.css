@@ -1542,6 +1542,14 @@ legend {
   margin: 8px 0 22px;
   max-width: 720px;
 }
+.section-heading {
+  color: var(--ink-500);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
 .selection-toolbar {
   align-items: center;
   display: flex;

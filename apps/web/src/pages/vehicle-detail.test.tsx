@@ -1,14 +1,112 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { api } from "../lib/api";
-import { ChangeVehicleStatusDialog } from "./vehicle-detail";
+import { useAuth } from "../auth";
+import { useApiData } from "../hooks/use-api-data";
+import VehicleDetailPage, {
+  ChangeVehicleStatusDialog,
+} from "./vehicle-detail";
 
 vi.mock("../lib/api", () => ({
   api: vi.fn(),
   jsonBody: (value: unknown) => ({ body: JSON.stringify(value) }),
 }));
+
+vi.mock("../hooks/use-api-data", () => ({
+  useApiData: vi.fn(),
+}));
+
+function adminUser(): ReturnType<typeof useAuth> {
+  return {
+    loading: false,
+    manualDiscountEnabled: false,
+    paymentDefaultMethod: "CASH",
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+    user: {
+      id: "admin-1",
+      role: "ADMIN",
+      permissions: [] as string[],
+      username: "admin",
+      fullName: "Admin",
+      branchId: "b1",
+    },
+  };
+}
+
+function staffUser(): ReturnType<typeof useAuth> {
+  return {
+    loading: false,
+    manualDiscountEnabled: false,
+    paymentDefaultMethod: "CASH",
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+    user: {
+      id: "staff-1",
+      role: "STAFF",
+      permissions: [] as string[],
+      username: "staff",
+      fullName: "Staff",
+      branchId: "b1",
+    },
+  };
+}
+
+vi.mock("../auth", () => ({
+  useAuth: vi.fn(() => adminUser()),
+}));
+
+const vehicleFixture = {
+  id: "vehicle-1",
+  customer_id: "c1",
+  customer_name: "Test Customer",
+  customer_phone: "9002005005",
+  registration_number: "KL01TEST",
+  vehicle_type_id: "vt1",
+  vehicle_type_name: "Four Wheeler",
+  status: "ACTIVE",
+  make: "Honda",
+  model: "City",
+  colour: null,
+  fuel_type: null,
+  manufacturing_year: null,
+  notes: null,
+  last_wash_at: null,
+};
+
+function renderDetailPage() {
+  vi.mocked(useApiData).mockImplementation((path: string) => {
+    if (path === "/vehicles/vehicle-1") {
+      return {
+        data: vehicleFixture,
+        error: null,
+        loading: false,
+        reload: vi.fn(),
+      };
+    }
+    if (path === "/vehicles/vehicle-1/history") {
+      return {
+        data: { invoices: [], locations: [], photos: [], washJobs: [] },
+        error: null,
+        loading: false,
+        reload: vi.fn(),
+      };
+    }
+    return { data: null, error: null, loading: true, reload: vi.fn() };
+  });
+  return render(
+    <MemoryRouter initialEntries={["/vehicles/vehicle-1"]}>
+      <Routes>
+        <Route element={<VehicleDetailPage />} path="/vehicles/:id" />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
 
 const onClose = vi.fn();
 const onDone = vi.fn();
@@ -187,5 +285,24 @@ describe("ChangeVehicleStatusDialog", () => {
     });
     expect(callCount).toBe(1);
     resolvePromise!();
+  });
+});
+
+describe("VehicleDetailPage — phone masking", () => {
+  afterEach(() => {
+    cleanup();
+    vi.mocked(useAuth).mockImplementation(() => adminUser());
+  });
+
+  it("shows the full owner phone to admins", () => {
+    renderDetailPage();
+    expect(screen.getByText("9002005005")).toBeInTheDocument();
+  });
+
+  it("masks the owner phone for staff", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderDetailPage();
+    expect(screen.getByText("90xxxxxx05")).toBeInTheDocument();
+    expect(screen.queryByText("9002005005")).not.toBeInTheDocument();
   });
 });

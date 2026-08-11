@@ -17,6 +17,7 @@ import { ApiError } from "../http/errors";
 import { requireAdmin, requirePermission } from "../middleware/auth";
 import { sha256 } from "../security/tokens";
 import { auditStatement } from "../services/audit";
+import { maskPhoneSnapshotRow } from "../services/phone-masking";
 import {
   booleanSetting,
   integerSetting,
@@ -131,7 +132,10 @@ washJobRoutes.get("/", requirePermission("wash_jobs.read"), async (c) => {
   )
     .bind(auth.organizationId, auth.branchId, status ?? null, status ?? null)
     .all();
-  return c.json({ data: result.results, success: true });
+  return c.json({
+    data: result.results.map((job) => maskPhoneSnapshotRow(job, auth.role)),
+    success: true,
+  });
 });
 
 washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
@@ -154,7 +158,11 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
         .bind(existing, auth.organizationId)
         .first();
       if (job !== null)
-        return c.json({ data: job, idempotentReplay: true, success: true });
+        return c.json({
+          data: maskPhoneSnapshotRow(job, auth.role),
+          idempotentReplay: true,
+          success: true,
+        });
     }
   }
 
@@ -463,7 +471,7 @@ washJobRoutes.post("/", requirePermission("wash_jobs.create"), async (c) => {
   const created = await c.env.DB.prepare("SELECT * FROM wash_jobs WHERE id = ?")
     .bind(jobId)
     .first();
-  return c.json({ data: created, success: true }, 201);
+  return c.json({ data: maskPhoneSnapshotRow(created, auth.role), success: true }, 201);
 });
 
 washJobRoutes.get(
@@ -732,7 +740,7 @@ washJobRoutes.get("/:id", requirePermission("wash_jobs.read"), async (c) => {
   ]);
   return c.json({
     data: {
-      ...job,
+      ...maskPhoneSnapshotRow(job, auth.role),
       items: items.results,
       locations: locations.results,
       photos: photos.results,
@@ -840,9 +848,12 @@ for (const [path, action, event] of [
           "Another device already changed this timer.",
         );
       return c.json({
-        data: await c.env.DB.prepare("SELECT * FROM wash_jobs WHERE id = ?")
-          .bind(job.id)
-          .first(),
+        data: maskPhoneSnapshotRow(
+          await c.env.DB.prepare("SELECT * FROM wash_jobs WHERE id = ?")
+            .bind(job.id)
+            .first(),
+          auth.role,
+        ),
         success: true,
       });
     },
@@ -903,9 +914,12 @@ washJobRoutes.post(
       requestId: c.get("requestId"),
     }).run();
     return c.json({
-      data: await c.env.DB.prepare("SELECT * FROM wash_jobs WHERE id = ?")
-        .bind(job.id)
-        .first(),
+      data: maskPhoneSnapshotRow(
+        await c.env.DB.prepare("SELECT * FROM wash_jobs WHERE id = ?")
+          .bind(job.id)
+          .first(),
+        auth.role,
+      ),
       success: true,
     });
   },
@@ -1038,9 +1052,12 @@ washJobRoutes.post(
         "Another device already changed this timer.",
       );
     return c.json({
-      data: await c.env.DB.prepare("SELECT * FROM wash_jobs WHERE id = ?")
-        .bind(job.id)
-        .first(),
+      data: maskPhoneSnapshotRow(
+        await c.env.DB.prepare("SELECT * FROM wash_jobs WHERE id = ?")
+          .bind(job.id)
+          .first(),
+        auth.role,
+      ),
       success: true,
     });
   },
@@ -1164,9 +1181,12 @@ washJobRoutes.post(
     }
     await c.env.DB.batch(statements);
     return c.json({
-      data: await c.env.DB.prepare("SELECT * FROM wash_jobs WHERE id = ?")
-        .bind(job.id)
-        .first(),
+      data: maskPhoneSnapshotRow(
+        await c.env.DB.prepare("SELECT * FROM wash_jobs WHERE id = ?")
+          .bind(job.id)
+          .first(),
+        auth.role,
+      ),
       success: true,
     });
   },

@@ -28,6 +28,7 @@ import VehicleModelAutocomplete from "../components/vehicle-model-autocomplete";
 import VehicleTypeSelect from "../components/vehicle-type-select";
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
+import { useMaskedPhone } from "../hooks/use-masked-phone";
 import { api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
 import {
@@ -116,6 +117,7 @@ export default function NewWashPage() {
   const [explicitCustomer, setExplicitCustomer] =
     useState<CustomerRecord | null>(null);
   const { user } = useAuth();
+  const maskPhone = useMaskedPhone();
   const isAdmin = user?.role === "ADMIN";
   const searching = search.trim() !== "";
   const customers = useApiData<readonly CustomerRecord[]>(
@@ -355,8 +357,8 @@ export default function NewWashPage() {
                         secondary={
                           customer.matching_registrations !== undefined &&
                           customer.matching_registrations.length > 0
-                            ? `${customer.matching_registrations.join(", ")} · ${customer.phone} · ${customer.total_visits_cached} visits`
-                            : `${customer.phone} · ${customer.total_visits_cached} visits`
+                            ? `${customer.matching_registrations.join(", ")} · ${maskPhone(customer.phone)} · ${customer.total_visits_cached} visits`
+                            : `${maskPhone(customer.phone)} · ${customer.total_visits_cached} visits`
                         }
                       />
                     ))}
@@ -371,8 +373,8 @@ export default function NewWashPage() {
                     secondary={
                       selectedCustomer.matching_registrations !== undefined &&
                       selectedCustomer.matching_registrations.length > 0
-                        ? `${selectedCustomer.matching_registrations.join(", ")} · ${selectedCustomer.phone} · ${selectedCustomer.total_visits_cached} visits`
-                        : `${selectedCustomer.phone} · ${selectedCustomer.total_visits_cached} visits`
+                        ? `${selectedCustomer.matching_registrations.join(", ")} · ${maskPhone(selectedCustomer.phone)} · ${selectedCustomer.total_visits_cached} visits`
+                        : `${maskPhone(selectedCustomer.phone)} · ${selectedCustomer.total_visits_cached} visits`
                     }
                   />
                 </div>
@@ -986,6 +988,7 @@ function ReviewStep({
   readonly startImmediately: boolean;
   readonly vehicle: VehicleRecord | undefined;
 }) {
+  const maskPhone = useMaskedPhone();
   return (
     <SelectionStep
       heading="Review and create"
@@ -995,7 +998,7 @@ function ReviewStep({
         <div>
           <span>Customer</span>
           <strong>{customer?.full_name}</strong>
-          <small>{customer?.phone}</small>
+          <small>{maskPhone(customer?.phone)}</small>
         </div>
         <div>
           <span>Vehicle</span>
@@ -1083,6 +1086,7 @@ function NewCustomerDialog({
   readonly open: boolean;
 }) {
   const [busy, setBusy] = useState(false);
+  const maskPhone = useMaskedPhone();
   const [error, setError] = useState<string | null>(null);
   const [phoneValue, setPhoneValue] = useState("");
   const [phoneLookupResults, setPhoneLookupResults] = useState<
@@ -1228,7 +1232,7 @@ function NewCustomerDialog({
               <div>
                 <span>Existing customer found</span>
                 <strong>{exactMatchCustomer.full_name}</strong>
-                <small>{exactMatchCustomer.phone}</small>
+                <small>{maskPhone(exactMatchCustomer.phone)}</small>
                 {exactMatchCustomer.total_visits_cached > 0 ? (
                   <small>{exactMatchCustomer.total_visits_cached} visits</small>
                 ) : null}
@@ -1260,7 +1264,7 @@ function NewCustomerDialog({
                 <span>
                   <strong>{customer.full_name}</strong>
                   <small>
-                    {customer.phone}
+                    {maskPhone(customer.phone)}
                     {customer.total_visits_cached > 0
                       ? ` · ${customer.total_visits_cached} visits`
                       : ""}

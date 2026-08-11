@@ -1,5 +1,6 @@
 export * from "./billing";
 export * from "./coupons";
+export * from "./masking";
 export * from "./normalization";
 export * from "./payments";
 export * from "./permissions";

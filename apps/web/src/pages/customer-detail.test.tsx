@@ -90,6 +90,25 @@ function adminUser(): ReturnType<typeof useAuth> {
   };
 }
 
+function staffUser(): ReturnType<typeof useAuth> {
+  return {
+    loading: false,
+    manualDiscountEnabled: false,
+    paymentDefaultMethod: "CASH",
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+    user: {
+      id: "staff-1",
+      role: "STAFF",
+      permissions: [] as string[],
+      username: "staff",
+      fullName: "Staff",
+      branchId: "branch-1",
+    },
+  };
+}
+
 vi.mock("../auth", () => ({
   useAuth: vi.fn(() => adminUser()),
 }));
@@ -315,5 +334,19 @@ describe("Customer profile preservation", () => {
     expect(screen.getByRole("heading", { name: "Coupons (0)" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Referrals (0)" })).toBeInTheDocument();
     expect(screen.getByText("INV-001")).toBeInTheDocument();
+  });
+});
+
+describe("Customer profile — phone masking", () => {
+  it("shows the full phone number to admins", () => {
+    renderPage(historyFixture());
+    expect(screen.getByText("9002005005")).toBeInTheDocument();
+  });
+
+  it("masks the phone number for staff", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage(historyFixture());
+    expect(screen.getByText("90xxxxxx05")).toBeInTheDocument();
+    expect(screen.queryByText("9002005005")).not.toBeInTheDocument();
   });
 });

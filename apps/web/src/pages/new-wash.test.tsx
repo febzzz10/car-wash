@@ -493,6 +493,32 @@ describe("New Wash — Review step", () => {
     );
     expect(screen.getByText("Estimated service value")).toBeTruthy();
   });
+
+  it("Review masks the customer phone for staff", async () => {
+    asStaff();
+    const baseImpl = vi.mocked(useApiData).getMockImplementation()!;
+    vi.mocked(useApiData).mockImplementation((path: string, enabled = true) => {
+      if (path.includes("customers"))
+        return {
+          data: CUSTOMER_FIXTURE,
+          error: null,
+          loading: false,
+          reload: mockReload,
+        };
+      return baseImpl(path, enabled);
+    });
+    const { default: NewWashPage } = await import("./new-wash");
+    setDraft(5);
+    render(
+      <MemoryRouter>
+        <NewWashPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText("9876543210")).toBeNull();
+    expect(screen.getAllByText("98xxxxxx10").length).toBeGreaterThanOrEqual(1);
+    vi.mocked(useApiData).mockImplementation(baseImpl);
+    vi.mocked(useAuth).mockImplementation(() => adminUser());
+  });
 });
 
 describe("New Wash — create-job payload", () => {
@@ -849,7 +875,7 @@ describe("New Wash — staff customer search privacy", () => {
     fireEvent.change(customerInput(), { target: { value: "KL01" } });
     expect(screen.getByText("Test Customer")).toBeTruthy();
     expect(
-      screen.getByText("KL01TEST · 9876543210 · 3 visits"),
+      screen.getByText("KL01TEST · 98xxxxxx10 · 3 visits"),
     ).toBeTruthy();
   });
 
@@ -1829,7 +1855,7 @@ describe("New Wash — staff selected customer visibility", () => {
       expect(screen.queryByText("Existing customer found")).toBeNull();
     });
     expect(screen.getAllByText("Arun").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/8590384225/)).toBeTruthy();
+    expect(screen.getByText(/85xxxxxx25/)).toBeTruthy();
     expect(screen.queryByText(SEARCH_INSTRUCTION)).toBeNull();
   });
 

@@ -12,6 +12,7 @@ import {
   StatusBadge,
 } from "../components/ui";
 import { useApiData } from "../hooks/use-api-data";
+import { useMaskedPhone } from "../hooks/use-masked-phone";
 import { api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
 import VehicleMakeAutocomplete from "../components/vehicle-make-autocomplete";
@@ -33,6 +34,7 @@ interface VehicleHistory {
 }
 export default function VehicleDetailPage() {
   const { id = "" } = useParams();
+  const maskPhone = useMaskedPhone();
   const [editing, setEditing] = useState(false);
   const [statusChangeOpen, setStatusChangeOpen] = useState(false);
   const vehicle = useApiData<
@@ -88,7 +90,7 @@ export default function VehicleDetailPage() {
             </div>
             <div>
               <dt>Phone</dt>
-              <dd>{item.customer_phone}</dd>
+              <dd>{maskPhone(item.customer_phone)}</dd>
             </div>
             <div>
               <dt>Make & model</dt>

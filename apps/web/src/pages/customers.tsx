@@ -22,12 +22,14 @@ import {
 import { useToast } from "../components/toast";
 import { useAuth } from "../auth";
 import { useApiData } from "../hooks/use-api-data";
+import { useMaskedPhone } from "../hooks/use-masked-phone";
 import { api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
 import type { CustomerRecord } from "../types";
 
 export default function CustomersPage() {
   const { user } = useAuth();
+  const maskPhone = useMaskedPhone();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ACTIVE");
   const [dialog, setDialog] = useState(false);
@@ -124,7 +126,7 @@ export default function CustomersPage() {
                         </small>
                       )}
                     </td>
-                    <td>{customer.phone}</td>
+                    <td>{maskPhone(customer.phone)}</td>
                     <td>{customer.total_visits_cached}</td>
                     <td>{money(customer.total_spent_minor_cached)}</td>
                     <td>{dateTime(customer.last_visit_at)}</td>

@@ -12,6 +12,7 @@ import { ApiError } from "../http/errors";
 import { clientIp } from "../http/request";
 import { requirePermission } from "../middleware/auth";
 import { auditStatement } from "../services/audit";
+import { maskPhoneSnapshotRow } from "../services/phone-masking";
 import type { AppBindings } from "../types";
 
 const customerPatchSchema = customerInputSchema.partial().extend({
@@ -504,7 +505,11 @@ customerRoutes.get(
           )
         : null;
     return c.json({
-      data: { jobs, hasMore: nextCursor !== null, nextCursor },
+      data: {
+        jobs: jobs.map((job) => maskPhoneSnapshotRow(job, auth.role)),
+        hasMore: nextCursor !== null,
+        nextCursor,
+      },
       success: true,
     });
   },
@@ -573,7 +578,9 @@ customerRoutes.get(
     return c.json({
       data: {
         coupons: coupons.results,
-        invoices: invoices.results,
+        invoices: invoices.results.map((invoice) =>
+          maskPhoneSnapshotRow(invoice, auth.role),
+        ),
         locations: locations.results,
         payments: payments.results,
         photos: photos.results,

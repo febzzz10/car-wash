@@ -18,6 +18,7 @@ import {
 } from "../components/ui";
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
+import { useMaskedPhone } from "../hooks/use-masked-phone";
 import { API_BASE, api } from "../lib/api";
 import { dateTime, money } from "../lib/format";
 
@@ -61,6 +62,7 @@ interface SharePayload {
 }
 export default function InvoiceDetailPage() {
   const { id = "" } = useParams();
+  const maskPhone = useMaskedPhone();
   const invoice = useApiData<InvoiceDetail>(`/invoices/${id}`);
   const toast = useToast();
   async function download(print = false) {
@@ -165,7 +167,7 @@ export default function InvoiceDetailPage() {
             <div>
               <span>Billed to</span>
               <strong>{item.customer_name_snapshot}</strong>
-              <small>{item.customer_phone_snapshot}</small>
+              <small>{maskPhone(item.customer_phone_snapshot)}</small>
             </div>
             <div>
               <span>Vehicle</span>

@@ -7,9 +7,10 @@ import {
   useLocation,
 } from "react-router-dom";
 
-import CustomersPage from "./customers";
+import CustomersPage, { CustomerDialog } from "./customers";
 import { useAuth } from "../auth";
 import { useApiData } from "../hooks/use-api-data";
+import { api } from "../lib/api";
 
 const mockReload = vi.fn();
 
@@ -18,6 +19,7 @@ const CUSTOMER_FIXTURE = [
     id: "c1",
     full_name: "Test Customer",
     phone: "9002005005",
+    phone_normalized: "+919002005005",
     status: "ACTIVE",
     total_visits_cached: 3,
     total_spent_minor_cached: 1000,
@@ -28,6 +30,7 @@ const CUSTOMER_FIXTURE = [
     id: "c2",
     full_name: "Kerala Driver",
     phone: "+91 90020 05005",
+    phone_normalized: "+919002005005",
     status: "INACTIVE",
     total_visits_cached: 1,
     total_spent_minor_cached: 500,
@@ -38,6 +41,7 @@ const CUSTOMER_FIXTURE = [
     id: "c3",
     full_name: "No Phone",
     phone: "",
+    phone_normalized: "",
     status: "ACTIVE",
     total_visits_cached: 0,
     total_spent_minor_cached: 0,
@@ -48,6 +52,7 @@ const CUSTOMER_FIXTURE = [
     id: "c4",
     full_name: "Bad Phone",
     phone: "123",
+    phone_normalized: "",
     status: "ACTIVE",
     total_visits_cached: 0,
     total_spent_minor_cached: 0,
@@ -61,6 +66,7 @@ const REGISTRATION_MATCHED = [
     id: "c1",
     full_name: "Test Customer",
     phone: "9002005005",
+    phone_normalized: "+919002005005",
     status: "ACTIVE",
     total_visits_cached: 3,
     total_spent_minor_cached: 1000,
@@ -576,5 +582,95 @@ describe("Customers directory — staff must search first", () => {
     expect(screen.getByText("Kerala Driver")).toBeDefined();
     expect(document.querySelector("table")).not.toBeNull();
     expect(screen.queryByText("Search for a customer")).toBeNull();
+  });
+});
+
+describe("Customers directory — staff phone masking", () => {
+  afterEach(() => {
+    cleanup();
+    vi.mocked(useApiData).mockClear();
+    vi.mocked(useAuth).mockImplementation(() => adminUser());
+  });
+
+  it("masks customer phone numbers in the table for staff", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "90020" } });
+    expect(screen.getByText("90xxxxxx05")).toBeDefined();
+    expect(screen.getByText("+91 90xxxxxx05")).toBeDefined();
+    expect(screen.queryByText("9002005005")).toBeNull();
+  });
+
+  it("keeps short or blank phone values readable for staff", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "90020" } });
+    expect(screen.getByRole("cell", { name: "123" })).toBeDefined();
+    const noPhoneRow = screen.getByText("No Phone").closest("tr")!;
+    expect(noPhoneRow.textContent).not.toContain("x");
+  });
+
+  it("keeps real phone numbers in call and WhatsApp actions for staff", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    fireEvent.change(searchInput(), { target: { value: "90020" } });
+    expect(screen.getByLabelText("Call Test Customer")).toHaveAttribute(
+      "href",
+      "tel:+919002005005",
+    );
+    expect(
+      screen.getByLabelText("Message Test Customer on WhatsApp"),
+    ).toHaveAttribute("href", `https://wa.me/919002005005?text=${encodeURIComponent("Hi Test Customer, your vehicle wash has been completed. Thank you for choosing WashPro.")}`);
+  });
+
+  it("shows the full customer phone numbers to admins", () => {
+    renderPage();
+    expect(screen.getByText("9002005005")).toBeDefined();
+    expect(screen.getByText("+91 90020 05005")).toBeDefined();
+  });
+});
+
+describe("Customers directory — staff edit form phone integrity", () => {
+  afterEach(() => {
+    cleanup();
+    vi.mocked(useAuth).mockImplementation(() => adminUser());
+  });
+
+  it("preloads the real phone into the edit form for staff", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    render(
+      <CustomerDialog
+        customer={CUSTOMER_FIXTURE[0]!}
+        onClose={() => undefined}
+        onDone={() => undefined}
+        open
+      />,
+    );
+    const phoneInput = screen.getByLabelText("Phone") as HTMLInputElement;
+    expect(phoneInput.value).toBe("9002005005");
+  });
+
+  it("submits the real phone unchanged when staff edits only the name", async () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    render(
+      <CustomerDialog
+        customer={CUSTOMER_FIXTURE[0]!}
+        onClose={() => undefined}
+        onDone={() => undefined}
+        open
+      />,
+    );
+    const fullNameInput = screen.getByLabelText("Full name") as HTMLInputElement;
+    fireEvent.change(fullNameInput, { target: { value: "Test Customer Edited" } });
+    fireEvent.submit(fullNameInput.closest("form")!);
+    expect(api).toHaveBeenCalledWith("/customers/c1", {
+      body: JSON.stringify({
+        email: "",
+        fullName: "Test Customer Edited",
+        phone: "9002005005",
+        version: 1,
+      }),
+      method: "PATCH",
+    });
   });
 });

@@ -6,6 +6,10 @@ import { z } from "zod";
 import { ApiError } from "../http/errors";
 import { requirePermission } from "../middleware/auth";
 import { auditStatement } from "../services/audit";
+import {
+  maskCustomerPhoneRow,
+  maskPhoneSnapshotRow,
+} from "../services/phone-masking";
 import type { AppBindings } from "../types";
 
 const vehicleTypeCodeOptional = z.object({
@@ -49,7 +53,12 @@ vehicleRoutes.get("/", requirePermission("vehicles.read"), async (c) => {
   )
     .bind(auth.organizationId, query, search)
     .all();
-  return c.json({ data: result.results, success: true });
+  return c.json({
+    data: result.results.map((vehicle) =>
+      maskCustomerPhoneRow(vehicle, auth.role),
+    ),
+    success: true,
+  });
 });
 
 vehicleRoutes.post("/", requirePermission("vehicles.create"), async (c) => {
@@ -219,7 +228,10 @@ vehicleRoutes.get("/:id", requirePermission("vehicles.read"), async (c) => {
     .first();
   if (vehicle === null)
     throw new ApiError(404, "RESOURCE_NOT_FOUND", "Vehicle not found.");
-  return c.json({ data: vehicle, success: true });
+  return c.json({
+    data: maskCustomerPhoneRow(vehicle, auth.role),
+    success: true,
+  });
 });
 
 vehicleRoutes.patch("/:id", requirePermission("vehicles.update"), async (c) => {
@@ -459,10 +471,14 @@ vehicleRoutes.get(
     ]);
     return c.json({
       data: {
-        invoices: invoices.results,
+        invoices: invoices.results.map((invoice) =>
+          maskPhoneSnapshotRow(invoice, auth.role),
+        ),
         locations: locations.results,
         photos: photos.results,
-        washJobs: washJobs.results,
+        washJobs: washJobs.results.map((job) =>
+          maskPhoneSnapshotRow(job, auth.role),
+        ),
       },
       success: true,
     });

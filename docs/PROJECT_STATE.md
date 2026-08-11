@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — Current WashPro Implementation State
 
-*Last updated: 2026-08-08*
+*Last updated: 2026-08-11*
 
 ## Active deployments
 
@@ -13,15 +13,15 @@
 
 `https://washpro-web.xpersscarwash.workers.dev`
 
-## Test results (last full run: 2026-08-05 — web suite re-run 2026-08-08: 549/549, 25/25 files ✅)
+## Test results (last full run: 2026-08-11 — 985/985 ✅)
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 25 | 549 | ✅ All pass |
-| @washpro/api | 28 | 257 | ✅ All pass |
+| @washpro/web | 25 | 595 | ✅ All pass |
+| @washpro/api | 29 | 290 | ✅ All pass |
 | @washpro/contracts | 1 | 28 | ✅ All pass |
-| @washpro/domain | 8 | 53 | ✅ All pass |
-| **Total** | **62** | **887** | **✅ All pass** |
+| @washpro/domain | 9 | 72 | ✅ All pass |
+| **Total** | **64** | **985** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -72,6 +72,8 @@ All packages: ✅ 0 errors
 21. **New Wash location is mandatory** (not yet deployed): Step 4 "Live photo & location" now requires both a live photo and a reverse-geocoded location place before the wizard can advance. Shared `hasCompleteEvidence()` rule (photoAssetId + non-blank place + capturedAt) drives the Continue button, a new `goNext()` navigation guard (with a location-error message shown in a lifted `locationError` state), and the Save draft / Create job guard. The create-job payload always sends the trimmed place and capturedAt once complete; `createJobSchema` in `apps/api/src/routes/wash-jobs.ts` now requires `location` with required `place` (trimmed, 1–500 chars, `COORDINATE_ONLY` rejected) and `capturedAt` (ISO datetime) for every initial status including DRAFT, and the write path uses the validated values directly. `wash_jobs.location_place` stays nullable so historical rows remain readable — no migration. Location error copy uses distinct messages (permission denied "Location permission is required to continue."; general failure "Unable to capture your location. Please try again."; reverse-geocode failure "Unable to determine a readable place. Please try again."); "Capturing location…" status text shows while pending. 15 new API tests (10 in `first-payment-benefits.test.ts` — added 6 location-required cases and valid `location` fields to the 7 strict-schema fixtures — plus the existing pool was enlarged from 50 to 64 single-use photo assets to absorb the extra creations) and 12 new web tests in `new-wash.test.tsx`. All 901 automated tests pass.
 
 22. **Mobile table horizontal overflow** (deployed 2026-08-08, commit `7b7171b`, web `24b4da47-3253-41c0-99f1-77db4358ad3e`): The Wash Queue page horizontally scrolled as a whole on mobile (page/header/toolbar slid sideways with blank space on the right). Root cause: an `.sr-only` `position: absolute` label in the far-right "Open" table header cell had no positioned ancestor, so its containing block was the document root — it sat outside the `overflow-x: auto` clip, pushing `documentElement.scrollWidth` to 744px at a 360px viewport. Fix: added `position: relative` to the shared `.table-wrap` rule in `styles.css` (one line), making `.table-wrap` the positioned containing block so absolutely positioned descendants are clipped by the scroll container. Same `.sr-only`-in-`.table-wrap` pattern also exists on Customers, Invoices, and Vehicles, all covered by the shared rule. 2 structural regression tests added in `wash-jobs.test.tsx` (table inside `.table-wrap`; toolbar structure). Web suite 549/549 passing; typecheck, build, `git diff --check` clean. Production-verified by the owner at 360/390/430px on Wash Queue (0 document overflow, contained table scroll, last column reachable, row navigation OK) and ~390px on Customers/Invoices/Vehicles (no page overflow, contained scroll, interactions OK). Web-only deploy; no API change, no migration.
+
+23. **Staff phone-number masking** (not yet deployed, 985 tests): STAFF users see masked customer phone numbers everywhere in the UI and in most API responses. **Privacy model = DISPLAY PRIVACY** (not complete client-side data privacy — `tel:`/`wa.me` hrefs and the invoice WhatsApp share URL intentionally contain real numbers by design to keep Call/WhatsApp/Share actions functional). **Exceptions where STAFF receives full numbers**: (a) `GET/POST/PATCH /customers*` — raw `phone` + `phone_normalized` fields remain real, feeding search, edit-form preload, duplicate detection, and contact-action `tel:`/`wa.me` links (client-side `maskPhone()` renders them masked); (b) `POST /invoices/:id/share-message` — `whatsappUrl` contains real digits from the raw DB snapshot (server-side action). **All other surfaces return masked values**: wash jobs (8 sites), invoices list/detail/generate (3), vehicles list/detail/history (3), customer /:id/wash-jobs + /:id/history (2). Admin-only routes (invoice revisions/replay, wash-job timer adjustments, reports, referrals) intentionally untouched. **Corruption guard**: the `customers.*` endpoints never mask `phone`/`phone_normalized` fields — the edit form (`CustomerDialog`) preloads the real phone; `normalizePhone` (min 8 digits) naturally rejects any masked value like `90xxxxxx05` (4-digit) with a 422 `VALIDATION_ERROR`. Four dedicated API regression tests prove staff PATCH name-only keeps the real phone, server rejects a masked phone value, and admin edit is unchanged. **Deployment order**: **Web → API** is the complete-privacy order (new web masks everything client-side immediately; API deploy hardens snapshot masking server-side); **API → Web** is link-safe (no href sources get masked, old SPA just shows unmasked `customers.phone` and masked snapshots — no broken `tel:`/`wa.me` links) but leaves a temporary window where old SPA fully displays `customers.phone` for staff. New tests: API +4 corruption-guard, web +2 edit-form integrity, domain 0 changes.
 
 ## Known issues
 

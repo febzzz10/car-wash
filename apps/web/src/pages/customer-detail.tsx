@@ -14,6 +14,7 @@ import {
 } from "../components/ui";
 import { useToast } from "../components/toast";
 import { useApiData, type ApiDataState } from "../hooks/use-api-data";
+import { useMaskedPhone } from "../hooks/use-masked-phone";
 import { api, jsonBody } from "../lib/api";
 import { dateTime, formatBytes, money } from "../lib/format";
 import { paymentMethodLabel } from "../lib/payment-methods";
@@ -89,6 +90,7 @@ interface WashJobsPage {
 
 export default function CustomerDetailPage() {
   const { id = "" } = useParams();
+  const maskPhone = useMaskedPhone();
   const profile = useApiData<CustomerDetail>(`/customers/${id}`);
   const history = useApiData<HistoryPayload>(`/customers/${id}/history`);
   const [edit, setEdit] = useState(false);
@@ -192,7 +194,7 @@ export default function CustomerDetailPage() {
             </span>
             <div>
               <StatusBadge value={customer.status} />
-              <p>{customer.phone}</p>
+              <p>{maskPhone(customer.phone)}</p>
               <p>{customer.email ?? "No email"}</p>
             </div>
           </div>

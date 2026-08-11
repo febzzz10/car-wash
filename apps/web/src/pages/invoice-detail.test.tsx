@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useApiData } from "../hooks/use-api-data";
+import { useAuth } from "../auth";
 import InvoiceDetailPage from "./invoice-detail";
 
 vi.mock("../lib/api", () => ({
@@ -16,6 +17,48 @@ vi.mock("../components/toast", () => ({
 
 vi.mock("../hooks/use-api-data", () => ({
   useApiData: vi.fn(),
+}));
+
+function adminUser(): ReturnType<typeof useAuth> {
+  return {
+    loading: false,
+    manualDiscountEnabled: false,
+    paymentDefaultMethod: "CASH",
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+    user: {
+      id: "admin-1",
+      role: "ADMIN",
+      permissions: [] as string[],
+      username: "admin",
+      fullName: "Admin",
+      branchId: "b1",
+    },
+  };
+}
+
+function staffUser(): ReturnType<typeof useAuth> {
+  return {
+    loading: false,
+    manualDiscountEnabled: false,
+    paymentDefaultMethod: "CASH",
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+    user: {
+      id: "staff-1",
+      role: "STAFF",
+      permissions: [] as string[],
+      username: "staff",
+      fullName: "Staff",
+      branchId: "b1",
+    },
+  };
+}
+
+vi.mock("../auth", () => ({
+  useAuth: vi.fn(() => adminUser()),
 }));
 
 const invoiceFixture = {
@@ -68,6 +111,11 @@ function renderPage() {
   );
 }
 
+afterEach(() => {
+  cleanup();
+  vi.mocked(useAuth).mockImplementation(() => adminUser());
+});
+
 describe("Invoice Detail page — actions", () => {
   it("does not display a Create correction button", () => {
     renderPage();
@@ -116,5 +164,25 @@ describe("Invoice Detail page — actions", () => {
     renderPage();
     const badges = screen.getAllByText(/paid/i);
     expect(badges.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("Invoice Detail page — phone masking", () => {
+  afterEach(() => {
+    vi.mocked(useAuth).mockImplementation(() => adminUser());
+  });
+
+  it("shows the full phone snapshot to admins", () => {
+    renderPage();
+    expect(
+      screen.getAllByText("9999999999").length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("masks the phone snapshot for staff", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderPage();
+    expect(screen.getAllByText("99xxxxxx99").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryAllByText("9999999999")).toHaveLength(0);
   });
 });

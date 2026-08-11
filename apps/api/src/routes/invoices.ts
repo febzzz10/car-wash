@@ -10,6 +10,7 @@ import {
   sha256,
 } from "../security/tokens";
 import { auditStatement } from "../services/audit";
+import { maskPhoneSnapshotRow } from "../services/phone-masking";
 import {
   buildInvoicePdf,
   type InvoiceLogo,
@@ -561,7 +562,10 @@ invoiceJobRoutes.post(
     )
       .bind(invoiceId)
       .first();
-    return c.json({ data: { ...invoice, publicToken }, success: true }, 201);
+    return c.json(
+      { data: { ...maskPhoneSnapshotRow(invoice, auth.role), publicToken }, success: true },
+      201,
+    );
   },
 );
 
@@ -573,7 +577,12 @@ invoiceRoutes.get("/", requirePermission("invoices.generate"), async (c) => {
   )
     .bind(auth.organizationId, search, search, search)
     .all();
-  return c.json({ data: result.results, success: true });
+  return c.json({
+    data: result.results.map((invoice) =>
+      maskPhoneSnapshotRow(invoice, auth.role),
+    ),
+    success: true,
+  });
 });
 
 invoiceRoutes.post(
@@ -911,7 +920,10 @@ invoiceRoutes.get("/:id", requirePermission("invoices.generate"), async (c) => {
   )
     .bind(c.req.param("id"))
     .all();
-  return c.json({ data: { ...invoice, items: items.results }, success: true });
+  return c.json({
+    data: { ...maskPhoneSnapshotRow(invoice, auth.role), items: items.results },
+    success: true,
+  });
 });
 
 invoiceRoutes.get(

@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import InvoiceDetailPage from "./invoice-detail";
+import { useAuth } from "../auth";
 
 const mockReload = vi.fn();
 
@@ -12,10 +13,32 @@ vi.mock("../lib/api", () => ({
   jsonBody: (v: unknown) => ({ body: JSON.stringify(v) }),
 }));
 
+function adminContext(): ReturnType<typeof useAuth> {
+  return {
+    loading: false,
+    manualDiscountEnabled: false,
+    paymentDefaultMethod: "CASH",
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+    user: { id: "admin-1", role: "ADMIN" as const, permissions: [] as string[], branchId: "b1", fullName: "Admin", username: "admin" },
+  };
+}
+
+function staffContext(): ReturnType<typeof useAuth> {
+  return {
+    loading: false,
+    manualDiscountEnabled: false,
+    paymentDefaultMethod: "CASH",
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+    user: { id: "staff-1", role: "STAFF" as const, permissions: [] as string[], branchId: "b1", fullName: "Staff", username: "staff" },
+  };
+}
+
 vi.mock("../auth", () => ({
-  useAuth: () => ({
-    user: { id: "admin-1", role: "ADMIN" as const, permissions: [] as string[], branchId: "b1", fullName: "Admin" },
-  }),
+  useAuth: vi.fn(() => adminContext()),
   AuthProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
@@ -110,6 +133,7 @@ function renderPage() {
 afterEach(() => {
   cleanup();
   currentInvoice = buildInvoice();
+  vi.mocked(useAuth).mockImplementation(() => adminContext());
 });
 
 describe("Invoice billing-summary discount display", () => {
@@ -229,5 +253,15 @@ describe("Invoice billing-summary discount display", () => {
     expect(screen.getAllByText("₹800.00").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("−₹400.00")).toBeInTheDocument();
     expect(screen.getAllByText("₹400.00").length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("Invoice billing-summary — phone masking", () => {
+  it("masks the phone snapshot for staff", async () => {
+    vi.mocked(useAuth).mockImplementation(() => staffContext());
+    renderPage();
+    await screen.findByText("Subtotal");
+    expect(screen.getByText("+91 99xxxxxx99")).toBeInTheDocument();
+    expect(screen.queryByText("+919999999999")).not.toBeInTheDocument();
   });
 });

@@ -100,7 +100,9 @@ describe("customer and vehicle management", () => {
       env,
     );
     expect(search.status).toBe(200);
-    expect((await search.json<{ data: unknown[] }>()).data).toHaveLength(1);
+    expect(
+      (await search.json<{ data: { customers: unknown[] } }>()).data.customers,
+    ).toHaveLength(1);
 
     const injection = await app.request(
       "/api/v1/customers?search=%27%20OR%201%3D1%20--",
@@ -108,7 +110,10 @@ describe("customer and vehicle management", () => {
       env,
     );
     expect(injection.status).toBe(200);
-    expect((await injection.json<{ data: unknown[] }>()).data).toHaveLength(0);
+    expect(
+      (await injection.json<{ data: { customers: unknown[] } }>()).data
+        .customers,
+    ).toHaveLength(0);
 
     const staleUpdate = await app.request(
       `/api/v1/customers/${customerBody.data.id}`,

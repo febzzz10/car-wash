@@ -77,7 +77,7 @@ async function mockApplication(page: Page, user = admin): Promise<void> {
       ]);
     if (path.endsWith("/customers"))
       return fulfill(route, {
-        data: [
+        customers: [
           {
             full_name: "Meera Shah",
             id: "customer-1",

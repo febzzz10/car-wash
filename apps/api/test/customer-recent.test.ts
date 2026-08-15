@@ -123,8 +123,10 @@ describe("GET /customers?recent=1 — admin", () => {
       env,
     );
     expect(response.status).toBe(200);
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    expect(body.data).toHaveLength(5);
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    expect(body.data.customers).toHaveLength(5);
   });
 
   it("returns the 5 most recently created active customers in order", async () => {
@@ -134,8 +136,10 @@ describe("GET /customers?recent=1 — admin", () => {
       env,
     );
     expect(response.status).toBe(200);
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    const names = body.data.map((c) => c.full_name as string);
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    const names = body.data.customers.map((c) => c.full_name as string);
     expect(names).toEqual(["Grace", "Finn", "Eve", "Dan", "Cathy"]);
   });
 
@@ -145,8 +149,10 @@ describe("GET /customers?recent=1 — admin", () => {
       { headers: await adminHeaders() },
       env,
     );
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    const ids = body.data.map((c) => c.id as string);
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    const ids = body.data.customers.map((c) => c.id as string);
     expect(ids).not.toContain("recent-a");
     expect(ids).not.toContain("recent-b");
   });
@@ -157,8 +163,10 @@ describe("GET /customers?recent=1 — admin", () => {
       { headers: await adminHeaders() },
       env,
     );
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    const ids = body.data.map((c) => c.id as string);
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    const ids = body.data.customers.map((c) => c.id as string);
     expect(ids).not.toContain("recent-inactive");
   });
 
@@ -168,8 +176,10 @@ describe("GET /customers?recent=1 — admin", () => {
       { headers: await adminHeaders() },
       env,
     );
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    const grace = body.data[0]!;
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    const grace = body.data.customers[0]!;
     expect(grace.id).toBe("recent-g");
     expect(grace.full_name).toBe("Grace");
     expect(grace.phone).toBe("9000000007");
@@ -184,8 +194,10 @@ describe("GET /customers?recent=1 — admin", () => {
       { headers: await adminHeaders() },
       env,
     );
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    const ids = body.data.map((c) => c.id as string);
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    const ids = body.data.customers.map((c) => c.id as string);
     expect(ids).not.toContain("recent-other");
   });
 
@@ -196,9 +208,11 @@ describe("GET /customers?recent=1 — admin", () => {
       env,
     );
     expect(response.status).toBe(200);
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]!.full_name).toBe("Anna");
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    expect(body.data.customers).toHaveLength(1);
+    expect(body.data.customers[0]!.full_name).toBe("Anna");
   });
 
   it("does not interfere with phone search", async () => {
@@ -208,8 +222,10 @@ describe("GET /customers?recent=1 — admin", () => {
       env,
     );
     expect(response.status).toBe(200);
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    expect(body.data.length).toBeGreaterThanOrEqual(1);
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    expect(body.data.customers.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -250,9 +266,11 @@ describe("GET /customers?recent=1 — staff rejected", () => {
       env,
     );
     expect(response.status).toBe(200);
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]!.full_name).toBe("Anna");
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    expect(body.data.customers).toHaveLength(1);
+    expect(body.data.customers[0]!.full_name).toBe("Anna");
   });
 
   it("staff phone search still works", async () => {
@@ -262,7 +280,9 @@ describe("GET /customers?recent=1 — staff rejected", () => {
       env,
     );
     expect(response.status).toBe(200);
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    expect(body.data.length).toBeGreaterThanOrEqual(1);
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    expect(body.data.customers.length).toBeGreaterThanOrEqual(1);
   });
 });

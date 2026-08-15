@@ -88,7 +88,13 @@ customerRoutes.get("/", requirePermission("customers.read"), async (c) => {
     )
       .bind(auth.organizationId)
       .all();
-    return c.json({ data: result.results, success: true });
+    return c.json({
+      data: {
+        customers: result.results,
+        pagination: { hasNext: false, limit: 5, nextCursor: null },
+      },
+      success: true,
+    });
   }
 
   const status = c.req.query("status") === "INACTIVE" ? "INACTIVE" : "ACTIVE";
@@ -200,8 +206,10 @@ customerRoutes.get("/", requirePermission("customers.read"), async (c) => {
       : { ...row, matching_registrations: registrations };
   });
   return c.json({
-    data,
-    pagination: { hasNext, limit, nextCursor },
+    data: {
+      customers: data,
+      pagination: { hasNext, limit, nextCursor },
+    },
     success: true,
   });
 });

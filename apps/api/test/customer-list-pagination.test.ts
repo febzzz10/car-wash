@@ -12,11 +12,13 @@ function pad(value: number): string {
 }
 
 interface ListBody {
-  readonly data: readonly { id: string }[];
-  readonly pagination: {
-    readonly hasNext: boolean;
-    readonly limit: number;
-    readonly nextCursor: string | null;
+  readonly data: {
+    readonly customers: readonly { id: string }[];
+    readonly pagination: {
+      readonly hasNext: boolean;
+      readonly limit: number;
+      readonly nextCursor: string | null;
+    };
   };
 }
 
@@ -218,15 +220,25 @@ describe("customer list server-side pagination", () => {
     // --- default limit: 15 ---
     let page = await list("/api/v1/customers", headers);
     expect(page.status).toBe(200);
-    expect(page.body.data).toHaveLength(15);
-    expect(page.body.pagination.limit).toBe(15);
-    expect(page.body.pagination.hasNext).toBe(true);
-    expect(page.body.pagination.nextCursor).toBeTruthy();
-    expect(page.body.data[0]!.id).toBe("customer-pgl-tie-3");
-    expect(page.body.data[1]!.id).toBe("customer-pgl-tie-2");
-    expect(page.body.data[2]!.id).toBe("customer-pgl-tie-1");
-    expect(page.body.data[3]!.id).toBe("customer-pgl-36");
-    expect(page.body.data[14]!.id).toBe("customer-pgl-25");
+    const rawBody = await (
+      await app.request("/api/v1/customers", { headers }, env)
+    ).json<{
+      readonly data: { readonly customers: readonly unknown[] };
+      readonly pagination?: unknown;
+      readonly success: boolean;
+    }>();
+    expect(Array.isArray(rawBody.data.customers)).toBe(true);
+    expect(rawBody.pagination).toBeUndefined();
+    expect(rawBody.success).toBe(true);
+    expect(page.body.data.customers).toHaveLength(15);
+    expect(page.body.data.pagination.limit).toBe(15);
+    expect(page.body.data.pagination.hasNext).toBe(true);
+    expect(page.body.data.pagination.nextCursor).toBeTruthy();
+    expect(page.body.data.customers[0]!.id).toBe("customer-pgl-tie-3");
+    expect(page.body.data.customers[1]!.id).toBe("customer-pgl-tie-2");
+    expect(page.body.data.customers[2]!.id).toBe("customer-pgl-tie-1");
+    expect(page.body.data.customers[3]!.id).toBe("customer-pgl-36");
+    expect(page.body.data.customers[14]!.id).toBe("customer-pgl-25");
 
     // --- walk every page: no duplicates, no missing customers ---
     const seen = new Set<string>();
@@ -240,14 +252,14 @@ describe("customer list server-side pagination", () => {
           : `/api/v1/customers?limit=15&cursor=${encodeURIComponent(cursor)}`;
       const next = await list(url, headers);
       expect(next.status).toBe(200);
-      expect(next.body.data.length).toBeLessThanOrEqual(15);
-      for (const row of next.body.data) {
+      expect(next.body.data.customers.length).toBeLessThanOrEqual(15);
+      for (const row of next.body.data.customers) {
         expect(seen.has(row.id)).toBe(false);
         seen.add(row.id);
       }
       lastBody = next.body;
-      cursor = next.body.pagination.hasNext
-        ? next.body.pagination.nextCursor
+      cursor = next.body.data.pagination.hasNext
+        ? next.body.data.pagination.nextCursor
         : null;
       guard++;
       expect(guard).toBeLessThan(10);
@@ -260,9 +272,9 @@ describe("customer list server-side pagination", () => {
       expect(seen.has(`customer-pgl-tie-${i}`)).toBe(true);
     }
     expect(seen.has("customer-pgl-beta")).toBe(true);
-    expect(lastBody.pagination.hasNext).toBe(false);
-    expect(lastBody.pagination.nextCursor).toBeNull();
-    expect(lastBody.data.map((row) => row.id)).toEqual([
+    expect(lastBody.data.pagination.hasNext).toBe(false);
+    expect(lastBody.data.pagination.nextCursor).toBeNull();
+    expect(lastBody.data.customers.map((row) => row.id)).toEqual([
       "customer-pgl-09",
       "customer-pgl-08",
       "customer-pgl-07",
@@ -277,37 +289,37 @@ describe("customer list server-side pagination", () => {
 
     // --- explicit page sizes ---
     page = await list("/api/v1/customers?limit=25", headers);
-    expect(page.body.data).toHaveLength(25);
-    expect(page.body.pagination.limit).toBe(25);
-    expect(page.body.pagination.hasNext).toBe(true);
+    expect(page.body.data.customers).toHaveLength(25);
+    expect(page.body.data.pagination.limit).toBe(25);
+    expect(page.body.data.pagination.hasNext).toBe(true);
     page = await list("/api/v1/customers?limit=50", headers);
-    expect(page.body.data).toHaveLength(40);
-    expect(page.body.pagination.limit).toBe(50);
-    expect(page.body.pagination.hasNext).toBe(false);
+    expect(page.body.data.customers).toHaveLength(40);
+    expect(page.body.data.pagination.limit).toBe(50);
+    expect(page.body.data.pagination.hasNext).toBe(false);
 
     // --- excessive limits are clamped to 50 ---
     page = await list("/api/v1/customers?limit=100000", headers);
-    expect(page.body.data.length).toBeLessThanOrEqual(50);
-    expect(page.body.pagination.limit).toBe(50);
+    expect(page.body.data.customers.length).toBeLessThanOrEqual(50);
+    expect(page.body.data.pagination.limit).toBe(50);
     page = await list("/api/v1/customers?limit=0", headers);
-    expect(page.body.data).toHaveLength(15);
-    expect(page.body.pagination.limit).toBe(15);
+    expect(page.body.data.customers).toHaveLength(15);
+    expect(page.body.data.pagination.limit).toBe(15);
     page = await list("/api/v1/customers?limit=abc", headers);
-    expect(page.body.data).toHaveLength(15);
-    expect(page.body.pagination.limit).toBe(15);
+    expect(page.body.data.customers).toHaveLength(15);
+    expect(page.body.data.pagination.limit).toBe(15);
 
     // --- exact-boundary page ---
     page = await list("/api/v1/customers?limit=20", headers);
-    expect(page.body.data).toHaveLength(20);
-    expect(page.body.pagination.hasNext).toBe(true);
-    const boundaryCursor = page.body.pagination.nextCursor!;
+    expect(page.body.data.customers).toHaveLength(20);
+    expect(page.body.data.pagination.hasNext).toBe(true);
+    const boundaryCursor = page.body.data.pagination.nextCursor!;
     page = await list(
       `/api/v1/customers?limit=20&cursor=${encodeURIComponent(boundaryCursor)}`,
       headers,
     );
-    expect(page.body.data).toHaveLength(20);
-    expect(page.body.pagination.hasNext).toBe(false);
-    expect(page.body.pagination.nextCursor).toBeNull();
+    expect(page.body.data.customers).toHaveLength(20);
+    expect(page.body.data.pagination.hasNext).toBe(false);
+    expect(page.body.data.pagination.nextCursor).toBeNull();
 
     // --- identical sort values straddle the page boundary ---
     const tieOrder: string[] = [];
@@ -319,9 +331,9 @@ describe("customer list server-side pagination", () => {
           ? "/api/v1/customers?limit=2"
           : `/api/v1/customers?limit=2&cursor=${encodeURIComponent(cursor)}`;
       const next = await list(url, headers);
-      tieOrder.push(...next.body.data.map((row) => row.id));
-      cursor = next.body.pagination.hasNext
-        ? next.body.pagination.nextCursor
+      tieOrder.push(...next.body.data.customers.map((row) => row.id));
+      cursor = next.body.data.pagination.hasNext
+        ? next.body.data.pagination.nextCursor
         : null;
       guard++;
       expect(guard).toBeLessThan(30);
@@ -340,20 +352,20 @@ describe("customer list server-side pagination", () => {
       .bind("2027-01-01T00:00:00.000Z", "customer-pgl-beta")
       .run();
     page = await list("/api/v1/customers?limit=15", headers);
-    expect(page.body.data[0]!.id).toBe("customer-pgl-beta");
+    expect(page.body.data.customers[0]!.id).toBe("customer-pgl-beta");
 
     // --- active filter ---
     page = await list("/api/v1/customers?status=ACTIVE&limit=15", headers);
-    expect(page.body.data).toHaveLength(15);
-    for (const row of page.body.data) {
+    expect(page.body.data.customers).toHaveLength(15);
+    for (const row of page.body.data.customers) {
       expect(row.id.startsWith("customer-pgl-inactive-")).toBe(false);
     }
 
     // --- inactive filter ---
     page = await list("/api/v1/customers?status=INACTIVE", headers);
-    expect(page.body.data).toHaveLength(3);
-    expect(page.body.pagination.hasNext).toBe(false);
-    expect(page.body.data.map((row) => row.id)).toEqual([
+    expect(page.body.data.customers).toHaveLength(3);
+    expect(page.body.data.pagination.hasNext).toBe(false);
+    expect(page.body.data.customers.map((row) => row.id)).toEqual([
       "customer-pgl-inactive-3",
       "customer-pgl-inactive-2",
       "customer-pgl-inactive-1",
@@ -361,19 +373,19 @@ describe("customer list server-side pagination", () => {
 
     // --- name search reaches customers beyond the first page ---
     page = await list("/api/v1/customers?search=Beta", headers);
-    expect(page.body.data).toHaveLength(1);
-    expect(page.body.data[0]!.id).toBe("customer-pgl-beta");
-    expect(page.body.pagination.hasNext).toBe(false);
+    expect(page.body.data.customers).toHaveLength(1);
+    expect(page.body.data.customers[0]!.id).toBe("customer-pgl-beta");
+    expect(page.body.data.pagination.hasNext).toBe(false);
 
     // --- phone search reaches customers beyond the first page ---
     page = await list("/api/v1/customers?search=9180000002", headers);
-    expect(page.body.data).toHaveLength(1);
-    expect(page.body.data[0]!.id).toBe("customer-pgl-02");
+    expect(page.body.data.customers).toHaveLength(1);
+    expect(page.body.data.customers[0]!.id).toBe("customer-pgl-02");
 
     // --- registration search reaches customers beyond the first page ---
     page = await list("/api/v1/customers?search=KL05PG0002", headers);
-    expect(page.body.data).toHaveLength(1);
-    expect(page.body.data[0]).toMatchObject({
+    expect(page.body.data.customers).toHaveLength(1);
+    expect(page.body.data.customers[0]).toMatchObject({
       id: "customer-pgl-02",
       matching_registrations: ["KL 05 PG 0002"],
     });
@@ -388,12 +400,12 @@ describe("customer list server-side pagination", () => {
           ? "/api/v1/customers?search=Alpha&limit=15"
           : `/api/v1/customers?search=Alpha&limit=15&cursor=${encodeURIComponent(cursor)}`;
       const next = await list(url, headers);
-      for (const row of next.body.data) {
+      for (const row of next.body.data.customers) {
         expect(searchSeen.has(row.id)).toBe(false);
         searchSeen.add(row.id);
       }
-      cursor = next.body.pagination.hasNext
-        ? next.body.pagination.nextCursor
+      cursor = next.body.data.pagination.hasNext
+        ? next.body.data.pagination.nextCursor
         : null;
       guard++;
       expect(guard).toBeLessThan(10);
@@ -407,21 +419,21 @@ describe("customer list server-side pagination", () => {
     const other = await otherHeaders();
     page = await list("/api/v1/customers", other);
     expect(page.status).toBe(200);
-    expect(page.body.data).toHaveLength(2);
-    expect(page.body.data.map((row) => row.id).sort()).toEqual([
+    expect(page.body.data.customers).toHaveLength(2);
+    expect(page.body.data.customers.map((row) => row.id).sort()).toEqual([
       "customer-other-1",
       "customer-other-2",
     ]);
     const pglCursor = (
       await list("/api/v1/customers?limit=15", headers)
-    ).body.pagination.nextCursor!;
+    ).body.data.pagination.nextCursor!;
     page = await list(
       `/api/v1/customers?cursor=${encodeURIComponent(pglCursor)}&limit=15`,
       other,
     );
     expect(page.status).toBe(200);
-    expect(page.body.data).toHaveLength(2);
-    for (const row of page.body.data) {
+    expect(page.body.data.customers).toHaveLength(2);
+    for (const row of page.body.data.customers) {
       expect(row.id.startsWith("customer-pgl-")).toBe(false);
       expect(row.id.startsWith("customer-other-")).toBe(true);
     }
@@ -448,8 +460,8 @@ describe("customer list server-side pagination", () => {
       headers,
     );
     expect(page.status).toBe(200);
-    expect(page.body.data).toHaveLength(0);
-    expect(page.body.pagination.hasNext).toBe(false);
+    expect(page.body.data.customers).toHaveLength(0);
+    expect(page.body.data.pagination.hasNext).toBe(false);
 
     // --- unauthenticated requests are rejected ---
     const anonymous = await app.request("/api/v1/customers", {
@@ -461,6 +473,6 @@ describe("customer list server-side pagination", () => {
     const staff = await staffHeaders();
     const staffPage = await list("/api/v1/customers?limit=15", staff);
     expect(staffPage.status).toBe(200);
-    expect(staffPage.body.data).toHaveLength(15);
+    expect(staffPage.body.data.customers).toHaveLength(15);
   });
 });

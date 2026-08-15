@@ -31,6 +31,15 @@ const CUSTOMER_FIXTURE: readonly {
 
 let customerData = CUSTOMER_FIXTURE;
 
+function customerSearchPayload(
+  customers: readonly unknown[],
+): { customers: readonly unknown[]; pagination: unknown } {
+  return {
+    customers,
+    pagination: { hasNext: false, limit: 50, nextCursor: null },
+  };
+}
+
 vi.mock("../lib/api", () => ({
   api: vi.fn(),
   jsonBody: (v: unknown) => ({ body: JSON.stringify(v) }),
@@ -85,7 +94,10 @@ vi.mock("../hooks/use-api-data", () => ({
   useApiData: vi.fn((path: string, enabled = true) => {
     if (path.includes("customers"))
       return {
-        data: enabled ? customerData : [],
+        data: {
+          customers: enabled ? customerData : [],
+          pagination: { hasNext: false, limit: 5, nextCursor: null },
+        },
         error: null,
         loading: false,
         reload: mockReload,
@@ -500,7 +512,10 @@ describe("New Wash — Review step", () => {
     vi.mocked(useApiData).mockImplementation((path: string, enabled = true) => {
       if (path.includes("customers"))
         return {
-          data: CUSTOMER_FIXTURE,
+          data: {
+            customers: CUSTOMER_FIXTURE,
+            pagination: { hasNext: false, limit: 50, nextCursor: null },
+          },
           error: null,
           loading: false,
           reload: mockReload,
@@ -764,7 +779,10 @@ describe("New Wash — customer registration search", () => {
 
   it("shows the normal empty state when a registration search has no match", async () => {
     vi.mocked(useApiData).mockImplementationOnce(() => ({
-      data: [],
+      data: {
+        customers: [],
+        pagination: { hasNext: false, limit: 50, nextCursor: null },
+      },
       error: null,
       loading: false,
       reload: mockReload,
@@ -1532,7 +1550,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("displays partial matches with customer name and phone", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1549,7 +1567,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("shows visit count when available", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1563,7 +1581,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("does not show visit count when zero", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN_KUMAR] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN_KUMAR]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1577,7 +1595,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("detects an exact normalized phone match and shows Existing customer found", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1594,7 +1612,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("disables the Add customer button for an exact duplicate", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1610,7 +1628,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("a partial match does NOT disable Add Customer", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1626,7 +1644,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("clicking Use existing customer selects the customer and closes the dialog", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     customerData = [{ ...CUSTOMER_FIXTURE[0]!, id: "c-arun", full_name: "Arun", phone: "8590384225", phone_normalized: "+918590384225" }];
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
@@ -1651,7 +1669,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("does not POST /customers when an existing customer is selected via Use existing", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     customerData = [{ ...CUSTOMER_FIXTURE[0]!, id: "c-arun", full_name: "Arun", phone: "8590384225", phone_normalized: "+918590384225" }];
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
@@ -1676,7 +1694,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("clicking a partial-match suggestion selects the customer and closes the dialog", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR]) as any);
     customerData = [CUSTOMER_FIXTURE[0]!, SEARCH_RESULT_ARUN as any];
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
@@ -1694,7 +1712,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("clears exact-match state when the phone input is cleared", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1715,7 +1733,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("clears old exact-match state when the phone input is edited", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1728,7 +1746,7 @@ describe("New Wash — Add customer phone lookup", () => {
       },
       { timeout: 500 },
     );
-    vi.mocked(api).mockResolvedValueOnce([] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([]) as any);
     fireEvent.change(dialogPhoneInput(), {
       target: { value: "9999999999" },
     });
@@ -1753,12 +1771,12 @@ describe("New Wash — Add customer phone lookup", () => {
     openAddCustomerDialog();
     fireEvent.change(dialogPhoneInput(), { target: { value: "8590" } });
     await vi.advanceTimersByTimeAsync(200);
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     fireEvent.change(dialogPhoneInput(), {
       target: { value: "8590384225" },
     });
     await vi.advanceTimersByTimeAsync(200);
-    resolveStale([{ ...SEARCH_RESULT_ARUN_KUMAR, id: "stale", full_name: "Stale Customer" }]);
+    resolveStale(customerSearchPayload([{ ...SEARCH_RESULT_ARUN_KUMAR, id: "stale", full_name: "Stale Customer" }]));
     await vi.advanceTimersByTimeAsync(10);
     expect(screen.queryByText("Stale Customer")).toBeNull();
     await vi.waitFor(() => {
@@ -1784,7 +1802,7 @@ describe("New Wash — Add customer phone lookup", () => {
   });
 
   it("preserves normal customer creation when no match exists", async () => {
-    vi.mocked(api).mockResolvedValueOnce([] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1811,8 +1829,8 @@ describe("New Wash — Add customer phone lookup", () => {
       if (typeof path !== "string") return Promise.resolve([]);
       if (path === "/customers") return Promise.reject(dupError);
       if (path.includes("customers?search=")) {
-        if (step === 1) return Promise.resolve([]);
-        return Promise.resolve([SEARCH_RESULT_ARUN]);
+        if (step === 1) return Promise.resolve(customerSearchPayload([]));
+        return Promise.resolve(customerSearchPayload([SEARCH_RESULT_ARUN]));
       }
       return Promise.resolve([]);
     });
@@ -1868,12 +1886,12 @@ describe("New Wash — Add customer phone lookup", () => {
       },
       { timeout: 500 },
     );
-    resolveLookup([SEARCH_RESULT_ARUN]);
+    resolveLookup(customerSearchPayload([SEARCH_RESULT_ARUN]));
     await new Promise((r) => setTimeout(r, 300));
   });
 
   it("does not restore stale lookup state on dialog reopen", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1929,7 +1947,7 @@ describe("New Wash — staff selected customer visibility", () => {
   });
 
   it("shows selected existing customer on the Customer step after phone lookup selection", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1951,7 +1969,7 @@ describe("New Wash — staff selected customer visibility", () => {
   });
 
   it("shows selected customer in Wash Summary after phone lookup selection", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1968,7 +1986,7 @@ describe("New Wash — staff selected customer visibility", () => {
   });
 
   it("does not trigger customers.reload() when selecting existing customer", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -1984,7 +2002,7 @@ describe("New Wash — staff selected customer visibility", () => {
   });
 
   it("Continue is enabled after selecting existing customer", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -2001,7 +2019,7 @@ describe("New Wash — staff selected customer visibility", () => {
   });
 
   it("selected customer survives Vehicle step and Back navigation", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();
@@ -2039,7 +2057,7 @@ describe("New Wash — staff selected customer visibility", () => {
   });
 
   it("selecting a customer via search input replaces the dialog-selected customer", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     customerData = [SEARCH_RESULT_ARUN, SEARCH_RESULT_ARUN_KUMAR] as any;
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
@@ -2061,7 +2079,7 @@ describe("New Wash — staff selected customer visibility", () => {
   });
 
   it("opening Add Customer and cancelling preserves existing selection", async () => {
-    vi.mocked(api).mockResolvedValueOnce([SEARCH_RESULT_ARUN] as any);
+    vi.mocked(api).mockResolvedValueOnce(customerSearchPayload([SEARCH_RESULT_ARUN]) as any);
     const { default: NewWashPage } = await import("./new-wash");
     render(<MemoryRouter><NewWashPage /></MemoryRouter>);
     openAddCustomerDialog();

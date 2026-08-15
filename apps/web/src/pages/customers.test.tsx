@@ -116,7 +116,7 @@ function envelope(
   pagination: { hasNext: boolean; nextCursor: string | null; limit: number },
 ) {
   return {
-    data,
+    customers: data,
     pagination: {
       hasNext: pagination.hasNext,
       limit: pagination.limit,

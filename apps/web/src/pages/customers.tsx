@@ -26,15 +26,10 @@ import { useAuth } from "../auth";
 import { useMaskedPhone } from "../hooks/use-masked-phone";
 import { api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
-import type { CustomerRecord, CursorPagination } from "../types";
+import type { CustomerListPayload, CustomerRecord } from "../types";
 
 const PAGE_SIZES = [15, 25, 50] as const;
 const DEFAULT_PAGE_SIZE = 15;
-
-interface CustomersListPayload {
-  readonly data: readonly CustomerRecord[];
-  readonly pagination: CursorPagination;
-}
 
 function customersPath(
   search: string,
@@ -95,12 +90,12 @@ export default function CustomersPage() {
     } else {
       setPaging(true);
     }
-    void api<CustomersListPayload>(
+    void api<CustomerListPayload>(
       customersPath(search, status, limit, cursor),
     )
       .then((body) => {
         if (!active) return;
-        setCustomers(body.data);
+        setCustomers(body.customers);
         setHasNext(body.pagination.hasNext);
         setNextCursor(body.pagination.nextCursor);
       })

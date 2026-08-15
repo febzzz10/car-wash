@@ -13,6 +13,11 @@ export interface CursorPagination {
   readonly nextCursor: string | null;
 }
 
+export interface CustomerListPayload {
+  readonly customers: readonly CustomerRecord[];
+  readonly pagination: CursorPagination;
+}
+
 export interface CustomerRecord {
   readonly id: string;
   readonly customer_code?: string | null;

@@ -88,8 +88,10 @@ describe("Staff phone masking", () => {
       env,
     );
     expect(response.status).toBe(200);
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    const customer = body.data.find((c) => c.id === CUSTOMER);
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    const customer = body.data.customers.find((c) => c.id === CUSTOMER);
     expect(customer?.phone).toBe("9002005005");
     expect(customer?.phone_normalized).toBe("+919002005005");
   });
@@ -101,8 +103,10 @@ describe("Staff phone masking", () => {
       env,
     );
     expect(response.status).toBe(200);
-    const body = await response.json<{ data: readonly Record<string, unknown>[] }>();
-    expect(body.data.some((c) => c.id === CUSTOMER)).toBe(true);
+    const body = await response.json<{
+      data: { customers: readonly Record<string, unknown>[] };
+    }>();
+    expect(body.data.customers.some((c) => c.id === CUSTOMER)).toBe(true);
   });
 
   it("masks the wash job phone snapshot for staff and keeps it full for admins", async () => {

@@ -39,6 +39,7 @@ import {
 } from "../lib/wizard-draft";
 import { normalizePhone } from "@washpro/domain";
 import type {
+  CustomerListPayload,
   CustomerRecord,
   ServicePriceRecord,
   ServiceRecord,
@@ -124,7 +125,7 @@ export default function NewWashPage() {
     isAdmin && !searching
       ? "/customers?recent=1"
       : `/customers?search=${encodeURIComponent(search.trim())}&limit=50`;
-  const customers = useApiData<readonly CustomerRecord[]>(
+  const customers = useApiData<CustomerListPayload>(
     customersUrl,
     isAdmin || searching,
   );
@@ -175,7 +176,7 @@ export default function NewWashPage() {
   ]);
 
   const selectedCustomer =
-    customers.data?.find((item) => item.id === customerId) ??
+    customers.data?.customers.find((item) => item.id === customerId) ??
     (explicitCustomer !== null && explicitCustomer.id === customerId
       ? explicitCustomer
       : undefined);
@@ -340,7 +341,7 @@ export default function NewWashPage() {
                     message={customers.error}
                     onRetry={customers.reload}
                   />
-                ) : (customers.data?.length ?? 0) === 0 ? (
+                ) : (customers.data?.customers.length ?? 0) === 0 ? (
                   isAdmin && !searching ? (
                     <EmptyState
                       icon={UserRoundSearch}
@@ -360,7 +361,7 @@ export default function NewWashPage() {
                       <p className="section-heading">Recently added customers</p>
                     ) : null}
                     <div className="choice-list">
-                      {customers.data?.map((customer) => (
+                      {customers.data?.customers.map((customer) => (
                         <Choice
                           active={customer.id === customerId}
                           key={customer.id}
@@ -1139,13 +1140,13 @@ function NewCustomerDialog({
       setPhoneLookupLoading(true);
       try {
         const digits = query.replace(/\D/g, "");
-        const result = await api<readonly CustomerRecord[]>(
+        const result = await api<CustomerListPayload>(
           `/customers?search=${encodeURIComponent(digits)}&limit=50`,
           { signal: controller.signal },
         );
         if (seq !== lookupSeq.current) return;
         setPhoneLookupResults(
-          result.length === 0 ? null : result.slice(0, 5),
+          result.customers.length === 0 ? null : result.customers.slice(0, 5),
         );
       } catch (reason) {
         if (reason instanceof DOMException && reason.name === "AbortError")

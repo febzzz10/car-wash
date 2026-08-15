@@ -104,8 +104,11 @@ async function search(query: string): Promise<{
     env,
   );
   return {
-    data: (await response.json<{ data: readonly Record<string, unknown>[] }>())
-      .data,
+    data: (
+      await response.json<{
+        data: { customers: readonly Record<string, unknown>[] };
+      }>()
+    ).data.customers,
     status: response.status,
   };
 }

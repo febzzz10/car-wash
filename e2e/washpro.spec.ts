@@ -91,20 +91,23 @@ async function mockApplication(page: Page, user = admin): Promise<void> {
         pagination: { hasNext: false, limit: 15, nextCursor: null },
       });
     if (path.endsWith("/vehicles"))
-      return fulfill(route, [
-        {
-          customer_id: "customer-1",
-          customer_name: "Meera Shah",
-          id: "vehicle-1",
-          make: "Tata",
-          model: "Nexon",
-          registration_number: "KL 01 AA 1000",
-          status: "ACTIVE",
-          vehicle_type_id: "type-1",
-          vehicle_type_name: "Four Wheeler",
-          version: 1,
-        },
-      ]);
+      return fulfill(route, {
+        pagination: { hasNext: false, limit: 15, nextCursor: null },
+        vehicles: [
+          {
+            customer_id: "customer-1",
+            customer_name: "Meera Shah",
+            id: "vehicle-1",
+            make: "Tata",
+            model: "Nexon",
+            registration_number: "KL 01 AA 1000",
+            status: "ACTIVE",
+            vehicle_type_id: "type-1",
+            vehicle_type_name: "Four Wheeler",
+            version: 1,
+          },
+        ],
+      });
     if (path.endsWith("/services"))
       return fulfill(route, {
         prices: [

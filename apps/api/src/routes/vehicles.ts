@@ -7,6 +7,11 @@ import { ApiError } from "../http/errors";
 import { requirePermission } from "../middleware/auth";
 import { auditStatement } from "../services/audit";
 import {
+  buildListCursor,
+  parseListCursor,
+  parseListLimit,
+} from "../services/pagination";
+import {
   maskCustomerPhoneRow,
   maskPhoneSnapshotRow,
 } from "../services/phone-masking";
@@ -42,21 +47,90 @@ vehicleRoutes.get("/", requirePermission("vehicles.read"), async (c) => {
   const auth = c.get("auth");
   const query = c.req.query("search")?.trim() ?? "";
   const search = `%${query.toUpperCase().replace(/[^A-Z0-9]/gu, "")}%`;
-  const result = await c.env.DB.prepare(
-    `SELECT v.*, vt.code AS vehicle_type_code, vt.name AS vehicle_type_name, c.full_name AS customer_name,
-      c.phone AS customer_phone
-     FROM vehicles v
-     INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id
-     INNER JOIN customers c ON c.id = v.customer_id
-     WHERE v.organization_id = ? AND (? = '' OR v.registration_normalized LIKE ?)
-     ORDER BY COALESCE(v.last_wash_at, v.created_at) DESC LIMIT 100`,
-  )
-    .bind(auth.organizationId, query, search)
-    .all();
+  const columns = `v.*, vt.code AS vehicle_type_code, vt.name AS vehicle_type_name,
+    c.full_name AS customer_name, c.phone AS customer_phone`;
+  const filters = `v.organization_id = ? AND (? = '' OR v.registration_normalized LIKE ?)`;
+  const baseParams = [auth.organizationId, query, search] as const;
+  if (
+    c.req.query("limit") === undefined &&
+    c.req.query("cursor") === undefined
+  ) {
+    const result = await c.env.DB.prepare(
+      `SELECT ${columns}
+       FROM vehicles v
+       INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id
+       INNER JOIN customers c ON c.id = v.customer_id
+       WHERE ${filters}
+       ORDER BY COALESCE(v.last_wash_at, v.created_at) DESC LIMIT 100`,
+    )
+      .bind(...baseParams)
+      .all();
+    return c.json({
+      data: result.results.map((vehicle) =>
+        maskCustomerPhoneRow(vehicle, auth.role),
+      ),
+      success: true,
+    });
+  }
+  const limit = parseListLimit(c.req.query("limit"));
+  const rawCursor = c.req.query("cursor");
+  const cursor =
+    rawCursor === undefined || rawCursor === ""
+      ? undefined
+      : parseListCursor(rawCursor);
+  const result =
+    cursor === undefined
+      ? await c.env.DB.prepare(
+          `SELECT ${columns}
+           FROM vehicles v
+           INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id
+           INNER JOIN customers c ON c.id = v.customer_id
+           WHERE ${filters}
+           ORDER BY COALESCE(v.last_wash_at, v.created_at) DESC, v.id DESC
+           LIMIT ?`,
+        )
+          .bind(...baseParams, limit + 1)
+          .all()
+      : await c.env.DB.prepare(
+          `SELECT ${columns}
+           FROM vehicles v
+           INNER JOIN vehicle_types vt ON vt.id = v.vehicle_type_id
+           INNER JOIN customers c ON c.id = v.customer_id
+           WHERE ${filters}
+             AND (
+               COALESCE(v.last_wash_at, v.created_at) < ?
+               OR (COALESCE(v.last_wash_at, v.created_at) = ? AND v.id < ?)
+             )
+           ORDER BY COALESCE(v.last_wash_at, v.created_at) DESC, v.id DESC
+           LIMIT ?`,
+        )
+          .bind(
+            ...baseParams,
+            cursor.orderValue,
+            cursor.orderValue,
+            cursor.id,
+            limit + 1,
+          )
+          .all();
+  const rows = result.results;
+  const hasNext = rows.length > limit;
+  const pageRows = hasNext ? rows.slice(0, limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+  const nextCursor =
+    hasNext && lastRow !== undefined
+      ? buildListCursor(
+          (lastRow.last_wash_at as string | null) ??
+            (lastRow.created_at as string),
+          lastRow.id as string,
+        )
+      : null;
   return c.json({
-    data: result.results.map((vehicle) =>
-      maskCustomerPhoneRow(vehicle, auth.role),
-    ),
+    data: {
+      vehicles: pageRows.map((vehicle) =>
+        maskCustomerPhoneRow(vehicle, auth.role),
+      ),
+      pagination: { hasNext, limit, nextCursor },
+    },
     success: true,
   });
 });

@@ -111,18 +111,21 @@ vi.mock("../hooks/use-api-data", () => ({
       };
     if (path.includes("vehicles"))
       return {
-        data: [
-          {
-            id: "v1",
-            customer_id: "c1",
-            registration_number: "KL01TEST",
-            vehicle_type_id: "vt1",
-            vehicle_type_name: "Four Wheeler",
-            status: "ACTIVE",
-            make: "Honda",
-            model: "City",
-          },
-        ],
+        data: {
+          pagination: { hasNext: false, limit: 50, nextCursor: null },
+          vehicles: [
+            {
+              id: "v1",
+              customer_id: "c1",
+              registration_number: "KL01TEST",
+              vehicle_type_id: "vt1",
+              vehicle_type_name: "Four Wheeler",
+              status: "ACTIVE",
+              make: "Honda",
+              model: "City",
+            },
+          ],
+        },
         error: null,
         loading: false,
         reload: mockReload,

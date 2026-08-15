@@ -43,6 +43,7 @@ import type {
   CustomerRecord,
   ServicePriceRecord,
   ServiceRecord,
+  VehicleListPayload,
   VehicleRecord,
   VehicleTypeRecord,
 } from "../types";
@@ -132,7 +133,7 @@ export default function NewWashPage() {
   const staff = useApiData<readonly StaffRecord[]>(
     "/wash-jobs/assignable-users",
   );
-  const vehicles = useApiData<readonly VehicleRecord[]>("/vehicles");
+  const vehicles = useApiData<VehicleListPayload>("/vehicles?limit=50");
   const services = useApiData<ServicePayload>("/services");
   const navigate = useNavigate();
   const toast = useToast();
@@ -184,7 +185,7 @@ export default function NewWashPage() {
   useEffect(() => {
     if (customerId === "") setExplicitCustomer(null);
   }, [customerId]);
-  const availableVehicles = (vehicles.data ?? []).filter(
+  const availableVehicles = (vehicles.data?.vehicles ?? []).filter(
     (item) => item.customer_id === customerId && item.status === "ACTIVE",
   );
   const selectedVehicle = availableVehicles.find(

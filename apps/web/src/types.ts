@@ -33,6 +33,11 @@ export interface CustomerRecord {
   readonly matching_registrations?: readonly string[];
 }
 
+export interface VehicleListPayload {
+  readonly vehicles: readonly VehicleRecord[];
+  readonly pagination: CursorPagination;
+}
+
 export interface VehicleRecord {
   readonly id: string;
   readonly customer_id: string;

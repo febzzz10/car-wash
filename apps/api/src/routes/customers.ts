@@ -12,6 +12,11 @@ import { ApiError } from "../http/errors";
 import { clientIp } from "../http/request";
 import { requirePermission } from "../middleware/auth";
 import { auditStatement } from "../services/audit";
+import {
+  buildListCursor,
+  parseListCursor,
+  parseListLimit,
+} from "../services/pagination";
 import { maskPhoneSnapshotRow } from "../services/phone-masking";
 import type { AppBindings } from "../types";
 
@@ -22,30 +27,6 @@ const statusChangeSchema = z.object({
   reason: z.string().trim().min(3).max(500),
   version: z.number().int().positive(),
 });
-const DEFAULT_LIST_LIMIT = 15;
-const MAX_LIST_LIMIT = 50;
-
-function parseListCursor(cursor: string): { orderValue: string; id: string } {
-  if (cursor.length > 512) {
-    throw new ApiError(400, "VALIDATION_ERROR", "Invalid cursor.");
-  }
-  let decoded: string;
-  try {
-    decoded = atob(cursor);
-  } catch {
-    throw new ApiError(400, "VALIDATION_ERROR", "Invalid cursor.");
-  }
-  const separator = decoded.lastIndexOf("|");
-  if (separator === -1) {
-    throw new ApiError(400, "VALIDATION_ERROR", "Invalid cursor.");
-  }
-  const orderValue = decoded.slice(0, separator);
-  const id = decoded.slice(separator + 1);
-  if (orderValue === "" || id === "") {
-    throw new ApiError(400, "VALIDATION_ERROR", "Invalid cursor.");
-  }
-  return { orderValue, id };
-}
 
 function cleanCustomerInput(input: unknown): unknown {
   if (input === null || typeof input !== "object") return input;
@@ -98,11 +79,7 @@ customerRoutes.get("/", requirePermission("customers.read"), async (c) => {
   }
 
   const status = c.req.query("status") === "INACTIVE" ? "INACTIVE" : "ACTIVE";
-  const rawLimit = Number(c.req.query("limit"));
-  const limit =
-    Number.isInteger(rawLimit) && rawLimit > 0
-      ? Math.min(rawLimit, MAX_LIST_LIMIT)
-      : DEFAULT_LIST_LIMIT;
+  const limit = parseListLimit(c.req.query("limit"));
   const rawCursor = c.req.query("cursor");
   const cursor =
     rawCursor === undefined || rawCursor === ""
@@ -180,8 +157,10 @@ customerRoutes.get("/", requirePermission("customers.read"), async (c) => {
   const lastRow = pageRows[pageRows.length - 1];
   const nextCursor =
     hasNext && lastRow !== undefined
-      ? btoa(
-          `${(lastRow.last_visit_at as string | null) ?? (lastRow.registered_at as string)}|${lastRow.id as string}`,
+      ? buildListCursor(
+          (lastRow.last_visit_at as string | null) ??
+            (lastRow.registered_at as string),
+          lastRow.id as string,
         )
       : null;
   const matchingRegistrations = new Map<string, string[]>();

@@ -13,6 +13,25 @@ export interface CursorPagination {
   readonly nextCursor: string | null;
 }
 
+export interface InvoiceListPayload {
+  readonly invoices: readonly InvoiceRecord[];
+  readonly pagination: CursorPagination;
+}
+
+export interface InvoiceRecord {
+  readonly balance_minor: number;
+  readonly created_at: string;
+  readonly customer_name_snapshot: string;
+  readonly id: string;
+  readonly invoice_number: string;
+  readonly invoice_status: string;
+  readonly issued_at: string;
+  readonly payment_status_snapshot: string;
+  readonly revision_number: number;
+  readonly total_minor: number;
+  readonly vehicle_registration_snapshot: string;
+}
+
 export interface CustomerListPayload {
   readonly customers: readonly CustomerRecord[];
   readonly pagination: CursorPagination;

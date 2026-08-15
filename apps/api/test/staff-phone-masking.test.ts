@@ -201,13 +201,25 @@ describe("Staff phone masking", () => {
     expect(detailBody.data.customer_phone_snapshot).toBe("+91 90xxxxxx05");
 
     const listResponse = await app.request(
-      "/api/v1/invoices",
+      "/api/v1/invoices?limit=15",
       { headers: await sessionHeaders(staffRawToken) },
       env,
     );
     expect(listResponse.status).toBe(200);
-    const listBody = await listResponse.json<{ data: readonly Record<string, unknown>[] }>();
-    expect(listBody.data[0]!.customer_phone_snapshot).toBe("+91 90xxxxxx05");
+    const listBody = await listResponse.json<{
+      data: {
+        invoices: readonly Record<string, unknown>[];
+        pagination: {
+          hasNext: boolean;
+          limit: number;
+          nextCursor: string | null;
+        };
+      };
+    }>();
+    expect(listBody.data.invoices[0]!.customer_phone_snapshot).toBe(
+      "+91 90xxxxxx05",
+    );
+    expect(listBody.data.pagination.limit).toBe(15);
   });
 
   it("keeps the invoice phone snapshot full for admins", async () => {

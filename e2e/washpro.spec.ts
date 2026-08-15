@@ -108,6 +108,25 @@ async function mockApplication(page: Page, user = admin): Promise<void> {
           },
         ],
       });
+    if (path.endsWith("/invoices"))
+      return fulfill(route, {
+        pagination: { hasNext: false, limit: 15, nextCursor: null },
+        invoices: [
+          {
+            balance_minor: 0,
+            created_at: "2026-07-23T10:00:00.000Z",
+            customer_name_snapshot: "Meera Shah",
+            id: "invoice-1",
+            invoice_number: "WP-2026-000001",
+            invoice_status: "ISSUED",
+            issued_at: "2026-07-23T10:00:00.000Z",
+            payment_status_snapshot: "PAID",
+            revision_number: 0,
+            total_minor: 80000,
+            vehicle_registration_snapshot: "KL 01 AA 1000",
+          },
+        ],
+      });
     if (path.endsWith("/services"))
       return fulfill(route, {
         prices: [

@@ -10,6 +10,11 @@ import {
   sha256,
 } from "../security/tokens";
 import { auditStatement } from "../services/audit";
+import {
+  buildListCursor,
+  parseListCursor,
+  parseListLimit,
+} from "../services/pagination";
 import { maskPhoneSnapshotRow } from "../services/phone-masking";
 import {
   buildInvoicePdf,
@@ -571,16 +576,81 @@ invoiceJobRoutes.post(
 
 invoiceRoutes.get("/", requirePermission("invoices.generate"), async (c) => {
   const auth = c.get("auth");
-  const search = `%${c.req.query("search")?.trim() ?? ""}%`;
-  const result = await c.env.DB.prepare(
-    "SELECT id, wash_job_id, invoice_number, revision_number, invoice_status, customer_name_snapshot, customer_phone_snapshot, vehicle_registration_snapshot, total_minor, paid_minor, balance_minor, payment_status_snapshot, issued_at, created_at FROM invoices WHERE organization_id = ? AND (invoice_number LIKE ? OR customer_phone_snapshot LIKE ? OR vehicle_registration_snapshot LIKE ?) ORDER BY created_at DESC LIMIT 250",
-  )
-    .bind(auth.organizationId, search, search, search)
-    .all();
+  const query = c.req.query("search")?.trim() ?? "";
+  const search = `%${query}%`;
+  const columns = `id, wash_job_id, invoice_number, revision_number, invoice_status, customer_name_snapshot, customer_phone_snapshot, vehicle_registration_snapshot, total_minor, paid_minor, balance_minor, payment_status_snapshot, issued_at, created_at`;
+  const filters = `organization_id = ? AND (invoice_number LIKE ? OR customer_phone_snapshot LIKE ? OR vehicle_registration_snapshot LIKE ?)`;
+  const baseParams = [auth.organizationId, search, search, search] as const;
+  // Temporary rollout-compatibility path: the previously deployed Web
+  // client calls this endpoint without limit/cursor and expects the legacy
+  // bare-array shape. Remove once the new paginated Web is verified.
+  if (
+    c.req.query("limit") === undefined &&
+    c.req.query("cursor") === undefined
+  ) {
+    const result = await c.env.DB.prepare(
+      `SELECT ${columns}
+       FROM invoices
+       WHERE ${filters}
+       ORDER BY created_at DESC LIMIT 250`,
+    )
+      .bind(...baseParams)
+      .all();
+    return c.json({
+      data: result.results.map((invoice) =>
+        maskPhoneSnapshotRow(invoice, auth.role),
+      ),
+      success: true,
+    });
+  }
+  const limit = parseListLimit(c.req.query("limit"));
+  const rawCursor = c.req.query("cursor");
+  const cursor =
+    rawCursor === undefined || rawCursor === ""
+      ? undefined
+      : parseListCursor(rawCursor);
+  const result =
+    cursor === undefined
+      ? await c.env.DB.prepare(
+          `SELECT ${columns}
+           FROM invoices
+           WHERE ${filters}
+           ORDER BY created_at DESC, id DESC
+           LIMIT ?`,
+        )
+          .bind(...baseParams, limit + 1)
+          .all()
+      : await c.env.DB.prepare(
+          `SELECT ${columns}
+           FROM invoices
+           WHERE ${filters}
+             AND (created_at < ? OR (created_at = ? AND id < ?))
+           ORDER BY created_at DESC, id DESC
+           LIMIT ?`,
+        )
+          .bind(
+            ...baseParams,
+            cursor.orderValue,
+            cursor.orderValue,
+            cursor.id,
+            limit + 1,
+          )
+          .all();
+  const rows = result.results;
+  const hasNext = rows.length > limit;
+  const pageRows = hasNext ? rows.slice(0, limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+  const nextCursor =
+    hasNext && lastRow !== undefined
+      ? buildListCursor(lastRow.created_at as string, lastRow.id as string)
+      : null;
   return c.json({
-    data: result.results.map((invoice) =>
-      maskPhoneSnapshotRow(invoice, auth.role),
-    ),
+    data: {
+      invoices: pageRows.map((invoice) =>
+        maskPhoneSnapshotRow(invoice, auth.role),
+      ),
+      pagination: { hasNext, limit, nextCursor },
+    },
     success: true,
   });
 });

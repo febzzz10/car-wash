@@ -377,23 +377,33 @@ describe("wash, timer, payment, and refund workflow", () => {
     }
 
     const list = await app.request(
-      "/api/v1/payments",
+      "/api/v1/payments?limit=15",
       { headers: { cookie: headers["cookie"] ?? "" } },
       env,
     );
     expect(list.status).toBe(200);
     const body = await list.json<{
       data: {
-        collected_by_name_snapshot: string | null;
-        id: string;
-        wash_job_id: string;
-      }[];
+        payments: {
+          collected_by_name_snapshot: string | null;
+          id: string;
+          wash_job_id: string;
+        }[];
+        pagination: {
+          hasNext: boolean;
+          limit: number;
+          nextCursor: string | null;
+        };
+      };
     }>();
-    const rows = body.data.filter((row) => row.wash_job_id === created.data.id);
+    const rows = body.data.payments.filter(
+      (row) => row.wash_job_id === created.data.id,
+    );
     expect(rows).toHaveLength(2);
     for (const row of rows) {
       expect(row.collected_by_name_snapshot).toBe("Wash Staff");
     }
+    expect(body.data.pagination.limit).toBe(15);
   });
 
   it("creates priced snapshots and preserves timer and financial integrity", async () => {
@@ -824,47 +834,72 @@ describe("wash, timer, payment, and refund workflow", () => {
       .run();
 
     const within = await app.request(
-      "/api/v1/payments?from=2026-07-23&to=2026-07-23",
+      "/api/v1/payments?from=2026-07-23&to=2026-07-23&limit=15",
       { headers: { cookie: headers["cookie"] ?? "" } },
       env,
     );
     expect(within.status).toBe(200);
     const withinBody = await within.json<{
-      data: { id: string; wash_job_id: string }[];
+      data: {
+        payments: { id: string; wash_job_id: string }[];
+        pagination: {
+          hasNext: boolean;
+          limit: number;
+          nextCursor: string | null;
+        };
+      };
     }>();
-    const withinRows = withinBody.data.filter((r) => r.wash_job_id === jobId);
+    const withinRows = withinBody.data.payments.filter(
+      (r) => r.wash_job_id === jobId,
+    );
     expect(withinRows).toHaveLength(1);
     expect(
       withinRows.some((row) => row.id === "payment-date-filter-0001"),
     ).toBe(true);
 
     const nextDay = await app.request(
-      "/api/v1/payments?from=2026-07-24&to=2026-07-24",
+      "/api/v1/payments?from=2026-07-24&to=2026-07-24&limit=15",
       { headers: { cookie: headers["cookie"] ?? "" } },
       env,
     );
     expect(nextDay.status).toBe(200);
     const nextDayBody = await nextDay.json<{
-      data: { id: string; wash_job_id: string }[];
+      data: {
+        payments: { id: string; wash_job_id: string }[];
+        pagination: {
+          hasNext: boolean;
+          limit: number;
+          nextCursor: string | null;
+        };
+      };
     }>();
-    const nextDayRows = nextDayBody.data.filter((r) => r.wash_job_id === jobId);
+    const nextDayRows = nextDayBody.data.payments.filter(
+      (r) => r.wash_job_id === jobId,
+    );
     expect(nextDayRows).toHaveLength(1);
     expect(
       nextDayRows.some((row) => row.id === "payment-date-filter-0002"),
     ).toBe(true);
 
     const wide = await app.request(
-      "/api/v1/payments?from=2026-07-20&to=2026-07-31",
+      "/api/v1/payments?from=2026-07-20&to=2026-07-31&limit=15",
       { headers: { cookie: headers["cookie"] ?? "" } },
       env,
     );
     expect(wide.status).toBe(200);
     const wideBody = await wide.json<{
-      data: { id: string; wash_job_id: string }[];
+      data: {
+        payments: { id: string; wash_job_id: string }[];
+        pagination: {
+          hasNext: boolean;
+          limit: number;
+          nextCursor: string | null;
+        };
+      };
     }>();
-    expect(wideBody.data.filter((r) => r.wash_job_id === jobId)).toHaveLength(
-      2,
-    );
+    expect(
+      wideBody.data.payments.filter((r) => r.wash_job_id === jobId),
+    ).toHaveLength(2);
   });
 
   it("rejects invalid or reversed date ranges in the payments list", async () => {
@@ -933,36 +968,47 @@ describe("wash, timer, payment, and refund workflow", () => {
     expect(payment.status).toBe(201);
 
     const filtered = await app.request(
-      "/api/v1/payments?assignedUserId=staff-wash-2",
+      "/api/v1/payments?assignedUserId=staff-wash-2&limit=15",
       { headers: { cookie: headers["cookie"] ?? "" } },
       env,
     );
     expect(filtered.status).toBe(200);
     const filteredBody = await filtered.json<{
       data: {
-        collected_by_name_snapshot: string | null;
-        id: string;
-        wash_job_id: string;
-      }[];
+        payments: {
+          collected_by_name_snapshot: string | null;
+          id: string;
+          wash_job_id: string;
+        }[];
+        pagination: {
+          hasNext: boolean;
+          limit: number;
+          nextCursor: string | null;
+        };
+      };
     }>();
-    expect(filteredBody.data.length).toBeGreaterThan(0);
+    expect(filteredBody.data.payments.length).toBeGreaterThan(0);
     expect(
-      filteredBody.data.some((row) => row.wash_job_id === created.data.id),
+      filteredBody.data.payments.some(
+        (row) => row.wash_job_id === created.data.id,
+      ),
     ).toBe(true);
-    for (const row of filteredBody.data) {
+    for (const row of filteredBody.data.payments) {
       expect(row.collected_by_name_snapshot).toBe("Shift B");
     }
 
     const otherStaff = await app.request(
-      "/api/v1/payments?assignedUserId=staff-wash",
+      "/api/v1/payments?assignedUserId=staff-wash&limit=15",
       { headers: { cookie: headers["cookie"] ?? "" } },
       env,
     );
     const otherBody = await otherStaff.json<{
-      data: { id: string; wash_job_id: string }[];
+      data: { payments: { id: string; wash_job_id: string }[] };
     }>();
     expect(
-      otherBody.data.some((row) => row.wash_job_id === created.data.id),
+      otherBody.data.payments.some(
+        (row) => row.wash_job_id === created.data.id,
+      ),
     ).toBe(false);
   });
 
@@ -1109,14 +1155,21 @@ describe("wash, timer, payment, and refund workflow", () => {
     expect(payment.status).toBe(201);
 
     const list = await app.request(
-      "/api/v1/payments",
+      "/api/v1/payments?limit=50",
       { headers: { cookie: headers["cookie"] ?? "" } },
       env,
     );
     const listBody = await list.json<{
-      data: { collected_by_name_snapshot: string | null; wash_job_id: string }[];
+      data: {
+        payments: {
+          collected_by_name_snapshot: string | null;
+          wash_job_id: string;
+        }[];
+      };
     }>();
-    const row = listBody.data.find((r) => r.wash_job_id === created.data.id);
+    const row = listBody.data.payments.find(
+      (r) => r.wash_job_id === created.data.id,
+    );
     expect(row).toBeDefined();
     expect(row!.collected_by_name_snapshot).toBeNull();
   });

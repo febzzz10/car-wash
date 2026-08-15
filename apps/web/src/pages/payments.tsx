@@ -1,5 +1,17 @@
-import { Banknote, RotateCcw, SearchX } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Banknote,
+  RotateCcw,
+  SearchX,
+} from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth";
@@ -18,25 +30,15 @@ import { useApiData } from "../hooks/use-api-data";
 import { api, jsonBody } from "../lib/api";
 import { date, dateTime, money } from "../lib/format";
 import { paymentMethodLabel } from "../lib/payment-methods";
+import type { PaymentListPayload, PaymentRecord } from "../types";
 
 const dateOnlyPattern = /^(\d{4})-(\d{2})-(\d{2})$/u;
+const PAGE_SIZES = [15, 25, 50] as const;
+const DEFAULT_PAGE_SIZE = 15;
 
-interface PaymentRecord {
-  readonly amount_minor: number;
-  readonly collected_by_name_snapshot?: string | null;
-  readonly collected_by_employee_code_snapshot?: string | null;
-  readonly created_at: string;
-  readonly customer_name_snapshot: string;
-  readonly external_transaction_reference?: string | null;
-  readonly id: string;
-  readonly job_reference: string;
-  readonly paid_at: string;
-  readonly payment_method: string;
-  readonly payment_status: string;
-  readonly status: string;
-  readonly tip_minor: number;
-  readonly vehicle_registration_snapshot: string;
-  readonly wash_job_id: string;
+function paymentsPath(base: string, limit: number, cursor: string): string {
+  const separator = base.includes("?") ? "&" : "?";
+  return `${base}${separator}limit=${limit}${cursor === "" ? "" : `&cursor=${encodeURIComponent(cursor)}`}`;
 }
 interface SettingRow {
   readonly setting_key: string;
@@ -117,8 +119,20 @@ export default function PaymentsPage() {
       return { ...unfiltered, invalid: true };
     return { assignedUserId, from, invalid: false, to };
   }, [searchParams]);
-  const listPath = isAdmin ? buildPaymentsQuery(applied) : "/payments";
-  const state = useApiData<readonly PaymentRecord[]>(listPath);
+  const basePath = isAdmin ? buildPaymentsQuery(applied) : "/payments";
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [page, setPage] = useState(1);
+  const [cursorHistory, setCursorHistory] = useState<readonly string[]>([""]);
+  const [payments, setPayments] = useState<readonly PaymentRecord[] | null>(
+    null,
+  );
+  const [hasNext, setHasNext] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [paging, setPaging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const reload = useCallback(() => setRevision((value) => value + 1), []);
   const optionsState = useApiData<FilterOptions>(
     "/payments/filter-options",
     isAdmin,
@@ -130,7 +144,60 @@ export default function PaymentsPage() {
   );
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
-  const appliedPathRef = useRef("/payments");
+
+  function resetPagination(nextLimit?: number) {
+    setPage(1);
+    setCursorHistory([""]);
+    setHasNext(false);
+    setNextCursor(null);
+    if (nextLimit !== undefined) setLimit(nextLimit);
+  }
+
+  useEffect(() => {
+    let active = true;
+    const cursor = cursorHistory[page - 1] ?? "";
+    if (cursor === "") {
+      setLoading(true);
+      setError(null);
+    } else {
+      setPaging(true);
+    }
+    void api<PaymentListPayload>(paymentsPath(basePath, limit, cursor))
+      .then((body) => {
+        if (!active) return;
+        setPayments(body.payments);
+        setHasNext(body.pagination.hasNext);
+        setNextCursor(body.pagination.nextCursor);
+      })
+      .catch((reason: unknown) => {
+        if (!active) return;
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "The payment list could not be loaded.",
+        );
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+        setPaging(false);
+        setApplying(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [basePath, cursorHistory, limit, page, revision]);
+
+  const goNext = useCallback(() => {
+    if (nextCursor === null || paging) return;
+    setCursorHistory((prev) => [...prev, nextCursor]);
+    setPage((prev) => prev + 1);
+  }, [nextCursor, paging]);
+
+  const goPrevious = useCallback(() => {
+    if (page <= 1 || paging) return;
+    setPage((prev) => prev - 1);
+  }, [page, paging]);
 
   const settingsState = useApiData<{
     readonly settings: readonly SettingRow[];
@@ -140,12 +207,6 @@ export default function PaymentsPage() {
       (s) => s.setting_key === "payment.allow_refunds",
     )?.value_text === "true";
   const [refund, setRefund] = useState<PaymentRecord | null>(null);
-
-  useEffect(() => {
-    appliedPathRef.current = applied.invalid
-      ? "/payments"
-      : buildPaymentsQuery(applied);
-  }, [applied]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -162,13 +223,6 @@ export default function PaymentsPage() {
     setApplyError("Enter a valid payment filter.");
     setSearchParams({}, { replace: true });
   }, [applied.invalid, isAdmin, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    if (!applying) return;
-    if (!state.loading && listPath === appliedPathRef.current) {
-      setApplying(false);
-    }
-  }, [applying, listPath, state.loading]);
 
   const staffOptions = optionsState.data?.staff ?? [];
   const collectorLabel = staffOptions.find(
@@ -198,12 +252,9 @@ export default function PaymentsPage() {
     if (from !== "") next.set("from", from);
     if (to !== "") next.set("to", to);
     if (assignedUserId !== "") next.set("assignedUserId", assignedUserId);
-    const targetPath =
-      next.size === 0
-        ? "/payments"
-        : `/payments?${next.toString()}`;
     setApplyError(null);
-    appliedPathRef.current = targetPath;
+    resetPagination();
+    setRevision((value) => value + 1);
     setApplying(true);
     setSearchParams(next.size === 0 ? {} : next, { replace: true });
   }
@@ -214,7 +265,8 @@ export default function PaymentsPage() {
     setToDraft("");
     setAssignedIdDraft("");
     setApplyError(null);
-    appliedPathRef.current = "/payments";
+    resetPagination();
+    setRevision((value) => value + 1);
     setSearchParams({}, { replace: true });
   }
 
@@ -227,11 +279,12 @@ export default function PaymentsPage() {
     applied.to === null &&
     applied.assignedUserId === null &&
     !applied.invalid;
-  const clearDisabled =
-    nothingDrafted && nothingApplied && applyError === null;
+  const clearDisabled = nothingDrafted && nothingApplied && applyError === null;
 
   const appliedFrom =
-    applied.from !== null && isValidDateOnly(applied.from) ? applied.from : null;
+    applied.from !== null && isValidDateOnly(applied.from)
+      ? applied.from
+      : null;
   const appliedTo =
     applied.to !== null && isValidDateOnly(applied.to) ? applied.to : null;
   const appliedAssigned =
@@ -254,7 +307,11 @@ export default function PaymentsPage() {
       <PageHeader eyebrow="Finance" title="Payments" />
       <Card>
         {isAdmin ? (
-          <div className="payments-filters" role="group" aria-label="Payment filters">
+          <div
+            className="payments-filters"
+            role="group"
+            aria-label="Payment filters"
+          >
             <div className="payments-filters__field">
               <label htmlFor="paymentFrom">
                 <span>From</span>
@@ -315,7 +372,7 @@ export default function PaymentsPage() {
             <div className="payments-filters__actions">
               <Button
                 busy={applying}
-                disabled={state.loading}
+                disabled={loading || paging || applying}
                 onClick={applyFilters}
                 type="button"
               >
@@ -340,11 +397,11 @@ export default function PaymentsPage() {
         {summary === null ? null : (
           <p className="payments-filter-summary">{summary}</p>
         )}
-        {state.loading ? (
+        {loading ? (
           <SkeletonRows />
-        ) : state.error !== null ? (
-          <ErrorState message={state.error} onRetry={state.reload} />
-        ) : (state.data?.length ?? 0) === 0 ? (
+        ) : error !== null ? (
+          <ErrorState message={error} onRetry={reload} />
+        ) : (payments?.length ?? 0) === 0 ? (
           applied.invalid ||
           applied.from !== null ||
           applied.to !== null ||
@@ -367,88 +424,137 @@ export default function PaymentsPage() {
             />
           )
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Job</th>
-                  <th>Customer & vehicle</th>
-                   <th>Collected by</th>
-                  <th>Method</th>
-                  <th>Paid at</th>
-                  <th>Status</th>
-                  <th className="align-right">Amount</th>
-                  <th className="align-right">Tip</th>
-                  {user?.role === "ADMIN" && refundsEnabled ? (
-                    <th>Action</th>
-                  ) : null}
-                </tr>
-              </thead>
-              <tbody>
-                {state.data?.map((payment) => (
-                  <tr key={payment.id}>
-                    <td>
-                      <Link
-                        className="identifier"
-                        to={`/wash-jobs/${payment.wash_job_id}`}
-                      >
-                        {payment.job_reference}
-                      </Link>
-                    </td>
-                    <td>
-                      <strong>{payment.vehicle_registration_snapshot}</strong>
-                      <small>{payment.customer_name_snapshot}</small>
-                    </td>
-                    <td>
-                      {payment.collected_by_name_snapshot !== null &&
-                      payment.collected_by_name_snapshot !== undefined &&
-                      payment.collected_by_name_snapshot.trim() !== "" ? (
-                        <span className="payment-assignee">
-                          {payment.collected_by_name_snapshot}
-                        </span>
-                      ) : (
-                        <span className="muted">Not recorded</span>
-                      )}
-                    </td>
-                    <td>
-                      {paymentMethodLabel(payment.payment_method)}
-                      <small>
-                        {payment.external_transaction_reference ? (
-                          <code className="identifier--muted">
-                            {payment.external_transaction_reference}
-                          </code>
-                        ) : null}
-                      </small>
-                    </td>
-                    <td>{dateTime(payment.paid_at)}</td>
-                    <td>
-                      <StatusBadge value={payment.status} />
-                    </td>
-                    <td className="align-right">
-                      <strong>{money(payment.amount_minor)}</strong>
-                    </td>
-                    <td className="align-right">
-                      {payment.tip_minor > 0 ? money(payment.tip_minor) : null}
-                    </td>
+          <>
+            <div aria-busy={paging} className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Job</th>
+                    <th>Customer & vehicle</th>
+                    <th>Collected by</th>
+                    <th>Method</th>
+                    <th>Paid at</th>
+                    <th>Status</th>
+                    <th className="align-right">Amount</th>
+                    <th className="align-right">Tip</th>
                     {user?.role === "ADMIN" && refundsEnabled ? (
-                      <td>
-                        <Button onClick={() => setRefund(payment)} tone="quiet">
-                          <RotateCcw size={16} /> Refund
-                        </Button>
-                      </td>
+                      <th>Action</th>
                     ) : null}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {payments?.map((payment) => (
+                    <tr key={payment.id}>
+                      <td>
+                        <Link
+                          className="identifier"
+                          to={`/wash-jobs/${payment.wash_job_id}`}
+                        >
+                          {payment.job_reference}
+                        </Link>
+                      </td>
+                      <td>
+                        <strong>{payment.vehicle_registration_snapshot}</strong>
+                        <small>{payment.customer_name_snapshot}</small>
+                      </td>
+                      <td>
+                        {payment.collected_by_name_snapshot !== null &&
+                        payment.collected_by_name_snapshot !== undefined &&
+                        payment.collected_by_name_snapshot.trim() !== "" ? (
+                          <span className="payment-assignee">
+                            {payment.collected_by_name_snapshot}
+                          </span>
+                        ) : (
+                          <span className="muted">Not recorded</span>
+                        )}
+                      </td>
+                      <td>
+                        {paymentMethodLabel(payment.payment_method)}
+                        <small>
+                          {payment.external_transaction_reference ? (
+                            <code className="identifier--muted">
+                              {payment.external_transaction_reference}
+                            </code>
+                          ) : null}
+                        </small>
+                      </td>
+                      <td>{dateTime(payment.paid_at)}</td>
+                      <td>
+                        <StatusBadge value={payment.status} />
+                      </td>
+                      <td className="align-right">
+                        <strong>{money(payment.amount_minor)}</strong>
+                      </td>
+                      <td className="align-right">
+                        {payment.tip_minor > 0
+                          ? money(payment.tip_minor)
+                          : null}
+                      </td>
+                      {user?.role === "ADMIN" && refundsEnabled ? (
+                        <td>
+                          <Button
+                            onClick={() => setRefund(payment)}
+                            tone="quiet"
+                          >
+                            <RotateCcw size={16} /> Refund
+                          </Button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="pagination-footer">
+              <p className="pagination-summary">
+                Showing {payments?.length ?? 0} payments
+              </p>
+              <label className="pagination-page-size">
+                <span>Rows per page</span>
+                <select
+                  aria-label="Rows per page"
+                  onChange={(event) =>
+                    resetPagination(Number(event.target.value))
+                  }
+                  value={limit}
+                >
+                  {PAGE_SIZES.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <nav aria-label="Payment pages" className="pagination-controls">
+                <Button
+                  disabled={page === 1 || paging}
+                  onClick={goPrevious}
+                  tone="secondary"
+                  type="button"
+                >
+                  <ArrowLeft size={15} /> Previous
+                </Button>
+                <span aria-live="polite" className="pagination-page">
+                  Page {page}
+                </span>
+                <Button
+                  disabled={!hasNext || paging}
+                  onClick={goNext}
+                  tone="secondary"
+                  type="button"
+                >
+                  Next <ArrowRight size={15} />
+                </Button>
+              </nav>
+            </div>
+          </>
         )}
       </Card>
       <RefundDialog
         onClose={() => setRefund(null)}
         onDone={() => {
           setRefund(null);
-          state.reload();
+          reload();
         }}
         payment={refund}
       />

@@ -18,6 +18,11 @@ import { requireAdmin, requirePermission } from "../middleware/auth";
 import { sha256 } from "../security/tokens";
 import { auditStatement } from "../services/audit";
 import {
+  buildListCursor,
+  parseListCursor,
+  parseListLimit,
+} from "../services/pagination";
+import {
   booleanSetting,
   integerSetting,
   loadSettings,
@@ -213,28 +218,88 @@ paymentRoutes.get("/", requirePermission("payments.create"), async (c) => {
       );
   }
 
-  const result = await c.env.DB.prepare(
-    `SELECT p.*, w.job_reference, w.customer_name_snapshot,
-      w.vehicle_registration_snapshot, w.payment_status
-     FROM payments p INNER JOIN wash_jobs w ON w.id = p.wash_job_id
-     WHERE p.organization_id = ? AND p.branch_id = ?
-       AND (? IS NULL OR p.paid_at >= ?)
-       AND (? IS NULL OR p.paid_at < ?)
-       AND (? IS NULL OR p.collected_by_user_id = ?)
-     ORDER BY p.created_at DESC LIMIT 250`,
-  )
-    .bind(
-      auth.organizationId,
-      auth.branchId,
-      fromUtc,
-      fromUtc,
-      toExclusiveUtc,
-      toExclusiveUtc,
-      collectorFilter,
-      collectorFilter,
+  const columns = `p.*, w.job_reference, w.customer_name_snapshot,
+    w.vehicle_registration_snapshot, w.payment_status`;
+  const filters = `p.organization_id = ? AND p.branch_id = ?
+     AND (? IS NULL OR p.paid_at >= ?)
+     AND (? IS NULL OR p.paid_at < ?)
+     AND (? IS NULL OR p.collected_by_user_id = ?)`;
+  const baseParams = [
+    auth.organizationId,
+    auth.branchId,
+    fromUtc,
+    fromUtc,
+    toExclusiveUtc,
+    toExclusiveUtc,
+    collectorFilter,
+    collectorFilter,
+  ] as const;
+  // Temporary rollout-compatibility path: the previously deployed Web
+  // client calls this endpoint without limit/cursor (filtered or
+  // unfiltered) and expects the legacy bare-array shape. Remove once the
+  // new paginated Web is verified in production.
+  if (
+    c.req.query("limit") === undefined &&
+    c.req.query("cursor") === undefined
+  ) {
+    const result = await c.env.DB.prepare(
+      `SELECT ${columns}
+       FROM payments p INNER JOIN wash_jobs w ON w.id = p.wash_job_id
+       WHERE ${filters}
+       ORDER BY p.created_at DESC LIMIT 250`,
     )
-    .all();
-  return c.json({ data: result.results, success: true });
+      .bind(...baseParams)
+      .all();
+    return c.json({ data: result.results, success: true });
+  }
+  const limit = parseListLimit(c.req.query("limit"));
+  const rawCursor = c.req.query("cursor");
+  const cursor =
+    rawCursor === undefined || rawCursor === ""
+      ? undefined
+      : parseListCursor(rawCursor);
+  const result =
+    cursor === undefined
+      ? await c.env.DB.prepare(
+          `SELECT ${columns}
+           FROM payments p INNER JOIN wash_jobs w ON w.id = p.wash_job_id
+           WHERE ${filters}
+           ORDER BY p.created_at DESC, p.id DESC
+           LIMIT ?`,
+        )
+          .bind(...baseParams, limit + 1)
+          .all()
+      : await c.env.DB.prepare(
+          `SELECT ${columns}
+           FROM payments p INNER JOIN wash_jobs w ON w.id = p.wash_job_id
+           WHERE ${filters}
+             AND (p.created_at < ? OR (p.created_at = ? AND p.id < ?))
+           ORDER BY p.created_at DESC, p.id DESC
+           LIMIT ?`,
+        )
+          .bind(
+            ...baseParams,
+            cursor.orderValue,
+            cursor.orderValue,
+            cursor.id,
+            limit + 1,
+          )
+          .all();
+  const rows = result.results;
+  const hasNext = rows.length > limit;
+  const pageRows = hasNext ? rows.slice(0, limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+  const nextCursor =
+    hasNext && lastRow !== undefined
+      ? buildListCursor(lastRow.created_at as string, lastRow.id as string)
+      : null;
+  return c.json({
+    data: {
+      payments: pageRows,
+      pagination: { hasNext, limit, nextCursor },
+    },
+    success: true,
+  });
 });
 
 paymentRoutes.get(

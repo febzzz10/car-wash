@@ -18,6 +18,29 @@ export interface InvoiceListPayload {
   readonly pagination: CursorPagination;
 }
 
+export interface PaymentListPayload {
+  readonly payments: readonly PaymentRecord[];
+  readonly pagination: CursorPagination;
+}
+
+export interface PaymentRecord {
+  readonly amount_minor: number;
+  readonly collected_by_name_snapshot?: string | null;
+  readonly collected_by_employee_code_snapshot?: string | null;
+  readonly created_at: string;
+  readonly customer_name_snapshot: string;
+  readonly external_transaction_reference?: string | null;
+  readonly id: string;
+  readonly job_reference: string;
+  readonly paid_at: string;
+  readonly payment_method: string;
+  readonly payment_status: string;
+  readonly status: string;
+  readonly tip_minor: number;
+  readonly vehicle_registration_snapshot: string;
+  readonly wash_job_id: string;
+}
+
 export interface InvoiceRecord {
   readonly balance_minor: number;
   readonly created_at: string;

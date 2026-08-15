@@ -184,6 +184,31 @@ async function mockApplication(page: Page, user = admin): Promise<void> {
         events: [],
         job: { id: "job-1", status: "WAITING" },
       });
+    if (path.endsWith("/payments"))
+      return fulfill(route, {
+        pagination: { hasNext: false, limit: 15, nextCursor: null },
+        payments: [
+          {
+            amount_minor: 40000,
+            collected_by_name_snapshot: "Meera Shah",
+            created_at: "2026-07-23T10:00:00.000Z",
+            customer_name_snapshot: "Meera Shah",
+            id: "payment-1",
+            job_reference: "WJ-2026-000001",
+            paid_at: "2026-07-23T10:00:00.000Z",
+            payment_method: "UPI",
+            payment_status: "PAID",
+            status: "SUCCESS",
+            tip_minor: 0,
+            vehicle_registration_snapshot: "KL 01 AA 1000",
+            wash_job_id: "job-1",
+          },
+        ],
+      });
+    if (path.endsWith("/payments/filter-options"))
+      return fulfill(route, {
+        staff: [{ active: true, id: "staff-1", name: "Meera Shah" }],
+      });
     if (path.endsWith("/payments/job/job-1/all"))
       return fulfill(route, { payments: [], refunds: [] });
     if (path.endsWith("/wash-jobs/job-1"))

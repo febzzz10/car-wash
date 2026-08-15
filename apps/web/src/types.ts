@@ -7,6 +7,12 @@ export interface AuthUser {
   readonly username: string | undefined;
 }
 
+export interface CursorPagination {
+  readonly hasNext: boolean;
+  readonly limit: number;
+  readonly nextCursor: string | null;
+}
+
 export interface CustomerRecord {
   readonly id: string;
   readonly customer_code?: string | null;

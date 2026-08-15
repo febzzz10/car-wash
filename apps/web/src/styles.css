@@ -802,6 +802,49 @@ tbody tr:hover {
   overflow-x: auto;
   position: relative;
 }
+.pagination-footer {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 13px;
+}
+.pagination-summary {
+  color: var(--ink-500);
+  font-size: 0.75rem;
+  margin: 0;
+}
+.pagination-page-size {
+  align-items: center;
+  color: var(--ink-500);
+  display: flex;
+  font-family: var(--font-heading);
+  font-size: 0.67rem;
+  font-weight: 750;
+  gap: 7px;
+  margin: 0;
+}
+.pagination-page-size select {
+  min-height: 36px;
+  padding: 5px 9px;
+  width: auto;
+}
+.pagination-controls {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+.pagination-page {
+  color: var(--ink-500);
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 750;
+  min-width: 54px;
+  text-align: center;
+}
 .row-link {
   align-items: center;
   border-radius: 7px;
@@ -3059,6 +3102,13 @@ legend {
   }
   .filter-tabs {
     max-width: 100%;
+  }
+  .pagination-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .pagination-controls {
+    justify-content: center;
   }
   .choice-grid,
   .form-grid,

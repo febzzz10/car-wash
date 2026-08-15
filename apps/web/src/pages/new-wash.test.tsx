@@ -906,7 +906,7 @@ describe("New Wash — staff customer search privacy", () => {
     fireEvent.change(customerInput(), { target: { value: "" } });
     const emptySearchCalls = vi
       .mocked(useApiData)
-      .mock.calls.filter(([path]) => path === "/customers?search=");
+      .mock.calls.filter(([path]) => path === "/customers?search=&limit=50");
     expect(emptySearchCalls.length).toBeGreaterThan(0);
     for (const [, enabled] of emptySearchCalls) expect(enabled).toBe(false);
   });

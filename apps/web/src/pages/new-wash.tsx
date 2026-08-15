@@ -123,7 +123,7 @@ export default function NewWashPage() {
   const customersUrl =
     isAdmin && !searching
       ? "/customers?recent=1"
-      : `/customers?search=${encodeURIComponent(search.trim())}`;
+      : `/customers?search=${encodeURIComponent(search.trim())}&limit=50`;
   const customers = useApiData<readonly CustomerRecord[]>(
     customersUrl,
     isAdmin || searching,
@@ -1140,7 +1140,7 @@ function NewCustomerDialog({
       try {
         const digits = query.replace(/\D/g, "");
         const result = await api<readonly CustomerRecord[]>(
-          `/customers?search=${encodeURIComponent(digits)}`,
+          `/customers?search=${encodeURIComponent(digits)}&limit=50`,
           { signal: controller.signal },
         );
         if (seq !== lookupSeq.current) return;

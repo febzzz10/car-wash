@@ -22,6 +22,30 @@ const statusChangeSchema = z.object({
   reason: z.string().trim().min(3).max(500),
   version: z.number().int().positive(),
 });
+const DEFAULT_LIST_LIMIT = 15;
+const MAX_LIST_LIMIT = 50;
+
+function parseListCursor(cursor: string): { orderValue: string; id: string } {
+  if (cursor.length > 512) {
+    throw new ApiError(400, "VALIDATION_ERROR", "Invalid cursor.");
+  }
+  let decoded: string;
+  try {
+    decoded = atob(cursor);
+  } catch {
+    throw new ApiError(400, "VALIDATION_ERROR", "Invalid cursor.");
+  }
+  const separator = decoded.lastIndexOf("|");
+  if (separator === -1) {
+    throw new ApiError(400, "VALIDATION_ERROR", "Invalid cursor.");
+  }
+  const orderValue = decoded.slice(0, separator);
+  const id = decoded.slice(separator + 1);
+  if (orderValue === "" || id === "") {
+    throw new ApiError(400, "VALIDATION_ERROR", "Invalid cursor.");
+  }
+  return { orderValue, id };
+}
 
 function cleanCustomerInput(input: unknown): unknown {
   if (input === null || typeof input !== "object") return input;
@@ -68,6 +92,16 @@ customerRoutes.get("/", requirePermission("customers.read"), async (c) => {
   }
 
   const status = c.req.query("status") === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+  const rawLimit = Number(c.req.query("limit"));
+  const limit =
+    Number.isInteger(rawLimit) && rawLimit > 0
+      ? Math.min(rawLimit, MAX_LIST_LIMIT)
+      : DEFAULT_LIST_LIMIT;
+  const rawCursor = c.req.query("cursor");
+  const cursor =
+    rawCursor === undefined || rawCursor === ""
+      ? undefined
+      : parseListCursor(rawCursor);
   const like = `%${query.toLocaleLowerCase("en-IN").replace(/\s+/gu, " ")}%`;
   const digits = query.replace(/\D/gu, "");
   const phoneLike = digits === "" ? "" : `%${digits}%`;
@@ -79,12 +113,10 @@ customerRoutes.get("/", requirePermission("customers.read"), async (c) => {
       registrationSearch = null;
     }
   }
-  const result = await c.env.DB.prepare(
-    `SELECT id, customer_code, full_name, phone, phone_normalized, email,
+  const columns = `id, customer_code, full_name, phone, phone_normalized, email,
       address, notes, status, registered_at, last_visit_at,
-      total_visits_cached, total_spent_minor_cached, created_at, updated_at, version
-    FROM customers
-    WHERE organization_id = ? AND status = ?
+      total_visits_cached, total_spent_minor_cached, created_at, updated_at, version`;
+  const filters = `organization_id = ? AND status = ?
       AND (
         ? = ''
         OR name_search LIKE ?
@@ -95,21 +127,57 @@ customerRoutes.get("/", requirePermission("customers.read"), async (c) => {
             AND v.customer_id = customers.id
             AND v.registration_normalized = ?
         ))
-      )
-    ORDER BY COALESCE(last_visit_at, registered_at) DESC
-    LIMIT 100`,
-  )
-    .bind(
-      auth.organizationId,
-      status,
-      query,
-      like,
-      phoneLike,
-      phoneLike,
-      registrationSearch,
-      registrationSearch,
-    )
-    .all();
+      )`;
+  const baseParams = [
+    auth.organizationId,
+    status,
+    query,
+    like,
+    phoneLike,
+    phoneLike,
+    registrationSearch,
+    registrationSearch,
+  ] as const;
+  const result =
+    cursor === undefined
+      ? await c.env.DB.prepare(
+          `SELECT ${columns}
+          FROM customers
+          WHERE ${filters}
+          ORDER BY COALESCE(last_visit_at, registered_at) DESC, id DESC
+          LIMIT ?`,
+        )
+          .bind(...baseParams, limit + 1)
+          .all()
+      : await c.env.DB.prepare(
+          `SELECT ${columns}
+          FROM customers
+          WHERE ${filters}
+            AND (
+              COALESCE(last_visit_at, registered_at) < ?
+              OR (COALESCE(last_visit_at, registered_at) = ? AND id < ?)
+            )
+          ORDER BY COALESCE(last_visit_at, registered_at) DESC, id DESC
+          LIMIT ?`,
+        )
+          .bind(
+            ...baseParams,
+            cursor.orderValue,
+            cursor.orderValue,
+            cursor.id,
+            limit + 1,
+          )
+          .all();
+  const rows = result.results;
+  const hasNext = rows.length > limit;
+  const pageRows = hasNext ? rows.slice(0, limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+  const nextCursor =
+    hasNext && lastRow !== undefined
+      ? btoa(
+          `${(lastRow.last_visit_at as string | null) ?? (lastRow.registered_at as string)}|${lastRow.id as string}`,
+        )
+      : null;
   const matchingRegistrations = new Map<string, string[]>();
   if (registrationSearch !== null) {
     const matches = await c.env.DB.prepare(
@@ -125,13 +193,17 @@ customerRoutes.get("/", requirePermission("customers.read"), async (c) => {
       matchingRegistrations.set(customerId, registrations);
     }
   }
-  const data = result.results.map((row) => {
+  const data = pageRows.map((row) => {
     const registrations = matchingRegistrations.get(row.id as string);
     return registrations === undefined
       ? row
       : { ...row, matching_registrations: registrations };
   });
-  return c.json({ data, success: true });
+  return c.json({
+    data,
+    pagination: { hasNext, limit, nextCursor },
+    success: true,
+  });
 });
 
 customerRoutes.post("/", requirePermission("customers.create"), async (c) => {

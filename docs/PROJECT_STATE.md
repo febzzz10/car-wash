@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — Current WashPro Implementation State
 
-*Last updated: 2026-08-11*
+*Last updated: 2026-08-15*
 
 ## Active deployments
 
@@ -13,15 +13,15 @@
 
 `https://washpro-web.xpersscarwash.workers.dev`
 
-## Test results (last full run: 2026-08-11 — 985/985 ✅)
+## Test results (last full run: 2026-08-15 — 1020/1020 ✅)
 
 | Package | Test files | Tests | Status |
 |---------|-----------|-------|--------|
-| @washpro/web | 25 | 595 | ✅ All pass |
-| @washpro/api | 29 | 290 | ✅ All pass |
+| @washpro/web | 25 | 615 | ✅ All pass |
+| @washpro/api | 31 | 304 | ✅ All pass |
 | @washpro/contracts | 1 | 28 | ✅ All pass |
-| @washpro/domain | 9 | 72 | ✅ All pass |
-| **Total** | **64** | **985** | **✅ All pass** |
+| @washpro/domain | 9 | 73 | ✅ All pass |
+| **Total** | **66** | **1020** | **✅ All pass** |
 
 ## TypeScript typecheck
 
@@ -74,6 +74,8 @@ All packages: ✅ 0 errors
 22. **Mobile table horizontal overflow** (deployed 2026-08-08, commit `7b7171b`, web `24b4da47-3253-41c0-99f1-77db4358ad3e`): The Wash Queue page horizontally scrolled as a whole on mobile (page/header/toolbar slid sideways with blank space on the right). Root cause: an `.sr-only` `position: absolute` label in the far-right "Open" table header cell had no positioned ancestor, so its containing block was the document root — it sat outside the `overflow-x: auto` clip, pushing `documentElement.scrollWidth` to 744px at a 360px viewport. Fix: added `position: relative` to the shared `.table-wrap` rule in `styles.css` (one line), making `.table-wrap` the positioned containing block so absolutely positioned descendants are clipped by the scroll container. Same `.sr-only`-in-`.table-wrap` pattern also exists on Customers, Invoices, and Vehicles, all covered by the shared rule. 2 structural regression tests added in `wash-jobs.test.tsx` (table inside `.table-wrap`; toolbar structure). Web suite 549/549 passing; typecheck, build, `git diff --check` clean. Production-verified by the owner at 360/390/430px on Wash Queue (0 document overflow, contained table scroll, last column reachable, row navigation OK) and ~390px on Customers/Invoices/Vehicles (no page overflow, contained scroll, interactions OK). Web-only deploy; no API change, no migration.
 
 23. **Staff phone-number masking** (not yet deployed, 985 tests): STAFF users see masked customer phone numbers everywhere in the UI and in most API responses. **Privacy model = DISPLAY PRIVACY** (not complete client-side data privacy — `tel:`/`wa.me` hrefs and the invoice WhatsApp share URL intentionally contain real numbers by design to keep Call/WhatsApp/Share actions functional). **Exceptions where STAFF receives full numbers**: (a) `GET/POST/PATCH /customers*` — raw `phone` + `phone_normalized` fields remain real, feeding search, edit-form preload, duplicate detection, and contact-action `tel:`/`wa.me` links (client-side `maskPhone()` renders them masked); (b) `POST /invoices/:id/share-message` — `whatsappUrl` contains real digits from the raw DB snapshot (server-side action). **All other surfaces return masked values**: wash jobs (8 sites), invoices list/detail/generate (3), vehicles list/detail/history (3), customer /:id/wash-jobs + /:id/history (2). Admin-only routes (invoice revisions/replay, wash-job timer adjustments, reports, referrals) intentionally untouched. **Corruption guard**: the `customers.*` endpoints never mask `phone`/`phone_normalized` fields — the edit form (`CustomerDialog`) preloads the real phone; `normalizePhone` (min 8 digits) naturally rejects any masked value like `90xxxxxx05` (4-digit) with a 422 `VALIDATION_ERROR`. Four dedicated API regression tests prove staff PATCH name-only keeps the real phone, server rejects a masked phone value, and admin edit is unchanged. **Deployment order**: **Web → API** is the complete-privacy order (new web masks everything client-side immediately; API deploy hardens snapshot masking server-side); **API → Web** is link-safe (no href sources get masked, old SPA just shows unmasked `customers.phone` and masked snapshots — no broken `tel:`/`wa.me` links) but leaves a temporary window where old SPA fully displays `customers.phone` for staff. New tests: API +4 corruption-guard, web +2 edit-form integrity, domain 0 changes.
+
+24. **Customers server-side cursor pagination** (not yet deployed, 1020 tests): `GET /api/v1/customers` now paginates with a keyset cursor instead of `LIMIT 100`. Default page size 15, max 50 (non-integer/≤0 limits safely fall back to 15; >50 clamped to 50 — wash-jobs convention). Cursor format `base64("<COALESCE(last_visit_at, registered_at)>|<id>")`; sort preserved (`COALESCE(last_visit_at, registered_at) DESC`) with a new `id DESC` tie-breaker; malformed cursors (length >512, bad base64, missing/empty parts) → `400 VALIDATION_ERROR "Invalid cursor."`; garbage-but-valid cursors harmlessly return an empty page. Response gains `pagination: { limit, hasNext, nextCursor }` while `data` stays an array (search/filter/auth/org-scoping/matching-registrations unchanged; fetch is `limit+1` for `hasNext`, enrichment still one org-scoped query — no N+1). The Customers page now manages its own fetching (no `useApiData`): page number + cursor-history stack, skeleton on page-1/reset fetches vs. table kept visible with `aria-busy` while paging, Previous/Page N (`aria-live="polite"`)/Next buttons, "Showing N customers" summary, Rows-per-page select (15/25/50), stale-response protection via effect cleanup, and search/tab/page-size changes reset to page 1. New Wash's customer search (wizard picker + add-customer duplicate lookup) previously inherited the endpoint's implicit 100-row cap; it now explicitly requests `limit=50` — an intentional reduction (bounded picker UI with whole-dataset server-side substring search per keystroke; any customer remains findable by refining the query). No DB migration required (existing `ix_customers_org_name`/`ix_customers_org_phone`/`ix_customers_last_visit` indexes plus the vehicles `UNIQUE(organization_id, registration_normalized)` index already bound the query plans per organization; `EXPLAIN QUERY PLAN` verified org-scoped index scans with the correlated registration subquery served by the unique vehicles index). New tests: 1 comprehensive API integration suite (`customer-list-pagination.test.ts`: default/limit/clamp/walk-without-dup-or-missing/tie-break-across-boundary/COALESCE override/filters/search-paginated/org-isolation/invalid-cursors/401/staff) and a rewritten web page suite (57 tests incl. 13 new pagination tests: first-page-only, cursor Next/Previous, disabled states, search/tab/page-size resets, table stability and stale-response races, page-size options). E2E mock updated to the new envelope shape. **Implement + test only — NOT deployed, NOT pushed.**
 
 ## Known issues
 

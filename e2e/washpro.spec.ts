@@ -76,17 +76,20 @@ async function mockApplication(page: Page, user = admin): Promise<void> {
         },
       ]);
     if (path.endsWith("/customers"))
-      return fulfill(route, [
-        {
-          full_name: "Meera Shah",
-          id: "customer-1",
-          phone: "9876500000",
-          status: "ACTIVE",
-          total_spent_minor_cached: 120000,
-          total_visits_cached: 4,
-          version: 1,
-        },
-      ]);
+      return fulfill(route, {
+        data: [
+          {
+            full_name: "Meera Shah",
+            id: "customer-1",
+            phone: "9876500000",
+            status: "ACTIVE",
+            total_spent_minor_cached: 120000,
+            total_visits_cached: 4,
+            version: 1,
+          },
+        ],
+        pagination: { hasNext: false, limit: 15, nextCursor: null },
+      });
     if (path.endsWith("/vehicles"))
       return fulfill(route, [
         {

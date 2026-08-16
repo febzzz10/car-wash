@@ -11,6 +11,7 @@ import {
   SkeletonRows,
   StatusBadge,
 } from "../components/ui";
+import { useAuth } from "../auth";
 import { useApiData } from "../hooks/use-api-data";
 import { useMaskedPhone } from "../hooks/use-masked-phone";
 import { api, jsonBody } from "../lib/api";
@@ -34,6 +35,8 @@ interface VehicleHistory {
 }
 export default function VehicleDetailPage() {
   const { id = "" } = useParams();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const maskPhone = useMaskedPhone();
   const [editing, setEditing] = useState(false);
   const [statusChangeOpen, setStatusChangeOpen] = useState(false);
@@ -65,10 +68,12 @@ export default function VehicleDetailPage() {
             <Button onClick={() => setEditing(true)} tone="secondary">
               <Edit3 size={17} /> Edit
             </Button>
-            <Button onClick={() => setStatusChangeOpen(true)} tone="quiet">
-              <Power size={17} />
-              {item.status === "ACTIVE" ? "Deactivate" : "Reactivate"}
-            </Button>
+            {isAdmin ? (
+              <Button onClick={() => setStatusChangeOpen(true)} tone="quiet">
+                <Power size={17} />
+                {item.status === "ACTIVE" ? "Deactivate" : "Reactivate"}
+              </Button>
+            ) : null}
           </div>
         }
         eyebrow={item.vehicle_type_name ?? "Vehicle profile"}
@@ -167,17 +172,19 @@ export default function VehicleDetailPage() {
         open={editing}
         vehicle={item}
       />
-      <ChangeVehicleStatusDialog
-        id={item.id}
-        onClose={() => setStatusChangeOpen(false)}
-        onDone={() => {
-          setStatusChangeOpen(false);
-          vehicle.reload();
-        }}
-        open={statusChangeOpen}
-        status={item.status}
-        version={item.version}
-      />
+      {isAdmin ? (
+        <ChangeVehicleStatusDialog
+          id={item.id}
+          onClose={() => setStatusChangeOpen(false)}
+          onDone={() => {
+            setStatusChangeOpen(false);
+            vehicle.reload();
+          }}
+          open={statusChangeOpen}
+          status={item.status}
+          version={item.version}
+        />
+      ) : null}
     </>
   );
 }

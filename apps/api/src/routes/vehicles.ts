@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import { ApiError } from "../http/errors";
-import { requirePermission } from "../middleware/auth";
+import { requireAdmin, requirePermission } from "../middleware/auth";
 import { auditStatement } from "../services/audit";
 import {
   buildListCursor,
@@ -465,6 +465,7 @@ for (const [path, status, action] of [
 ] as const) {
   vehicleRoutes.post(
     `/:id/${path}`,
+    requireAdmin,
     requirePermission("vehicles.deactivate"),
     async (c) => {
       const parsed = statusSchema.safeParse(

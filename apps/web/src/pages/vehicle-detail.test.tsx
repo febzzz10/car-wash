@@ -79,11 +79,11 @@ const vehicleFixture = {
   last_wash_at: null,
 };
 
-function renderDetailPage() {
+function renderDetailPage(overrides: Partial<typeof vehicleFixture> = {}) {
   vi.mocked(useApiData).mockImplementation((path: string) => {
     if (path === "/vehicles/vehicle-1") {
       return {
-        data: vehicleFixture,
+        data: { ...vehicleFixture, ...overrides },
         error: null,
         loading: false,
         reload: vi.fn(),
@@ -304,5 +304,59 @@ describe("VehicleDetailPage — phone masking", () => {
     renderDetailPage();
     expect(screen.getByText("90xxxxxx05")).toBeInTheDocument();
     expect(screen.queryByText("9002005005")).not.toBeInTheDocument();
+  });
+});
+
+describe("VehicleDetailPage — activation authorization", () => {
+  afterEach(() => {
+    cleanup();
+    vi.mocked(useAuth).mockImplementation(() => adminUser());
+  });
+
+  it("shows Deactivate to ADMIN for an active vehicle", () => {
+    renderDetailPage();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /deactivate/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows Reactivate to ADMIN for an inactive vehicle", () => {
+    renderDetailPage({ status: "INACTIVE" });
+    expect(screen.getByText("Inactive")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /reactivate/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not render Deactivate for STAFF with an active vehicle", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderDetailPage();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /deactivate/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render Reactivate for STAFF with an inactive vehicle", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderDetailPage({ status: "INACTIVE" });
+    expect(screen.getByText("Inactive")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /reactivate/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps normal vehicle details visible for STAFF", () => {
+    vi.mocked(useAuth).mockImplementation(() => staffUser());
+    renderDetailPage();
+    expect(screen.getByText("KL01TEST")).toBeInTheDocument();
+    expect(screen.getByText("Test Customer")).toBeInTheDocument();
+    expect(screen.getByText("Honda City")).toBeInTheDocument();
+    expect(screen.getByText("Service history")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument();
   });
 });

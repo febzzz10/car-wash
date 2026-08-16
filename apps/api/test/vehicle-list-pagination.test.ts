@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { app } from "../src/app";
-import { hashSessionToken } from "../src/security/tokens";
+import { createCsrfToken, hashSessionToken } from "../src/security/tokens";
 
 const rawToken = "vehicle-list-pagination-session";
 const timestamp = "2026-07-23T11:00:00.000Z";
@@ -80,7 +80,8 @@ beforeEach(async () => {
         username_normalized, password_hash, role, status, permissions_json,
         created_at, updated_at
       ) VALUES ('staff-vpg', 'org-vpg', 'branch-vpg', 'VPG Staff', 'staff-vpg',
-        'staff-vpg', 'unused', 'STAFF', 'ACTIVE', '["vehicles.read"]', ?, ?)`,
+        'staff-vpg', 'unused', 'STAFF', 'ACTIVE',
+        '["vehicles.read", "vehicles.deactivate"]', ?, ?)`,
     ).bind(timestamp, timestamp),
     env.DB.prepare(
       `INSERT OR IGNORE INTO user_sessions (
@@ -537,5 +538,120 @@ describe("vehicle list server-side pagination", () => {
     for (const vehicle of staffLegacyRaw.data) {
       expect(vehicle.customer_phone).toBe("91xxxxxx01");
     }
+  });
+
+  it("allows only ADMIN to deactivate or reactivate vehicles", async () => {
+    const adminCsrf = await createCsrfToken(rawToken, env.CSRF_SECRET);
+    const staffCsrf = await createCsrfToken(
+      "vehicle-list-pagination-staff-session",
+      env.CSRF_SECRET,
+    );
+    const adminMutationHeaders: Record<string, string> = {
+      "content-type": "application/json",
+      cookie: `__Host-washpro_session=${rawToken}`,
+      origin: "https://washpro.test",
+      "x-csrf-token": adminCsrf,
+    };
+    const staffMutationHeaders: Record<string, string> = {
+      "content-type": "application/json",
+      cookie: `__Host-washpro_session=vehicle-list-pagination-staff-session`,
+      origin: "https://washpro.test",
+      "x-csrf-token": staffCsrf,
+    };
+    const statusOf = async (id: string) =>
+      (
+        await env.DB.prepare(
+          "SELECT status, version, deactivation_reason FROM vehicles WHERE id = ?",
+        )
+          .bind(id)
+          .first<{
+            status: string;
+            version: number;
+            deactivation_reason: string | null;
+          }>()
+      )!;
+
+    // --- ADMIN can deactivate an active vehicle; state persists ---
+    const adminDeactivate = await app.request(
+      "/api/v1/vehicles/vehicle-vpg-36/deactivate",
+      {
+        body: JSON.stringify({ reason: "Sold", version: 1 }),
+        headers: adminMutationHeaders,
+        method: "POST",
+      },
+      env,
+    );
+    expect(adminDeactivate.status).toBe(200);
+    const afterDeactivate = await statusOf("vehicle-vpg-36");
+    expect(afterDeactivate.status).toBe("INACTIVE");
+    expect(afterDeactivate.deactivation_reason).toBe("Sold");
+    expect(afterDeactivate.version).toBe(2);
+
+    // --- ADMIN can reactivate an inactive vehicle; state persists ---
+    const adminReactivate = await app.request(
+      "/api/v1/vehicles/vehicle-vpg-36/reactivate",
+      {
+        body: JSON.stringify({ reason: "Returned", version: 2 }),
+        headers: adminMutationHeaders,
+        method: "POST",
+      },
+      env,
+    );
+    expect(adminReactivate.status).toBe(200);
+    const afterReactivate = await statusOf("vehicle-vpg-36");
+    expect(afterReactivate.status).toBe("ACTIVE");
+    expect(afterReactivate.version).toBe(3);
+
+    // --- STAFF cannot deactivate an active vehicle; state unchanged ---
+    const beforeStaffDeactivate = await statusOf("vehicle-vpg-35");
+    const staffDeactivate = await app.request(
+      "/api/v1/vehicles/vehicle-vpg-35/deactivate",
+      {
+        body: JSON.stringify({ reason: "Not allowed", version: 1 }),
+        headers: staffMutationHeaders,
+        method: "POST",
+      },
+      env,
+    );
+    expect(staffDeactivate.status).toBe(403);
+    expect(
+      (await staffDeactivate.json<{ error: { code: string } }>()).error.code,
+    ).toBe("AUTH_PERMISSION_DENIED");
+    const afterStaffDeactivate = await statusOf("vehicle-vpg-35");
+    expect(afterStaffDeactivate.status).toBe(beforeStaffDeactivate.status);
+    expect(afterStaffDeactivate.status).toBe("ACTIVE");
+    expect(afterStaffDeactivate.version).toBe(beforeStaffDeactivate.version);
+
+    // --- ADMIN deactivates so STAFF reactivation can be tested ---
+    const adminDeactivate35 = await app.request(
+      "/api/v1/vehicles/vehicle-vpg-35/deactivate",
+      {
+        body: JSON.stringify({ reason: "For staff test", version: 1 }),
+        headers: adminMutationHeaders,
+        method: "POST",
+      },
+      env,
+    );
+    expect(adminDeactivate35.status).toBe(200);
+    expect((await statusOf("vehicle-vpg-35")).status).toBe("INACTIVE");
+
+    // --- STAFF cannot reactivate an inactive vehicle; state unchanged ---
+    const staffReactivate = await app.request(
+      "/api/v1/vehicles/vehicle-vpg-35/reactivate",
+      {
+        body: JSON.stringify({ reason: "Not allowed", version: 2 }),
+        headers: staffMutationHeaders,
+        method: "POST",
+      },
+      env,
+    );
+    expect(staffReactivate.status).toBe(403);
+    expect(
+      (await staffReactivate.json<{ error: { code: string } }>()).error.code,
+    ).toBe("AUTH_PERMISSION_DENIED");
+    const afterStaffReactivate = await statusOf("vehicle-vpg-35");
+    expect(afterStaffReactivate.status).toBe("INACTIVE");
+    expect(afterStaffReactivate.version).toBe(2);
+    expect(afterStaffReactivate.deactivation_reason).toBe("For staff test");
   });
 });

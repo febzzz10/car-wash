@@ -9,7 +9,9 @@ const REQUIRED_SECRETS = [
   "BOOTSTRAP_TOKEN",
   "CSRF_SECRET",
   "GEOCODE_CACHE_PEPPER",
-  "INVOICE_TOKEN_PEPPER",
+  "GMAIL_CLIENT_ID",
+  "GMAIL_CLIENT_SECRET",
+  "GMAIL_REFRESH_TOKEN",
   "LOCATIONIQ_API_KEY",
   "SESSION_PEPPER",
 ];
@@ -40,7 +42,8 @@ function validatePositiveInteger(value, name, errors) {
 
 export function validateProductionConfig(config, options = {}) {
   const errors = [];
-  const repositoryRoot = options.repositoryRoot ?? resolve(process.cwd(), "../..");
+  const repositoryRoot =
+    options.repositoryRoot ?? resolve(process.cwd(), "../..");
 
   if (config?.name !== "car-wash") {
     errors.push('Worker name must be "car-wash".');
@@ -64,9 +67,7 @@ export function validateProductionConfig(config, options = {}) {
 
   const supportedAuthModes = ["static_admin", "hybrid_admin_staff"];
   if (!supportedAuthModes.includes(config?.vars?.AUTH_MODE)) {
-    errors.push(
-      `AUTH_MODE must be one of: ${supportedAuthModes.join(", ")}.`,
-    );
+    errors.push(`AUTH_MODE must be one of: ${supportedAuthModes.join(", ")}.`);
   }
 
   const allowedOrigins = config?.vars?.ALLOWED_ORIGINS;
@@ -101,6 +102,16 @@ export function validateProductionConfig(config, options = {}) {
     "INVOICE_LINK_TTL_SECONDS",
     errors,
   );
+  validatePositiveInteger(
+    config?.vars?.INVOICE_EMAIL_IDEMPOTENCY_TTL_SECONDS,
+    "INVOICE_EMAIL_IDEMPOTENCY_TTL_SECONDS",
+    errors,
+  );
+  validatePositiveInteger(
+    config?.vars?.INVOICE_EMAIL_RATE_LIMIT,
+    "INVOICE_EMAIL_RATE_LIMIT",
+    errors,
+  );
 
   const database = bindingByName(config?.d1_databases, "DB");
   if (
@@ -116,7 +127,9 @@ export function validateProductionConfig(config, options = {}) {
 
   const cache = bindingByName(config?.kv_namespaces, "CACHE");
   if (!cache || !KV_ID_PATTERN.test(cache.id ?? "")) {
-    errors.push("CACHE must use the real 32-character production KV namespace ID.");
+    errors.push(
+      "CACHE must use the real 32-character production KV namespace ID.",
+    );
   }
 
   for (const bindingName of ["UPLOADS", "INVOICES"]) {
@@ -133,12 +146,21 @@ export function validateProductionConfig(config, options = {}) {
     ? doBindings.find((b) => b?.name === "NOMINATIM_THROTTLE")
     : undefined;
   if (!doBinding || doBinding.class_name !== "NominatimThrottle") {
-    errors.push("NOMINATIM_THROTTLE Durable Object binding must be configured with class_name 'NominatimThrottle'.");
+    errors.push(
+      "NOMINATIM_THROTTLE Durable Object binding must be configured with class_name 'NominatimThrottle'.",
+    );
   }
 
   const baseUrl = config?.vars?.LOCATIONIQ_BASE_URL;
-  if (typeof baseUrl !== "string" || !["https://us1.locationiq.com", "https://eu1.locationiq.com"].includes(baseUrl)) {
-    errors.push("LOCATIONIQ_BASE_URL must be https://us1.locationiq.com or https://eu1.locationiq.com.");
+  if (
+    typeof baseUrl !== "string" ||
+    !["https://us1.locationiq.com", "https://eu1.locationiq.com"].includes(
+      baseUrl,
+    )
+  ) {
+    errors.push(
+      "LOCATIONIQ_BASE_URL must be https://us1.locationiq.com or https://eu1.locationiq.com.",
+    );
   }
 
   const userAgent = config?.vars?.GEOCODE_USER_AGENT;
@@ -148,7 +170,9 @@ export function validateProductionConfig(config, options = {}) {
 
   const ttl = Number(config?.vars?.GEOCODE_CACHE_TTL_SECONDS);
   if (!Number.isInteger(ttl) || ttl < 300 || ttl > 172800) {
-    errors.push("GEOCODE_CACHE_TTL_SECONDS must be an integer between 300 and 172800.");
+    errors.push(
+      "GEOCODE_CACHE_TTL_SECONDS must be an integer between 300 and 172800.",
+    );
   }
 
   const requiredSecrets = config?.secrets?.required;

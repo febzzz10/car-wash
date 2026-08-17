@@ -23,7 +23,7 @@ const staff = {
     "wash_jobs.cancel",
     "payments.create",
     "invoices.generate",
-    "invoices.share",
+    "invoices.send",
   ],
   role: "STAFF",
   userId: "staff-1",

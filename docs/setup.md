@@ -123,17 +123,22 @@ The password policy requires at least 12 characters with uppercase, lowercase, n
 | `APP_ENV` | plain variable | yes | Environment label used for safe runtime behaviour. |
 | `ALLOWED_ORIGINS` | plain variable | yes | Comma-separated exact web origins accepted for credentialed requests. |
 | `SESSION_TTL_SECONDS` | plain variable | yes | Fallback secure-session duration; business security settings may shorten it. |
-| `INVOICE_LINK_TTL_SECONDS` | plain variable | yes | Maximum protected invoice-link lifetime. |
+| `INVOICE_LINK_TTL_SECONDS` | plain variable | yes | Idempotency-key expiry (seconds) for invoice generate/revision. |
+| `INVOICE_EMAIL_IDEMPOTENCY_TTL_SECONDS` | plain variable | yes | Idempotency-key expiry (seconds) for invoice email sending; default 3600. |
+| `INVOICE_EMAIL_RATE_LIMIT` | plain variable | yes | Per-user invoice-email rate limit per hour; default 60, clamp 1-1000. |
+| `GMAIL_SENDER_EMAIL` | plain variable | yes | Gmail account that sends invoice emails. |
 | `BOOTSTRAP_TOKEN` | Worker secret | yes | One-time initial-organization authorization; minimum 32 characters. |
 | `SESSION_PEPPER` | Worker secret | yes | Peppers password/session derivation; rotation revokes effective access. |
 | `CSRF_SECRET` | Worker secret | yes | Derives per-session CSRF tokens. |
-| `INVOICE_TOKEN_PEPPER` | Worker secret | yes | Signs protected invoice access tokens. |
+| `GMAIL_CLIENT_ID` | Worker secret | yes | Gmail OAuth client ID. |
+| `GMAIL_CLIENT_SECRET` | Worker secret | yes | Gmail OAuth client secret. |
+| `GMAIL_REFRESH_TOKEN` | Worker secret | yes | Gmail OAuth refresh token for the sender account. |
 | `DB` | D1 binding | yes | Authoritative relational store. |
 | `UPLOADS` | private R2 binding | yes | Vehicle photos, receipts, and business logos. |
 | `INVOICES` | private R2 binding | yes | Generated immutable invoice PDFs. |
 | `CACHE` | KV binding | yes | Non-authoritative temporary/cache state only. |
 
-Do not place secrets in `wrangler.jsonc`. Local Worker execution, including `dev:api:remote`, reads secrets from ignored `apps/api/.dev.vars`. A deployed `car-wash-remote-dev` Worker would require independent remote values for `BOOTSTRAP_TOKEN`, `SESSION_PEPPER`, `CSRF_SECRET`, and `INVOICE_TOKEN_PEPPER` through `wrangler secret put --env remote-dev --cwd apps/api`; that deployment is optional and was not performed during local remote-binding setup.
+Do not place secrets in `wrangler.jsonc`. Local Worker execution, including `dev:api:remote`, reads secrets from ignored `apps/api/.dev.vars`. A deployed `car-wash-remote-dev` Worker would require independent remote values for `BOOTSTRAP_TOKEN`, `SESSION_PEPPER`, `CSRF_SECRET`, and the Gmail OAuth secrets through `wrangler secret put --env remote-dev --cwd apps/api`; that deployment is optional and was not performed during local remote-binding setup.
 
 ## Local data reset
 

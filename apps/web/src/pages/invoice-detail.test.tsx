@@ -1,18 +1,28 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useApiData } from "../hooks/use-api-data";
 import { useAuth } from "../auth";
+import { api } from "../lib/api";
 import InvoiceDetailPage from "./invoice-detail";
+
+const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 
 vi.mock("../lib/api", () => ({
   api: vi.fn(),
   API_BASE: "",
+  jsonBody: (value: unknown) => ({ body: JSON.stringify(value) }),
 }));
 
 vi.mock("../components/toast", () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn() }),
+  useToast: () => toastMocks,
 }));
 
 vi.mock("../hooks/use-api-data", () => ({
@@ -67,6 +77,7 @@ const invoiceFixture = {
   business_name_snapshot: "Test Business",
   coupon_discount_minor: 0,
   currency_code: "INR",
+  customer_email_snapshot: "john@example.com",
   customer_name_snapshot: "John Doe",
   customer_phone_snapshot: "9999999999",
   discount_minor: 0,
@@ -95,9 +106,9 @@ const invoiceFixture = {
   vehicle_registration_snapshot: "KL01AB1234",
 };
 
-function renderPage() {
+function renderPage(data: Record<string, unknown> = invoiceFixture) {
   vi.mocked(useApiData).mockReturnValue({
-    data: invoiceFixture,
+    data,
     error: null,
     loading: false,
     reload: vi.fn(),
@@ -114,6 +125,9 @@ function renderPage() {
 afterEach(() => {
   cleanup();
   vi.mocked(useAuth).mockImplementation(() => adminUser());
+  vi.mocked(api).mockReset();
+  toastMocks.success.mockReset();
+  toastMocks.error.mockReset();
 });
 
 describe("Invoice Detail page — actions", () => {
@@ -134,16 +148,6 @@ describe("Invoice Detail page — actions", () => {
     renderPage();
     const buttons = screen.getAllByRole("button", { name: /Print/i });
     expect(buttons.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("displays the share invoice actions", () => {
-    renderPage();
-    const whatsapp = screen.getAllByRole("button", { name: /Open WhatsApp/i });
-    expect(whatsapp.length).toBeGreaterThanOrEqual(1);
-    const copyMsg = screen.getAllByRole("button", { name: /Copy message/i });
-    expect(copyMsg.length).toBeGreaterThanOrEqual(1);
-    const copyLink = screen.getAllByRole("button", { name: /Copy secure link/i });
-    expect(copyLink.length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders the invoice number in the header", () => {
@@ -167,6 +171,87 @@ describe("Invoice Detail page — actions", () => {
   });
 });
 
+describe("Invoice Detail page — send invoice email", () => {
+  it("displays the customer email on the send invoice card", () => {
+    renderPage();
+    expect(
+      screen.getAllByText("john@example.com").length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("displays the Send Invoice PDF button", () => {
+    renderPage();
+    const buttons = screen.getAllByRole("button", {
+      name: /Send Invoice PDF/i,
+    });
+    expect(buttons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("sends the invoice PDF when clicked", async () => {
+    vi.mocked(api).mockResolvedValue({
+      success: true,
+      data: { invoiceId: "inv-1" },
+    });
+    renderPage();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Send Invoice PDF/i })[0]!,
+    );
+    expect(vi.mocked(api)).toHaveBeenCalledWith(
+      "/invoices/inv-1/send-email",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"idempotencyKey":"'),
+      }),
+    );
+    await waitFor(() =>
+      expect(toastMocks.success).toHaveBeenCalledWith(
+        "Invoice PDF sent successfully.",
+      ),
+    );
+    expect(toastMocks.error).not.toHaveBeenCalled();
+  });
+
+  it("shows an error toast when sending fails", async () => {
+    vi.mocked(api).mockRejectedValue(new Error("The email service is busy."));
+    renderPage();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Send Invoice PDF/i })[0]!,
+    );
+    await waitFor(() =>
+      expect(toastMocks.error).toHaveBeenCalledWith(
+        "The email service is busy.",
+      ),
+    );
+    expect(toastMocks.success).not.toHaveBeenCalled();
+  });
+
+  it("does not offer sending when the customer has no email", () => {
+    renderPage({ ...invoiceFixture, customer_email_snapshot: null });
+    const button = screen.queryByRole("button", { name: /Send Invoice PDF/i });
+    expect(button).toBeInTheDocument();
+    expect(button).toBeDisabled();
+    expect(
+      screen.getAllByText("No email address available for this customer.")
+        .length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("prevents duplicate submissions while a send is in flight", () => {
+    const pending = new Promise<never>(() => {});
+    vi.mocked(api).mockResolvedValueOnce(pending as never);
+    renderPage();
+    const button = screen.getAllByRole("button", {
+      name: /Send Invoice PDF/i,
+    })[0]!;
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getAllByRole("button", { name: /Sending…/i }).length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe("Invoice Detail page — phone masking", () => {
   afterEach(() => {
     vi.mocked(useAuth).mockImplementation(() => adminUser());
@@ -174,9 +259,7 @@ describe("Invoice Detail page — phone masking", () => {
 
   it("shows the full phone snapshot to admins", () => {
     renderPage();
-    expect(
-      screen.getAllByText("9999999999").length,
-    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("9999999999").length).toBeGreaterThanOrEqual(1);
   });
 
   it("masks the phone snapshot for staff", () => {

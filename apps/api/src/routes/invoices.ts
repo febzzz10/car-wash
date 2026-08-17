@@ -3,19 +3,20 @@ import { z } from "zod";
 
 import { ApiError } from "../http/errors";
 import { requireAdmin, requirePermission } from "../middleware/auth";
-import {
-  createInvoiceAccessToken,
-  equalTokens,
-  invoiceIdFromAccessToken,
-  sha256,
-} from "../security/tokens";
 import { auditStatement } from "../services/audit";
+import {
+  buildInvoiceEmail,
+  GmailError,
+  isValidEmail,
+  sendInvoiceEmail,
+} from "../services/gmail";
 import {
   buildListCursor,
   parseListCursor,
   parseListLimit,
 } from "../services/pagination";
 import { maskPhoneSnapshotRow } from "../services/phone-masking";
+import { sendInvoiceEmailForInvoice } from "../services/invoice-email";
 import {
   buildInvoicePdf,
   type InvoiceLogo,
@@ -25,6 +26,9 @@ import { loadSettings, stringSetting } from "../services/settings";
 import type { AppBindings } from "../types";
 
 const generateSchema = z.object({
+  idempotencyKey: z.string().trim().min(16).max(128),
+});
+const emailSendSchema = z.object({
   idempotencyKey: z.string().trim().min(16).max(128),
 });
 const revisionSchema = z.object({
@@ -111,7 +115,6 @@ interface RevisionInvoiceRow {
   readonly id: string;
   readonly invoice_number: string;
   readonly invoice_snapshot_json: string;
-  readonly public_access_expires_at: string;
   readonly revision_number: number;
   readonly wash_job_id: string;
 }
@@ -132,16 +135,8 @@ interface RevisionItemRow {
   readonly unit_price_minor: number;
 }
 
-async function invoiceTokenHash(
-  token: string,
-  pepper: string,
-): Promise<string> {
-  return sha256(`${token}\u0000${pepper}`);
-}
-
 export const invoiceJobRoutes = new Hono<AppBindings>();
 export const invoiceRoutes = new Hono<AppBindings>();
-export const publicInvoiceRoutes = new Hono<AppBindings>();
 
 invoiceJobRoutes.post(
   "/:id/invoice",
@@ -167,17 +162,10 @@ invoiceJobRoutes.post(
         "SELECT * FROM invoices WHERE id = ? AND organization_id = ?",
       )
         .bind(replayId, auth.organizationId)
-        .first<
-          Record<string, unknown> & { public_access_expires_at: string }
-        >();
+        .first<Record<string, unknown>>();
       if (existing !== null) {
-        const publicToken = await createInvoiceAccessToken(
-          replayId,
-          existing.public_access_expires_at,
-          c.env.INVOICE_TOKEN_PEPPER,
-        );
         return c.json({
-          data: { ...existing, publicToken },
+          data: { ...existing },
           idempotentReplay: true,
           success: true,
         });
@@ -187,20 +175,10 @@ invoiceJobRoutes.post(
       "SELECT * FROM invoices WHERE wash_job_id = ? AND organization_id = ? AND revision_number = 0",
     )
       .bind(c.req.param("id"), auth.organizationId)
-      .first<
-        Record<string, unknown> & {
-          id: string;
-          public_access_expires_at: string;
-        }
-      >();
+      .first<Record<string, unknown>>();
     if (existingForJob !== null) {
-      const publicToken = await createInvoiceAccessToken(
-        existingForJob.id,
-        existingForJob.public_access_expires_at,
-        c.env.INVOICE_TOKEN_PEPPER,
-      );
       return c.json({
-        data: { ...existingForJob, publicToken },
+        data: { ...existingForJob },
         idempotentReplay: true,
         success: true,
       });
@@ -288,15 +266,6 @@ invoiceJobRoutes.post(
     const expiresAt = new Date(
       now.getTime() + expirySeconds * 1000,
     ).toISOString();
-    const publicToken = await createInvoiceAccessToken(
-      invoiceId,
-      expiresAt,
-      c.env.INVOICE_TOKEN_PEPPER,
-    );
-    const tokenHash = await invoiceTokenHash(
-      publicToken,
-      c.env.INVOICE_TOKEN_PEPPER,
-    );
     const address = [
       job.address_line_1,
       job.address_line_2,
@@ -319,8 +288,7 @@ invoiceJobRoutes.post(
       .filter((payment) => payment.status === "SUCCESS")
       .reduce(
         (sum, payment) =>
-          sum +
-          (typeof payment.tip_minor === "number" ? payment.tip_minor : 0),
+          sum + (typeof payment.tip_minor === "number" ? payment.tip_minor : 0),
         0,
       );
     const snapshot: InvoicePdfSnapshot & {
@@ -499,8 +467,8 @@ invoiceJobRoutes.post(
           snapshot.footer,
           JSON.stringify(snapshot),
           pdfAssetId,
-          tokenHash,
-          expiresAt,
+          null,
+          null,
           now.toISOString(),
           auth.userId,
           now.toISOString(),
@@ -568,7 +536,7 @@ invoiceJobRoutes.post(
       .bind(invoiceId)
       .first();
     return c.json(
-      { data: { ...maskPhoneSnapshotRow(invoice, auth.role), publicToken }, success: true },
+      { data: maskPhoneSnapshotRow(invoice, auth.role), success: true },
       201,
     );
   },
@@ -685,7 +653,7 @@ invoiceRoutes.post(
         return c.json({ data: replay, idempotentReplay: true, success: true });
     }
     const previous = await c.env.DB.prepare(
-      "SELECT id, branch_id, wash_job_id, invoice_number, revision_number, invoice_snapshot_json, business_logo_asset_id, public_access_expires_at FROM invoices WHERE id = ? AND organization_id = ? AND invoice_status IN ('ISSUED', 'REVISED')",
+      "SELECT id, branch_id, wash_job_id, invoice_number, revision_number, invoice_snapshot_json, business_logo_asset_id FROM invoices WHERE id = ? AND organization_id = ? AND invoice_status IN ('ISSUED', 'REVISED')",
     )
       .bind(c.req.param("id"), auth.organizationId)
       .first<RevisionInvoiceRow>();
@@ -730,15 +698,6 @@ invoiceRoutes.post(
     const expiresAt = new Date(
       now.getTime() + expirySeconds * 1000,
     ).toISOString();
-    const publicToken = await createInvoiceAccessToken(
-      invoiceId,
-      expiresAt,
-      c.env.INVOICE_TOKEN_PEPPER,
-    );
-    const tokenHash = await invoiceTokenHash(
-      publicToken,
-      c.env.INVOICE_TOKEN_PEPPER,
-    );
     const snapshot: InvoicePdfSnapshot = {
       ...previousSnapshot,
       customerName: parsed.data.customerName ?? previousSnapshot.customerName,
@@ -859,8 +818,8 @@ invoiceRoutes.post(
           parsed.data.footer ?? null,
           JSON.stringify(snapshot),
           pdfAssetId,
-          tokenHash,
-          expiresAt,
+          null,
+          null,
           now.toISOString(),
           auth.userId,
           now.toISOString(),
@@ -936,7 +895,7 @@ invoiceRoutes.post(
       .first<Record<string, unknown>>();
     return c.json(
       {
-        data: { ...(revised ?? { id: invoiceId }), publicToken },
+        data: revised ?? { id: invoiceId },
         success: true,
       },
       201,
@@ -945,7 +904,12 @@ invoiceRoutes.post(
 );
 
 function isValidMinorAmount(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 && Number.isInteger(value);
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    Number.isInteger(value)
+  );
 }
 
 invoiceRoutes.get("/:id", requirePermission("invoices.generate"), async (c) => {
@@ -965,7 +929,10 @@ invoiceRoutes.get("/:id", requirePermission("invoices.generate"), async (c) => {
   if (!hasCategorizedDiscounts && (Number(invoice.discount_minor) ?? 0) > 0) {
     if (typeof invoice.invoice_snapshot_json === "string") {
       try {
-        const snap = JSON.parse(invoice.invoice_snapshot_json) as Record<string, unknown>;
+        const snap = JSON.parse(invoice.invoice_snapshot_json) as Record<
+          string,
+          unknown
+        >;
         const coupon = snap.couponDiscountMinor;
         const referral = snap.referralDiscountMinor;
         const reward = snap.rewardDiscountMinor;
@@ -982,7 +949,9 @@ invoiceRoutes.get("/:id", requirePermission("invoices.generate"), async (c) => {
           invoice.reward_discount_minor = reward;
           invoice.manual_discount_minor = manual;
         }
-      } catch { /* skip invalid JSON */ }
+      } catch {
+        /* skip invalid JSON */
+      }
     }
   }
   const items = await c.env.DB.prepare(
@@ -1025,147 +994,26 @@ invoiceRoutes.get(
 );
 
 invoiceRoutes.post(
-  "/:id/share-message",
-  requirePermission("invoices.share"),
+  "/:id/send-email",
+  requirePermission("invoices.send"),
   async (c) => {
-    const auth = c.get("auth");
-    const invoice = await c.env.DB.prepare(
-      "SELECT id, invoice_number, customer_name_snapshot, customer_phone_snapshot, vehicle_registration_snapshot, total_minor, currency_code, payment_status_snapshot, referral_code_snapshot, public_access_expires_at, invoice_snapshot_json FROM invoices WHERE id = ? AND organization_id = ?",
-    )
-      .bind(c.req.param("id"), auth.organizationId)
-      .first<{
-        currency_code: string;
-        customer_name_snapshot: string;
-        customer_phone_snapshot: string;
-        id: string;
-        invoice_number: string;
-        invoice_snapshot_json: string;
-        payment_status_snapshot: string;
-        public_access_expires_at: string;
-        referral_code_snapshot: string | null;
-        total_minor: number;
-        vehicle_registration_snapshot: string;
-      }>();
-    if (invoice === null)
-      throw new ApiError(404, "RESOURCE_NOT_FOUND", "Invoice not found.");
-    const token = await createInvoiceAccessToken(
-      invoice.id,
-      invoice.public_access_expires_at,
-      c.env.INVOICE_TOKEN_PEPPER,
+    const parsed = emailSendSchema.safeParse(
+      await c.req.json().catch(() => null),
     );
-    const secureLink = new URL(`/invoice/${token}`, c.req.url).toString();
-    const snapshot = JSON.parse(invoice.invoice_snapshot_json) as {
-      couponDiscountMinor?: number;
-      items?: { name?: string }[];
-      manualDiscountMinor?: number;
-      referralDiscountMinor?: number;
-      rewardDiscountMinor?: number;
-      subtotalMinor?: number;
-    };
-    const service = snapshot.items?.[0]?.name ?? "Car wash";
-    const discountLines: string[] = [];
-    if ((snapshot.couponDiscountMinor ?? 0) > 0)
-      discountLines.push(`Coupon discount: −${invoice.currency_code} ${((snapshot.couponDiscountMinor ?? 0) / 100).toFixed(2)}`);
-    if ((snapshot.referralDiscountMinor ?? 0) > 0)
-      discountLines.push(`Referral discount: −${invoice.currency_code} ${((snapshot.referralDiscountMinor ?? 0) / 100).toFixed(2)}`);
-    if ((snapshot.rewardDiscountMinor ?? 0) > 0)
-      discountLines.push(`Reward discount: −${invoice.currency_code} ${((snapshot.rewardDiscountMinor ?? 0) / 100).toFixed(2)}`);
-    if ((snapshot.manualDiscountMinor ?? 0) > 0)
-      discountLines.push(`Manual discount: −${invoice.currency_code} ${((snapshot.manualDiscountMinor ?? 0) / 100).toFixed(2)}`);
-    const message = [
-      `Hi ${invoice.customer_name_snapshot},`,
-      `Your WashPro invoice ${invoice.invoice_number} is ready.`,
-      `Vehicle: ${invoice.vehicle_registration_snapshot}`,
-      `Service: ${service}`,
-      ...(discountLines.length > 0
-        ? [`Subtotal: ${invoice.currency_code} ${((snapshot.subtotalMinor ?? invoice.total_minor) / 100).toFixed(2)}`]
-        : []),
-      ...discountLines,
-      `Amount: ${invoice.currency_code} ${(invoice.total_minor / 100).toFixed(2)}`,
-      `Payment status: ${invoice.payment_status_snapshot}`,
-      ...(invoice.referral_code_snapshot === null
-        ? []
-        : [`Referral code: ${invoice.referral_code_snapshot}`]),
-    ].join("\n");
-    const phone = invoice.customer_phone_snapshot.replace(/\D/gu, "");
-    const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    return c.json({
-      data: {
-        copyLink: secureLink,
-        copyMessage: message,
-        downloadPdfAvailable: true,
-        message,
-        secureLink,
-        whatsappUrl,
-      },
-      success: true,
-    });
+    if (!parsed.success)
+      throw new ApiError(
+        422,
+        "VALIDATION_ERROR",
+        "An idempotency key is required.",
+      );
+    const data = await sendInvoiceEmailForInvoice(
+      c.env,
+      c.get("auth"),
+      c.req.param("id"),
+      parsed.data.idempotencyKey,
+      c.get("requestId"),
+      { GmailError, buildInvoiceEmail, isValidEmail, sendInvoiceEmail },
+    );
+    return c.json({ data, success: true });
   },
 );
-
-publicInvoiceRoutes.get("/:token", async (c) => {
-  const token = c.req.param("token");
-  const invoiceId = invoiceIdFromAccessToken(token);
-  if (invoiceId === null)
-    throw new ApiError(404, "RESOURCE_NOT_FOUND", "Invoice link not found.");
-  const invoice = await c.env.DB.prepare(
-    "SELECT id, invoice_number, public_access_token_hash, public_access_expires_at, pdf_asset_id FROM invoices WHERE id = ?",
-  )
-    .bind(invoiceId)
-    .first<{
-      id: string;
-      invoice_number: string;
-      pdf_asset_id: string | null;
-      public_access_expires_at: string;
-      public_access_token_hash: string | null;
-    }>();
-  if (
-    invoice === null ||
-    invoice.pdf_asset_id === null ||
-    Date.parse(invoice.public_access_expires_at) <= Date.now()
-  )
-    throw new ApiError(
-      410,
-      "INVOICE_TOKEN_EXPIRED",
-      "This invoice link has expired.",
-    );
-  const expected = await createInvoiceAccessToken(
-    invoice.id,
-    invoice.public_access_expires_at,
-    c.env.INVOICE_TOKEN_PEPPER,
-  );
-  const suppliedHash = await invoiceTokenHash(
-    token,
-    c.env.INVOICE_TOKEN_PEPPER,
-  );
-  if (
-    !equalTokens(token, expected) ||
-    invoice.public_access_token_hash === null ||
-    !equalTokens(suppliedHash, invoice.public_access_token_hash)
-  )
-    throw new ApiError(404, "RESOURCE_NOT_FOUND", "Invoice link not found.");
-  const asset = await c.env.DB.prepare(
-    "SELECT object_key FROM file_assets WHERE id = ? AND upload_status = 'READY' AND access_level = 'TOKEN_PROTECTED'",
-  )
-    .bind(invoice.pdf_asset_id)
-    .first<string>("object_key");
-  if (asset === null)
-    throw new ApiError(
-      503,
-      "INVOICE_GENERATION_FAILED",
-      "The invoice file is temporarily unavailable.",
-    );
-  const object = await c.env.INVOICES.get(asset);
-  if (object === null)
-    throw new ApiError(
-      503,
-      "INVOICE_GENERATION_FAILED",
-      "The invoice file is temporarily unavailable.",
-    );
-  c.header(
-    "content-disposition",
-    `inline; filename="${invoice.invoice_number}.pdf"`,
-  );
-  c.header("content-type", "application/pdf");
-  return c.body(await object.arrayBuffer());
-});

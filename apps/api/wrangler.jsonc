@@ -1,76 +1,77 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "car-wash",
-	"account_id": "36c28c2516a8d4f17c0d010d6f12bf5f",
-	"main": "src/index.ts",
-	"compatibility_date": "2026-07-23",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"workers_dev": false,
-	"triggers": {
-		"crons": [
-			"17 2 * * *"
-		],
-	},
-	"vars": {
-		"ADMIN_LOGIN_EMAIL": "xpersscarwash@gmail.com",
-		"ALLOWED_ORIGINS": "https://washpro-web.xpersscarwash.workers.dev",
-		"APP_ENV": "production",
-		"AUTH_MODE": "hybrid_admin_staff",
-		"GEOCODE_CACHE_TTL_SECONDS": "172800",
-		"GEOCODE_USER_AGENT": "WashPro/1.0 (xpersscarwash@gmail.com)",
-		"INVOICE_LINK_TTL_SECONDS": "604800",
-		"LOCATIONIQ_BASE_URL": "https://us1.locationiq.com",
-		"SESSION_TTL_SECONDS": "28800",
-	},
-	"secrets": {
-		"required": [
-			"ADMIN_LOGIN_PASSWORD",
-			"BOOTSTRAP_TOKEN",
-			"CSRF_SECRET",
-			"GEOCODE_CACHE_PEPPER",
-			"INVOICE_TOKEN_PEPPER",
-			"LOCATIONIQ_API_KEY",
-			"SESSION_PEPPER",
-		],
-	},
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "washpro-dev",
-			"database_id": "f12e4f56-470a-488f-8e34-da502fe974d7",
-			"migrations_dir": "migrations",
-		},
-	],
-	"durable_objects": {
-		"bindings": [
-			{
-				"name": "NOMINATIM_THROTTLE",
-				"class_name": "NominatimThrottle",
-			},
-		],
-	},
-	"migrations": [
-		{
-			"tag": "v1",
-			"new_sqlite_classes": ["NominatimThrottle"],
-		},
-	],
-	"r2_buckets": [
-		{
-			"binding": "UPLOADS",
-			"bucket_name": "washpro-uploads-dev",
-		},
-		{
-			"binding": "INVOICES",
-			"bucket_name": "washpro-invoices-dev",
-		},
-	],
-	"kv_namespaces": [
-		{
-			"binding": "CACHE",
-			"id": "72cd173f952343269324e671d68147e6",
-		},
-	],
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "car-wash",
+  "account_id": "36c28c2516a8d4f17c0d010d6f12bf5f",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "triggers": {
+    "crons": ["17 2 * * *"],
+  },
+  "vars": {
+    "ADMIN_LOGIN_EMAIL": "xpersscarwash@gmail.com",
+    "ALLOWED_ORIGINS": "https://washpro-web.xpersscarwash.workers.dev",
+    "APP_ENV": "production",
+    "AUTH_MODE": "hybrid_admin_staff",
+    "GEOCODE_CACHE_TTL_SECONDS": "172800",
+    "GEOCODE_USER_AGENT": "WashPro/1.0 (xpersscarwash@gmail.com)",
+    "GMAIL_SENDER_EMAIL": "xpersscarwash@gmail.com",
+    "INVOICE_EMAIL_IDEMPOTENCY_TTL_SECONDS": "3600",
+    "INVOICE_EMAIL_RATE_LIMIT": "60",
+    "INVOICE_LINK_TTL_SECONDS": "604800",
+    "LOCATIONIQ_BASE_URL": "https://us1.locationiq.com",
+    "SESSION_TTL_SECONDS": "28800",
+  },
+  "secrets": {
+    "required": [
+      "ADMIN_LOGIN_PASSWORD",
+      "BOOTSTRAP_TOKEN",
+      "CSRF_SECRET",
+      "GEOCODE_CACHE_PEPPER",
+      "GMAIL_CLIENT_ID",
+      "GMAIL_CLIENT_SECRET",
+      "GMAIL_REFRESH_TOKEN",
+      "LOCATIONIQ_API_KEY",
+      "SESSION_PEPPER",
+    ],
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "washpro-dev",
+      "database_id": "f12e4f56-470a-488f-8e34-da502fe974d7",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NOMINATIM_THROTTLE",
+        "class_name": "NominatimThrottle",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["NominatimThrottle"],
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
+      "bucket_name": "washpro-uploads-dev",
+    },
+    {
+      "binding": "INVOICES",
+      "bucket_name": "washpro-invoices-dev",
+    },
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "72cd173f952343269324e671d68147e6",
+    },
+  ],
 }

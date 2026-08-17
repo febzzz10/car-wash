@@ -63,7 +63,7 @@ curl -sS -X POST \
 
 # Invoice route reaches API
 curl -sS https://washpro-web.xpersscarwash.workers.dev/invoice/test
-# → 404 application/json "Invoice link not found"
+# → 404 application/json (generic API not-found; the public invoice-token route no longer exists)
 
 # No 1101 anywhere
 ```
@@ -114,8 +114,14 @@ curl -sS https://washpro-web.xpersscarwash.workers.dev/invoice/test
 - `ADMIN_LOGIN_PASSWORD`
 - `BOOTSTRAP_TOKEN`
 - `CSRF_SECRET`
-- `INVOICE_TOKEN_PEPPER`
+- `GEOCODE_CACHE_PEPPER`
+- `GMAIL_CLIENT_ID`
+- `GMAIL_CLIENT_SECRET`
+- `GMAIL_REFRESH_TOKEN`
+- `LOCATIONIQ_API_KEY`
 - `SESSION_PEPPER`
+
+Required vars (set in `wrangler.jsonc`): `ADMIN_LOGIN_EMAIL`, `ALLOWED_ORIGINS`, `APP_ENV`, `AUTH_MODE`, `GEOCODE_CACHE_TTL_SECONDS`, `GEOCODE_USER_AGENT`, `GMAIL_SENDER_EMAIL`, `INVOICE_EMAIL_IDEMPOTENCY_TTL_SECONDS`, `INVOICE_EMAIL_RATE_LIMIT`, `INVOICE_LINK_TTL_SECONDS`, `LOCATIONIQ_BASE_URL`, `SESSION_TTL_SECONDS`.
 
 Set via:
 ```bash

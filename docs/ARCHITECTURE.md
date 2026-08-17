@@ -51,7 +51,7 @@ washpro-web (Cloudflare Worker, public)
 - **Framework**: Hono 4 on Cloudflare Workers
 - **Auth modes**: `static_admin` (production), PBKDF2 (development/test)
 - **Route structure**:
-  - Public: `POST /api/v1/auth/login`, `GET /api/v1/bootstrap`, `GET /invoice/:token`
+  - Public: `POST /api/v1/auth/login`, `GET /api/v1/bootstrap` (the web Worker still proxies `/invoice/*` to the API, which now returns the generic JSON 404 — no public invoice route exists)
   - Protected: all other `/api/v1/*` require `requireSession` middleware
   - Admin-only: `requireAdmin` + `requirePermission`
 

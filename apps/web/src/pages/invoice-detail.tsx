@@ -1,11 +1,5 @@
-import {
-  ArrowLeft,
-  Clipboard,
-  Download,
-  ExternalLink,
-  MessageCircle,
-  Printer,
-} from "lucide-react";
+import { useRef, useState } from "react";
+import { ArrowLeft, Download, Mail, Printer } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -19,7 +13,7 @@ import {
 import { useToast } from "../components/toast";
 import { useApiData } from "../hooks/use-api-data";
 import { useMaskedPhone } from "../hooks/use-masked-phone";
-import { API_BASE, api } from "../lib/api";
+import { API_BASE, api, jsonBody } from "../lib/api";
 import { dateTime, money } from "../lib/format";
 
 interface InvoiceItem {
@@ -36,6 +30,7 @@ interface InvoiceDetail {
   readonly business_name_snapshot: string;
   readonly coupon_discount_minor: number;
   readonly currency_code: string;
+  readonly customer_email_snapshot: string | null;
   readonly customer_name_snapshot: string;
   readonly customer_phone_snapshot: string;
   readonly discount_minor: number;
@@ -55,16 +50,13 @@ interface InvoiceDetail {
   readonly total_minor: number;
   readonly vehicle_registration_snapshot: string;
 }
-interface SharePayload {
-  readonly copyLink: string;
-  readonly copyMessage: string;
-  readonly whatsappUrl: string;
-}
 export default function InvoiceDetailPage() {
   const { id = "" } = useParams();
   const maskPhone = useMaskedPhone();
   const invoice = useApiData<InvoiceDetail>(`/invoices/${id}`);
   const toast = useToast();
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   async function download(print = false) {
     try {
       const response = await fetch(`${API_BASE}/api/v1/invoices/${id}/pdf`, {
@@ -97,26 +89,25 @@ export default function InvoiceDetailPage() {
       );
     }
   }
-  async function share(mode: "copy" | "link" | "whatsapp") {
+  async function sendEmail() {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
     try {
-      const payload = await api<SharePayload>(`/invoices/${id}/share-message`, {
+      await api(`/invoices/${id}/send-email`, {
         method: "POST",
+        ...jsonBody({ idempotencyKey: crypto.randomUUID() }),
       });
-      if (mode === "whatsapp")
-        window.open(payload.whatsappUrl, "_blank", "noopener,noreferrer");
-      else
-        await navigator.clipboard.writeText(
-          mode === "copy" ? payload.copyMessage : payload.copyLink,
-        );
-      toast.success(
-        mode === "whatsapp"
-          ? "WhatsApp opened with a pre-filled message. Download the PDF separately if needed."
-          : "Copied to clipboard.",
-      );
+      toast.success("Invoice PDF sent successfully.");
     } catch (failure) {
       toast.error(
-        failure instanceof Error ? failure.message : "Sharing failed.",
+        failure instanceof Error
+          ? failure.message
+          : "Unable to send invoice email.",
       );
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
     }
   }
   if (invoice.loading) return <SkeletonRows />;
@@ -185,9 +176,7 @@ export default function InvoiceDetailPage() {
                     {money(line.unit_price_minor, item.currency_code)}
                   </small>
                 </span>
-                <strong>
-                  {money(line.total_minor, item.currency_code)}
-                </strong>
+                <strong>{money(line.total_minor, item.currency_code)}</strong>
               </div>
             ))}
           </div>
@@ -269,22 +258,28 @@ export default function InvoiceDetailPage() {
             </dl>
           </Card>
           <Card>
-            <p className="eyebrow">Share invoice</p>
+            <p className="eyebrow">Send invoice</p>
             <p className="muted">
-              The secure link expires. WhatsApp opens a pre-filled message and
-              does not attach the PDF.
+              Send the invoice PDF directly to the customer's email address.
             </p>
-            <div className="stacked-actions">
-              <Button onClick={() => void share("whatsapp")}>
-                <MessageCircle size={18} /> Open WhatsApp
-              </Button>
-              <Button onClick={() => void share("copy")} tone="secondary">
-                <Clipboard size={18} /> Copy message
-              </Button>
-              <Button onClick={() => void share("link")} tone="secondary">
-                <ExternalLink size={18} /> Copy secure link
-              </Button>
-            </div>
+            <dl className="detail-list">
+              <div>
+                <dt>Customer email</dt>
+                <dd>{invoice.data.customer_email_snapshot ?? "—"}</dd>
+              </div>
+            </dl>
+            <Button
+              onClick={() => void sendEmail()}
+              busy={sending}
+              disabled={invoice.data.customer_email_snapshot === null}
+            >
+              <Mail size={18} /> {sending ? "Sending…" : "Send Invoice PDF"}
+            </Button>
+            {invoice.data.customer_email_snapshot === null && (
+              <p className="muted">
+                No email address available for this customer.
+              </p>
+            )}
           </Card>
         </aside>
       </div>

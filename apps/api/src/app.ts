@@ -14,7 +14,6 @@ import { expenseCategoryRoutes, expenseRoutes } from "./routes/expenses";
 import {
   invoiceJobRoutes,
   invoiceRoutes,
-  publicInvoiceRoutes,
 } from "./routes/invoices";
 import { paymentRoutes } from "./routes/payments";
 import { referralRoutes } from "./routes/referrals";
@@ -83,7 +82,6 @@ app.notFound((c) =>
 const healthResponse = { data: { service: "washpro-api", status: "ok", deploy: "v2" }, success: true } as const;
 app.get("/health", (c) => c.json(healthResponse));
 app.get("/api/health", (c) => c.json(healthResponse));
-app.route("/invoice", publicInvoiceRoutes);
 app.route("/api/v1/auth", publicAuthRoutes);
 app.route("/api/v1/bootstrap", bootstrapRoutes);
 

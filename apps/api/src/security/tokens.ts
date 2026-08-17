@@ -1,5 +1,4 @@
 import {
-  decodeBase64Url,
   encodeBase64Url,
   encodeUtf8,
   timingSafeEqual,
@@ -41,46 +40,4 @@ export async function createCsrfToken(
 
 export function equalTokens(left: string, right: string): boolean {
   return timingSafeEqual(encodeUtf8(left), encodeUtf8(right));
-}
-
-async function hmac(value: string, secret: string): Promise<string> {
-  const key = await globalThis.crypto.subtle.importKey(
-    "raw",
-    encodeUtf8(secret).buffer,
-    { hash: "SHA-256", name: "HMAC" },
-    false,
-    ["sign"],
-  );
-  const signature = await globalThis.crypto.subtle.sign(
-    "HMAC",
-    key,
-    encodeUtf8(value).buffer,
-  );
-  return encodeBase64Url(new Uint8Array(signature));
-}
-
-export async function createInvoiceAccessToken(
-  invoiceId: string,
-  expiresAt: string,
-  secret: string,
-): Promise<string> {
-  const encodedId = encodeBase64Url(encodeUtf8(invoiceId));
-  const expiry = Math.floor(Date.parse(expiresAt) / 1000);
-  const payload = `${encodedId}.${expiry}`;
-  return `${payload}.${await hmac(`washpro-invoice:${payload}`, secret)}`;
-}
-
-export function invoiceIdFromAccessToken(token: string): string | null {
-  const [encodedId, expiry, signature] = token.split(".");
-  if (
-    encodedId === undefined ||
-    expiry === undefined ||
-    signature === undefined
-  )
-    return null;
-  try {
-    return new TextDecoder().decode(decodeBase64Url(encodedId));
-  } catch {
-    return null;
-  }
 }

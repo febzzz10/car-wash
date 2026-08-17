@@ -464,7 +464,7 @@ describe("invoice revision discount breakdown", () => {
   });
 });
 
-describe("PDF and share message", () => {
+describe("PDF generation", () => {
   it("generates PDF for new invoice with categorized discounts", async () => {
     const s = nextSeq();
     const jobId = `job-disc-pdf-${s}`;
@@ -501,41 +501,6 @@ describe("PDF and share message", () => {
     expect(pdfResponse.status).toBe(404);
   });
 
-  it("share message includes categorized discount lines for new invoices", async () => {
-    const s = nextSeq();
-    const jobId = `job-disc-share-${s}`;
-    await createJobAndItem(jobId, 1000, 500);
-
-    const response = await generateInvoice(jobId, idemKey(`share-${s}`));
-    expect(response.status).toBe(201);
-    const body = await response.json<{ data: Record<string, unknown> }>();
-    const invoiceId = body.data.id as string;
-    const invoiceNumber = body.data.invoice_number as string;
-
-    const shareResponse = await app.request(
-      `/api/v1/invoices/${invoiceId}/share-message`,
-      {
-        headers: {
-          "content-type": "application/json",
-          cookie: `__Host-washpro_session=${rawToken}`,
-          origin: "https://washpro.test",
-          "x-csrf-token": await createCsrfToken(rawToken, env.CSRF_SECRET),
-        },
-        method: "POST",
-      },
-      env,
-    );
-    expect(shareResponse.status).toBe(200);
-    const shareBody = await shareResponse.json<{ data: { message: string } }>();
-
-    expect(shareBody.data.message).toContain(invoiceNumber);
-    expect(shareBody.data.message).toContain("Coupon discount");
-    expect(shareBody.data.message).toContain("Referral discount");
-    expect(shareBody.data.message).not.toContain("Reward discount");
-    expect(shareBody.data.message).not.toContain("Manual discount");
-    expect(shareBody.data.message).toContain("Subtotal");
-  });
-
   it("DB CHECK prevents inconsistent discount totals — defense-in-depth", async () => {
     const s = nextSeq();
     const jobId = `job-db-check-${s}`;
@@ -550,33 +515,5 @@ describe("PDF and share message", () => {
 
     const after = await env.DB.prepare("SELECT total_discount_minor FROM wash_jobs WHERE id = ?").bind(jobId).first<{ total_discount_minor: number }>();
     expect(after!.total_discount_minor).toBe(1000);
-  });
-
-  it("share message has no discount lines for legacy combined-only", async () => {
-    const jobId = `job-legacy-share-${nextSeq()}`;
-    await seedJob(jobId);
-    const invoiceId = `inv-legacy-share-${nextSeq()}`;
-    const snap = JSON.stringify({ discountMinor: 2000, items: [{ name: "Test" }] });
-    await insertLegacyInvoice(invoiceId, jobId, "LEGACY-SHARE", 10000, 2000, snap);
-
-    const shareResponse = await app.request(
-      `/api/v1/invoices/${invoiceId}/share-message`,
-      {
-        headers: {
-          "content-type": "application/json",
-          cookie: `__Host-washpro_session=${rawToken}`,
-          origin: "https://washpro.test",
-          "x-csrf-token": await createCsrfToken(rawToken, env.CSRF_SECRET),
-        },
-        method: "POST",
-      },
-      env,
-    );
-    expect(shareResponse.status).toBe(200);
-    const shareBody = await shareResponse.json<{ data: { message: string } }>();
-    expect(shareBody.data.message).not.toContain("Coupon discount");
-    expect(shareBody.data.message).not.toContain("Referral discount");
-    expect(shareBody.data.message).not.toContain("Reward discount");
-    expect(shareBody.data.message).not.toContain("Manual discount");
   });
 });

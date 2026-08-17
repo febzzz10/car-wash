@@ -17,6 +17,7 @@ import {
 } from "../services/pagination";
 import { maskPhoneSnapshotRow } from "../services/phone-masking";
 import { sendInvoiceEmailForInvoice } from "../services/invoice-email";
+import { buildWhatsAppMessage, buildWhatsAppUrl } from "../services/whatsapp";
 import {
   buildInvoicePdf,
   type InvoiceLogo,
@@ -107,6 +108,17 @@ interface InvoiceAssetRow {
   readonly invoice_number: string;
   readonly mime_type: string;
   readonly object_key: string;
+}
+
+interface WhatsAppInvoiceRow {
+  readonly currency_code: string;
+  readonly customer_name_snapshot: string;
+  readonly customer_phone_snapshot: string;
+  readonly invoice_snapshot_json: string;
+  readonly payment_status_snapshot: string;
+  readonly referral_code_snapshot: string | null;
+  readonly total_minor: number;
+  readonly vehicle_registration_snapshot: string;
 }
 
 interface RevisionInvoiceRow {
@@ -1015,5 +1027,44 @@ invoiceRoutes.post(
       { GmailError, buildInvoiceEmail, isValidEmail, sendInvoiceEmail },
     );
     return c.json({ data, success: true });
+  },
+);
+
+invoiceRoutes.get(
+  "/:id/whatsapp-action",
+  requirePermission("invoices.send"),
+  async (c) => {
+    const auth = c.get("auth");
+    const invoice = await c.env.DB.prepare(
+      `SELECT customer_name_snapshot, customer_phone_snapshot,
+        payment_status_snapshot, referral_code_snapshot,
+        vehicle_registration_snapshot, total_minor, currency_code,
+        invoice_snapshot_json
+       FROM invoices WHERE id = ? AND organization_id = ?`,
+    )
+      .bind(c.req.param("id"), auth.organizationId)
+      .first<WhatsAppInvoiceRow>();
+    if (invoice === null)
+      throw new ApiError(404, "RESOURCE_NOT_FOUND", "Invoice not found.");
+    let snapshot: { readonly items?: readonly { readonly name?: string }[] };
+    try {
+      snapshot = JSON.parse(invoice.invoice_snapshot_json) as typeof snapshot;
+    } catch {
+      snapshot = {};
+    }
+    const message = buildWhatsAppMessage({
+      currencyCode: invoice.currency_code,
+      customerName: invoice.customer_name_snapshot,
+      paymentStatus: invoice.payment_status_snapshot,
+      referralCode: invoice.referral_code_snapshot,
+      serviceName: snapshot.items?.[0]?.name ?? "",
+      totalMinor: invoice.total_minor,
+      vehicleRegistration: invoice.vehicle_registration_snapshot,
+    });
+    const whatsappUrl = buildWhatsAppUrl(
+      invoice.customer_phone_snapshot,
+      message,
+    );
+    return c.json({ data: { whatsappUrl }, success: true });
   },
 );

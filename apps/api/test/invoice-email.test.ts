@@ -15,6 +15,8 @@ import type { AuthContext } from "../src/types";
 
 const rawToken = "invoice-email-test-session-token";
 const staffRawToken = "invoice-email-staff-session-token";
+const staffSendRawToken = "invoice-email-staff-send-session-token";
+const otherOrgRawToken = "invoice-email-other-org-session-token";
 const timestamp = "2026-08-01T15:00:00.000Z";
 const requestId = "test-request-id";
 
@@ -28,6 +30,16 @@ const auth: AuthContext = {
   sessionId: "session-email",
   userId: "admin-email",
   userName: "Email Admin",
+};
+
+const staffSendAuth: AuthContext = {
+  branchId: "branch-email",
+  organizationId: "org-email",
+  permissions: ["wash_jobs.create", "invoices.send"],
+  role: "STAFF",
+  sessionId: "session-email-staff-send",
+  userId: "staff-email-send",
+  userName: "Email Staff Send",
 };
 
 function makeDeps(): {
@@ -68,6 +80,14 @@ beforeEach(async () => {
     staffRawToken,
     env.SESSION_PEPPER,
   );
+  const staffSendTokenHash = await hashSessionToken(
+    staffSendRawToken,
+    env.SESSION_PEPPER,
+  );
+  const otherOrgTokenHash = await hashSessionToken(
+    otherOrgRawToken,
+    env.SESSION_PEPPER,
+  );
   await env.DB.batch([
     env.DB.prepare(
       "INSERT OR IGNORE INTO organizations (id, legal_name, display_name, created_at, updated_at) VALUES ('org-email', 'WashPro Services Pvt Ltd', 'WashPro', ?, ?)",
@@ -82,11 +102,29 @@ beforeEach(async () => {
       "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, permissions_json, created_at, updated_at) VALUES ('staff-email', 'org-email', 'branch-email', 'Email Staff', 'email-staff', 'email-staff', 'unused', 'STAFF', 'ACTIVE', '[\"wash_jobs.create\"]', ?, ?)",
     ).bind(timestamp, timestamp),
     env.DB.prepare(
+      "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, permissions_json, created_at, updated_at) VALUES ('staff-email-send', 'org-email', 'branch-email', 'Email Staff Send', 'email-staff-send', 'email-staff-send', 'unused', 'STAFF', 'ACTIVE', '[\"wash_jobs.create\",\"invoices.send\"]', ?, ?)",
+    ).bind(timestamp, timestamp),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO organizations (id, legal_name, display_name, created_at, updated_at) VALUES ('org-email-other', 'Other Org Pvt Ltd', 'Other Org', ?, ?)",
+    ).bind(timestamp, timestamp),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO branches (id, organization_id, code, name, address_line_1, city, state, phone, whatsapp_number, email, created_at, updated_at) VALUES ('branch-email-other', 'org-email-other', 'MAIN', 'Main', '2 Other Road', 'Kochi', 'Kerala', '+919999999998', '+919999999998', 'other@washpro.test', ?, ?)",
+    ).bind(timestamp, timestamp),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO users (id, organization_id, default_branch_id, full_name, username, username_normalized, password_hash, role, status, permissions_json, created_at, updated_at) VALUES ('admin-email-other', 'org-email-other', 'branch-email-other', 'Other Org Admin', 'other-org-admin', 'other-org-admin', 'unused', 'ADMIN', 'ACTIVE', '[]', ?, ?)",
+    ).bind(timestamp, timestamp),
+    env.DB.prepare(
       "INSERT OR IGNORE INTO user_sessions (id, organization_id, user_id, token_hash, status, created_at, last_seen_at, expires_at) VALUES ('session-email', 'org-email', 'admin-email', ?, 'ACTIVE', ?, ?, '2099-01-01T00:00:00.000Z')",
     ).bind(tokenHash, timestamp, timestamp),
     env.DB.prepare(
       "INSERT OR IGNORE INTO user_sessions (id, organization_id, user_id, token_hash, status, created_at, last_seen_at, expires_at) VALUES ('session-email-staff', 'org-email', 'staff-email', ?, 'ACTIVE', ?, ?, '2099-01-01T00:00:00.000Z')",
     ).bind(staffTokenHash, timestamp, timestamp),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO user_sessions (id, organization_id, user_id, token_hash, status, created_at, last_seen_at, expires_at) VALUES ('session-email-staff-send', 'org-email', 'staff-email-send', ?, 'ACTIVE', ?, ?, '2099-01-01T00:00:00.000Z')",
+    ).bind(staffSendTokenHash, timestamp, timestamp),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO user_sessions (id, organization_id, user_id, token_hash, status, created_at, last_seen_at, expires_at) VALUES ('session-email-other', 'org-email-other', 'admin-email-other', ?, 'ACTIVE', ?, ?, '2099-01-01T00:00:00.000Z')",
+    ).bind(otherOrgTokenHash, timestamp, timestamp),
     env.DB.prepare(
       "INSERT OR IGNORE INTO vehicle_types (id, organization_id, code, name, created_at, updated_at) VALUES ('type-email', 'org-email', 'FOUR_WHEELER', 'Four Wheeler', ?, ?)",
     ).bind(timestamp, timestamp),
@@ -117,6 +155,24 @@ async function staffHeaders(): Promise<Record<string, string>> {
     cookie: `__Host-washpro_session=${staffRawToken}`,
     origin: "https://washpro.test",
     "x-csrf-token": await createCsrfToken(staffRawToken, env.CSRF_SECRET),
+  };
+}
+
+async function staffSendHeaders(): Promise<Record<string, string>> {
+  return {
+    "content-type": "application/json",
+    cookie: `__Host-washpro_session=${staffSendRawToken}`,
+    origin: "https://washpro.test",
+    "x-csrf-token": await createCsrfToken(staffSendRawToken, env.CSRF_SECRET),
+  };
+}
+
+async function otherOrgHeaders(): Promise<Record<string, string>> {
+  return {
+    "content-type": "application/json",
+    cookie: `__Host-washpro_session=${otherOrgRawToken}`,
+    origin: "https://washpro.test",
+    "x-csrf-token": await createCsrfToken(otherOrgRawToken, env.CSRF_SECRET),
   };
 }
 
@@ -284,6 +340,73 @@ describe("sendInvoiceEmailForInvoice (send-email operation)", () => {
         Date.parse(String(keyRow!.completed_at))) /
       1000;
     expect(expirySeconds).toBe(7200);
+  });
+
+  it("lets a STAFF user with the invoices.send permission send the invoice PDF", async () => {
+    const { jobId, customerEmail } = await createCustomerJob(
+      "customer-email-staffsend",
+      "meera@example.com",
+    );
+    const invoiceId = await generateInvoice(
+      jobId,
+      "email-key-staffsend-gen-01",
+    );
+    const invoiceNumber = (await env.DB.prepare(
+      "SELECT invoice_number FROM invoices WHERE id = ?",
+    )
+      .bind(invoiceId)
+      .first<string>("invoice_number"))!;
+    const { deps, send } = makeDeps();
+
+    const result = await sendInvoiceEmailForInvoice(
+      env,
+      staffSendAuth,
+      invoiceId,
+      "email-key-staffsend-send-01",
+      requestId,
+      deps,
+    );
+
+    expect(result).toEqual({
+      invoiceId,
+      invoiceNumber,
+      recipientEmail: customerEmail,
+      sentAt: "2026-08-01T16:00:00.000Z",
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    const sent = send.mock.calls[0]![1]!;
+    expect(sent.attachmentFilename).toBe(`WashPro-${invoiceNumber}.pdf`);
+    const stored = await app.request(
+      `/api/v1/invoices/${invoiceId}/pdf`,
+      { headers: { cookie: `__Host-washpro_session=${rawToken}` } },
+      env,
+    );
+    expect(stored.status).toBe(200);
+    const storedBytes = new Uint8Array(await stored.arrayBuffer());
+    expect(sent.attachmentBytes).toBeInstanceOf(Uint8Array);
+    expect(sent.attachmentBytes.length).toBe(storedBytes.length);
+    expect(
+      (sent.attachmentBytes as Uint8Array).every(
+        (byte, index) => byte === storedBytes[index],
+      ),
+    ).toBe(true);
+
+    const auditRow = await env.DB.prepare(
+      "SELECT user_id FROM audit_logs WHERE action = 'INVOICE_EMAIL_SENT' AND record_id = ?",
+    )
+      .bind(invoiceId)
+      .first<Record<string, unknown>>();
+    expect(auditRow).toMatchObject({ user_id: "staff-email-send" });
+
+    const keyRow = await env.DB.prepare(
+      "SELECT user_id, state FROM idempotency_keys WHERE idempotency_key = ?",
+    )
+      .bind("email-key-staffsend-send-01")
+      .first<Record<string, unknown>>();
+    expect(keyRow).toMatchObject({
+      state: "COMPLETED",
+      user_id: "staff-email-send",
+    });
   });
 
   it("replays the same idempotency key without sending a second email", async () => {
@@ -625,6 +748,73 @@ describe("POST /api/v1/invoices/:id/send-email (route wiring)", () => {
     const text = await response.text();
     expect(text).not.toContain(customerEmail!);
     expect(text).not.toContain("GMAIL_CLIENT_ID");
+  });
+
+  it("lets a STAFF user with the invoices.send permission through the permission gate", async () => {
+    const { jobId } = await createCustomerJob(
+      "customer-email-staffsend-r",
+      null,
+    );
+    const invoiceId = await generateInvoice(
+      jobId,
+      "email-key-staffsend-r-gen-01",
+    );
+    const response = await app.request(
+      `/api/v1/invoices/${invoiceId}/send-email`,
+      {
+        body: JSON.stringify({
+          idempotencyKey: "email-key-staffsend-r-send-01",
+        }),
+        headers: await staffSendHeaders(),
+        method: "POST",
+      },
+      env,
+    );
+    expect(response.status).not.toBe(403);
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({
+      error: { code: "CUSTOMER_EMAIL_MISSING" },
+    });
+  });
+
+  it("lets an ADMIN reach the send-email flow through the route", async () => {
+    const { jobId } = await createCustomerJob("customer-email-admin-r", null);
+    const invoiceId = await generateInvoice(jobId, "email-key-admin-r-gen-01");
+    const response = await app.request(
+      `/api/v1/invoices/${invoiceId}/send-email`,
+      {
+        body: JSON.stringify({ idempotencyKey: "email-key-admin-r-send-01" }),
+        headers: await headers(),
+        method: "POST",
+      },
+      env,
+    );
+    expect(response.status).not.toBe(403);
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({
+      error: { code: "CUSTOMER_EMAIL_MISSING" },
+    });
+  });
+
+  it("returns 404 for an invoice outside the caller's organization", async () => {
+    const { jobId } = await createCustomerJob(
+      "customer-email-crossorg",
+      "meera@example.com",
+    );
+    const invoiceId = await generateInvoice(jobId, "email-key-crossorg-gen-01");
+    const response = await app.request(
+      `/api/v1/invoices/${invoiceId}/send-email`,
+      {
+        body: JSON.stringify({ idempotencyKey: "email-key-crossorg-send-01" }),
+        headers: await otherOrgHeaders(),
+        method: "POST",
+      },
+      env,
+    );
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      error: { code: "RESOURCE_NOT_FOUND" },
+    });
   });
 
   it("returns 401 without a session", async () => {

@@ -128,13 +128,22 @@ The `assertNotLastAdmin()` function prevents disabling or demoting the last acti
 
 ## Invoice email sending
 
-- `POST /api/v1/invoices/:id/send-email` requires session auth, CSRF, and the `invoices.send` permission (STAFF denied by default)
+- `POST /api/v1/invoices/:id/send-email` requires session auth, CSRF, and the `invoices.send` permission — ADMIN passes via role; STAFF accounts pass when the administrator has granted `invoices.send` (assignable per-user in the Staff page, which exposes every permission)
 - Emails are sent through the official Gmail REST API (`gmail.googleapis.com`) using OAuth2 refresh-token grant — no SMTP credentials, no browser automation
 - `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` are server-side secrets; `GMAIL_SENDER_EMAIL` and `INVOICE_EMAIL_RATE_LIMIT` are plain vars
 - The full sender identity is never exposed to clients: the API returns only `{ invoiceId, invoiceNumber, recipientEmail, sentAt }`
 - The email carries the invoice PDF as an attachment only — it never contains invoice URLs or tokens
 - Per-user rate limit (default 60/hour, KV-backed, hashed key) plus idempotency-key replay protection prevents duplicate sends
 - Audit logs record `INVOICE_EMAIL_SENT` with recipient and message ID; Gmail credentials and access tokens are never logged or stored
+
+## Invoice WhatsApp customer message
+
+- `GET /api/v1/invoices/:id/whatsapp-action` requires session auth and the `invoices.send` permission — ADMIN passes via role; STAFF accounts pass when the administrator has granted `invoices.send`; GET requires no CSRF
+- The API does not expose the customer's phone as a standalone response field; it returns only the authorized WhatsApp click-to-chat URL required for the communication action (`{ data: { whatsappUrl: string | null } }` — a pre-filled `https://wa.me/<digits>?text=<encoded message>` click-to-chat link built server-side in `apps/api/src/services/whatsapp.ts`). The URL necessarily contains the recipient's phone digits so the customer can receive the message; staff phone masking on all other surfaces is unchanged.
+- The message is built from immutable invoice snapshot columns (customer name/phone, vehicle registration, payment status, total, currency, service name, referral code) — never from live DB rows
+- The response contains the phone digits only inside the wa.me URL — never as a standalone field, never with the customer name, and never with any invoice URL/token/PDF
+- Org scoping is enforced server-side; invoices outside the session organization return 404 without revealing existence
+- No new secrets, vars, or Cloudflare resources are required; no outbound calls are made — wa.me is opened client-side in a new tab (`rel="noopener noreferrer"`)
 
 ## Reporting security issues
 

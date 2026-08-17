@@ -1,5 +1,11 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, Download, Mail, Printer } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  Mail,
+  MessageCircle,
+  Printer,
+} from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -54,6 +60,9 @@ export default function InvoiceDetailPage() {
   const { id = "" } = useParams();
   const maskPhone = useMaskedPhone();
   const invoice = useApiData<InvoiceDetail>(`/invoices/${id}`);
+  const whatsapp = useApiData<{ whatsappUrl: string | null }>(
+    `/invoices/${id}/whatsapp-action`,
+  );
   const toast = useToast();
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
@@ -119,6 +128,10 @@ export default function InvoiceDetailPage() {
       />
     );
   const item = invoice.data;
+  const whatsappUrl =
+    whatsapp.loading || whatsapp.error !== null
+      ? null
+      : (whatsapp.data?.whatsappUrl ?? null);
   return (
     <>
       <Link className="back-link" to="/invoices">
@@ -258,28 +271,58 @@ export default function InvoiceDetailPage() {
             </dl>
           </Card>
           <Card>
-            <p className="eyebrow">Send invoice</p>
-            <p className="muted">
-              Send the invoice PDF directly to the customer's email address.
-            </p>
-            <dl className="detail-list">
-              <div>
-                <dt>Customer email</dt>
-                <dd>{invoice.data.customer_email_snapshot ?? "—"}</dd>
-              </div>
-            </dl>
-            <Button
-              onClick={() => void sendEmail()}
-              busy={sending}
-              disabled={invoice.data.customer_email_snapshot === null}
-            >
-              <Mail size={18} /> {sending ? "Sending…" : "Send Invoice PDF"}
-            </Button>
-            {invoice.data.customer_email_snapshot === null && (
+            <p className="eyebrow">Customer communication</p>
+            <div className="communication-block">
+              <p className="eyebrow">WhatsApp</p>
               <p className="muted">
-                No email address available for this customer.
+                Send a wash completion message to the customer's WhatsApp.
               </p>
-            )}
+              {whatsappUrl === null ? (
+                <Button disabled busy={whatsapp.loading}>
+                  <MessageCircle size={18} /> Open WhatsApp
+                </Button>
+              ) : (
+                <a
+                  className="button button--primary"
+                  href={whatsappUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  <MessageCircle size={18} /> Open WhatsApp
+                </a>
+              )}
+              {whatsapp.error !== null ? (
+                <p className="muted">WhatsApp message unavailable.</p>
+              ) : whatsapp.loading ? null : whatsappUrl === null ? (
+                <p className="muted">
+                  No phone number available for this customer.
+                </p>
+              ) : null}
+            </div>
+            <div className="communication-block">
+              <p className="eyebrow">Email</p>
+              <p className="muted">
+                Send the invoice PDF directly to the customer's email address.
+              </p>
+              <dl className="detail-list">
+                <div>
+                  <dt>Customer email</dt>
+                  <dd>{invoice.data.customer_email_snapshot ?? "—"}</dd>
+                </div>
+              </dl>
+              <Button
+                onClick={() => void sendEmail()}
+                busy={sending}
+                disabled={invoice.data.customer_email_snapshot === null}
+              >
+                <Mail size={18} /> {sending ? "Sending…" : "Send Invoice PDF"}
+              </Button>
+              {invoice.data.customer_email_snapshot === null && (
+                <p className="muted">
+                  No email address available for this customer.
+                </p>
+              )}
+            </div>
           </Card>
         </aside>
       </div>

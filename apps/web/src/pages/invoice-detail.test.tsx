@@ -106,13 +106,40 @@ const invoiceFixture = {
   vehicle_registration_snapshot: "KL01AB1234",
 };
 
-function renderPage(data: Record<string, unknown> = invoiceFixture) {
-  vi.mocked(useApiData).mockReturnValue({
-    data,
-    error: null,
-    loading: false,
-    reload: vi.fn(),
-  });
+const waMessage = [
+  "Hi John Doe 👋",
+  "Thank you for choosing WashPro! 🚗✨",
+  "",
+  "Your Premium Wash for vehicle KL01AB1234 is complete.",
+  "Amount: ₹500.00",
+  "Payment: PAID ✅",
+  "Referral code: WP8A92B9E0",
+  "",
+  "Thanks for visiting WashPro. See you again! 😊",
+].join("\n");
+
+function waUrl(message: string): string {
+  return `https://wa.me/919999999999?text=${encodeURIComponent(message)}`;
+}
+
+function renderPage(
+  data: Record<string, unknown> = invoiceFixture,
+  whatsapp: {
+    readonly data?: { readonly whatsappUrl: string | null } | null;
+    readonly error?: string | null;
+    readonly loading?: boolean;
+  } = { data: { whatsappUrl: waUrl(waMessage) }, error: null, loading: false },
+) {
+  vi.mocked(useApiData).mockImplementation((path: string) =>
+    path.endsWith("/whatsapp-action")
+      ? {
+          data: whatsapp.data ?? null,
+          error: whatsapp.error ?? null,
+          loading: whatsapp.loading ?? false,
+          reload: vi.fn(),
+        }
+      : { data, error: null, loading: false, reload: vi.fn() },
+  );
   return render(
     <MemoryRouter initialEntries={["/invoices/inv-1"]}>
       <Routes>
@@ -267,5 +294,149 @@ describe("Invoice Detail page — phone masking", () => {
     renderPage();
     expect(screen.getAllByText("99xxxxxx99").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryAllByText("9999999999")).toHaveLength(0);
+  });
+});
+
+describe("Invoice Detail page — WhatsApp customer message", () => {
+  it("places the WhatsApp action above the email action", () => {
+    renderPage();
+    const whatsappLink = screen.getByRole("link", {
+      name: /Open WhatsApp/i,
+    });
+    const emailButton = screen.getByRole("button", {
+      name: /Send Invoice PDF/i,
+    });
+    expect(
+      whatsappLink.compareDocumentPosition(emailButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("opens a WhatsApp click-to-chat link when activated", () => {
+    renderPage();
+    const link = screen.getByRole("link", { name: /Open WhatsApp/i });
+    expect(link.getAttribute("href")).toMatch(/^https:\/\/wa\.me\//u);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("uses the customer's phone number in the WhatsApp URL", () => {
+    renderPage();
+    const link = screen.getByRole("link", { name: /Open WhatsApp/i });
+    expect(link.getAttribute("href")).toContain("wa.me/919999999999?text=");
+  });
+
+  it("uses a digits-only phone in the WhatsApp URL", () => {
+    renderPage();
+    const link = screen.getByRole("link", { name: /Open WhatsApp/i });
+    const href = link.getAttribute("href")!;
+    expect(href).toMatch(/^https:\/\/wa\.me\/\d+\?text=/u);
+    expect(href).not.toContain("+");
+    expect(href).not.toContain(" ");
+    expect(href).not.toContain("-");
+  });
+
+  it("pre-fills the message with the required format", () => {
+    renderPage();
+    const link = screen.getByRole("link", { name: /Open WhatsApp/i });
+    const message = decodeURIComponent(
+      link.getAttribute("href")!.split("?text=")[1]!,
+    );
+    expect(message).toBe(waMessage);
+  });
+
+  it("does not include any invoice link, token, or PDF reference in the message", () => {
+    renderPage();
+    const link = screen.getByRole("link", { name: /Open WhatsApp/i });
+    const message = decodeURIComponent(
+      link.getAttribute("href")!.split("?text=")[1]!,
+    );
+    expect(message).not.toContain("https://");
+    expect(message).not.toContain("/invoice/");
+    expect(message).not.toContain("secureLink");
+    expect(message).not.toContain("copyLink");
+    expect(message).not.toContain("token");
+    expect(message.toLowerCase()).not.toContain("pdf");
+  });
+
+  it("omits the referral code line when the customer has no referral code", () => {
+    const withoutReferral = waMessage.replace(
+      "Referral code: WP8A92B9E0\n",
+      "",
+    );
+    renderPage(invoiceFixture, {
+      data: { whatsappUrl: waUrl(withoutReferral) },
+      error: null,
+      loading: false,
+    });
+    const link = screen.getByRole("link", { name: /Open WhatsApp/i });
+    const message = decodeURIComponent(
+      link.getAttribute("href")!.split("?text=")[1]!,
+    );
+    expect(message).not.toContain("Referral code:");
+    expect(message).toContain("Thanks for visiting WashPro. See you again! 😊");
+  });
+
+  it("formats the amount with the ₹ symbol", () => {
+    renderPage();
+    const link = screen.getByRole("link", { name: /Open WhatsApp/i });
+    const message = decodeURIComponent(
+      link.getAttribute("href")!.split("?text=")[1]!,
+    );
+    expect(message).toContain("Amount: ₹500.00");
+    expect(message).not.toContain("INR");
+  });
+
+  it("keeps WhatsApp available when the customer has no email", () => {
+    renderPage({ ...invoiceFixture, customer_email_snapshot: null });
+    const link = screen.getByRole("link", { name: /Open WhatsApp/i });
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toContain("wa.me/");
+    expect(
+      screen.getByRole("button", { name: /Send Invoice PDF/i }),
+    ).toBeDisabled();
+  });
+
+  it("does not offer WhatsApp when no phone number is available", () => {
+    renderPage(invoiceFixture, {
+      data: { whatsappUrl: null },
+      error: null,
+      loading: false,
+    });
+    expect(
+      screen.queryByRole("link", { name: /Open WhatsApp/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Open WhatsApp/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getAllByText("No phone number available for this customer.")
+        .length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("disables the WhatsApp action while it is loading", () => {
+    renderPage(invoiceFixture, { data: null, error: null, loading: true });
+    expect(
+      screen.queryByRole("link", { name: /Open WhatsApp/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Open WhatsApp/i }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByText("No phone number available for this customer."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("stays stable under rapid clicks", () => {
+    renderPage();
+    const link = screen.getByRole("link", { name: /Open WhatsApp/i });
+    const original = link.getAttribute("href");
+    fireEvent.click(link);
+    fireEvent.click(link);
+    fireEvent.click(link);
+    expect(link.getAttribute("href")).toBe(original);
+    expect(toastMocks.error).not.toHaveBeenCalled();
+    expect(toastMocks.success).not.toHaveBeenCalled();
   });
 });
